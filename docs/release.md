@@ -5,22 +5,25 @@ doc_goal: Keep the release pipeline as a short user-facing reference after the d
 
 Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1117)).
 
-- `promote.yml` gates every `main` push (vet, test, lint) and, when green,
-  fast-forwards the `release` branch to that sha with `CI_RELEASE_TOKEN`.
-- `release.yml` consumes the promoted `release` sha, then tags, publishes, and
-  updates install channels under a no-cancel concurrency queue: promoted shas
-  release in sequence, never overlap-and-cancel.
-- The pipeline stages the release as a draft, publishes the binary matrix, then makes the release visible.
+- `promote.yml` gates every `main` push (vet, test, lint), builds the binary
+  matrix once, publishes it as a commit-scoped draft release, and only then
+  fast-forwards the `release` branch with `CI_RELEASE_TOKEN`.
+- `release.yml` consumes the promoted `release` sha, retags the already-built
+  draft assets to the public version, and updates install channels under a
+  no-cancel concurrency queue: promoted shas release in sequence, never
+  overlap-and-cancel.
+- The pipeline stages the release on `main` and promotes the prebuilt assets on
+  `release`, rather than rebuilding them twice.
 - The GitHub mirror stays a front door, not the source of truth.
 
 ## The basic shape
 
 1. merge to `main`.
-2. promote gate goes green; `release` fast-forwards to the sha.
-3. release workflow consumes that promoted sha.
-4. tag a draft release from `release`.
-5. publish the binary matrix.
-6. publish checksums.
+2. promote gate goes green; `main` builds a draft release for that sha.
+3. the draft publish succeeds.
+4. `release` fast-forwards to the sha.
+5. release workflow consumes that promoted sha.
+6. retag the draft assets to the public version.
 7. publish the release.
 8. update the install channel.
 
@@ -30,7 +33,8 @@ Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.c
 - every step blocks behind the promote gate on `main`: a push whose vet, test,
   or lint checks fail promotes nothing, and the release push only publishes the
   already-vouched sha.
-- the published binaries should match the tagged source state.
+- the published binaries are built once on `main` and then retagged on
+  `release`.
 - the install channel update should follow the release, not invent a second
   release story.
 

@@ -4,6 +4,8 @@ Each release publishes a tagged binary matrix plus checksums.
 
 - The matrix covers the supported OS and architecture pairs.
 - `SHA256SUMS` is published with the release.
+- The matrix is built once on `main` as a draft release, then promoted to the
+  public release tag without rebuilding.
 - The release pages on Forgejo and GitHub mirror the same artifacts.
 
 ## Why it exists
@@ -11,6 +13,8 @@ Each release publishes a tagged binary matrix plus checksums.
 - the tarball or binary is what most users install.
 - the checksum file is what makes the release verifiable.
 - the matrix keeps the install story aligned across the supported hosts.
+- draft tags and draft releases are disposable staging, not a second public
+  release channel.
 
 ## User view
 

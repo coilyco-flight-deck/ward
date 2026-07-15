@@ -1,7 +1,8 @@
 # Stage 1 of the two-stage release flow (ward#1117): every main push re-runs
-# the full check suite here, and only a green gate fast-forwards `release` to
-# that sha. release.yml then runs on the `release` push to tag, publish
-# binaries, and bump install channels under a no-cancel concurrency queue.
+# the full check suite here, builds commit-scoped draft artifacts, and only
+# after the draft publish succeeds fast-forwards `release` to that sha.
+# release.yml then runs on the `release` push to retag, promote those draft
+# assets, and bump install channels under a no-cancel concurrency queue.
 # main stays the integration branch; `release` is last-known-good.
 # Bursts on main collapse to the newest sha (cancel-in-progress: true - the
 # promotion is idempotent and a newer gate supersedes an older one). The
@@ -54,6 +55,105 @@ jobs:
           GOCACHE: ${{ runner.tool_cache }}/ward-go-build
           GOMODCACHE: ${{ runner.tool_cache }}/ward-go-mod
         run: mkdir -p "$TMPDIR" "$GOTMPDIR" "$GOCACHE" "$GOMODCACHE" && make lint
+
+      - id: tag
+        uses: coilysiren/agentic-os/actions/tag-bump@main
+
+      - name: Build and publish draft release artifacts
+        env:
+          DRAFT_TAG: draft-${{ github.sha }}
+          TAG: ${{ steps.tag.outputs.new_tag }}
+          FORGEJO_API: https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward
+          GO_VERSION: "1.26.4"
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Build once on main, then let release.yml only promote the staged
+          # draft assets. This keeps the expensive matrix off the release branch
+          # and turns the release push into a retag/publish step.
+          if [ -z "${TAG:-}" ]; then
+            echo "::error::tag-bump did not produce a release tag for the draft artifacts" >&2
+            exit 1
+          fi
+          make sync-defaults-assets
+
+          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+          tar -xzf /tmp/go.tar.gz -C /usr/local
+          echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+
+          export GOPROXY=direct GOSUMDB=off CGO_ENABLED=0
+          mkdir -p dist
+          bound() { if command -v timeout >/dev/null 2>&1; then timeout 180 "$@"; else "$@"; fi; }
+          for attempt in 1 2 3; do
+            if bound go mod download; then break; fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::go mod download failed after 3 attempts (GOPROXY=direct fetch); draft release assets not built" >&2
+              exit 1
+            fi
+            echo "go mod download attempt ${attempt} failed/timed out; retrying in 5s" >&2
+            sleep 5
+          done
+          for os in linux darwin windows; do
+            for arch in amd64 arm64; do
+              ext=""
+              [ "$os" = "windows" ] && ext=".exe"
+              GOOS="$os" GOARCH="$arch" go build -trimpath \
+                -ldflags "-s -w -X main.Version=${TAG}" \
+                -o "dist/ward-${os}-${arch}${ext}" ./cmd/ward
+            done
+          done
+          ( cd dist && sha256sum ward-* > SHA256SUMS )
+          ( cd dist && for f in ward-windows-*.exe; do
+              sha256sum "$f" | awk '{print $1}' > "${f}.sha256"
+            done )
+
+          rel_id=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
+            "${FORGEJO_API}/releases/tags/${DRAFT_TAG}" \
+            | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0, "utf8")).id || ""))')
+          if [ -z "${rel_id:-}" ]; then
+            payload=$(DRAFT_TAG="$DRAFT_TAG" node -e '
+              process.stdout.write(JSON.stringify({
+                tag_name: process.env.DRAFT_TAG,
+                name: process.env.DRAFT_TAG,
+                draft: true,
+              }));
+            ')
+            code=$(curl -sS -o /tmp/draft-release.json -w '%{http_code}' \
+              -X POST -H "Authorization: token ${TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data-binary "$payload" \
+              "${FORGEJO_API}/releases")
+            if [ "$code" != "201" ]; then
+              echo "::error::could not create draft release ${DRAFT_TAG} (HTTP ${code})" >&2
+              cat /tmp/draft-release.json >&2 || true
+              exit 1
+            fi
+            rel_id=$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync("/tmp/draft-release.json","utf8")).id || ""))')
+          fi
+          if [ -z "${rel_id:-}" ]; then
+            echo "::error::could not resolve draft release ${DRAFT_TAG}" >&2
+            exit 1
+          fi
+
+          existing=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
+            "${FORGEJO_API}/releases/${rel_id}/assets?per_page=100" || echo '[]')
+          for name in $(cd dist && ls); do
+            old=$(printf '%s' "$existing" | ASSET="$name" node -e '
+              const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
+              const m = (a || []).find(x => x.name === process.env.ASSET);
+              if (m) process.stdout.write(String(m.id));
+            ')
+            if [ -n "$old" ]; then
+              curl -fsSL -X DELETE -H "Authorization: token ${TOKEN}" \
+                "${FORGEJO_API}/releases/${rel_id}/assets/${old}" || true
+            fi
+            curl -fsSL -X POST -H "Authorization: token ${TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"dist/${name}" \
+              "${FORGEJO_API}/releases/${rel_id}/assets?name=${name}"
+            echo "uploaded ${name} to draft ${DRAFT_TAG}"
+          done
+          echo "published draft release ${DRAFT_TAG} with the full matrix + SHA256SUMS"
 
       - name: Promote main to release (fast-forward only)
         env:

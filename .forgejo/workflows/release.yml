@@ -1,9 +1,9 @@
-# Forgejo-canonical release pipeline. promote.yml gates every main push and
-# fast-forwards the `release` branch when green. This workflow publishes the
-# exact promoted `release` SHA without re-running vet/test/lint, then tags,
-# publishes, and updates install channels in a queued order. A
-# workflow_dispatch re-fires it against the `release` ref on a missed enqueue.
-# See docs/release.md.
+# Forgejo-canonical release pipeline. promote.yml gates every main push, builds
+# draft assets, and fast-forwards the `release` branch only after that publish
+# succeeds. This workflow promotes the exact released SHA without rebuilding it:
+# tag, retag the draft assets, publish, and update install channels in a queued
+# order. A workflow_dispatch re-fires it against the `release` ref on a missed
+# enqueue. See docs/release.md.
 
 name: release
 
@@ -140,7 +140,7 @@ jobs:
 
           main()
           PY
-  publish-binaries:
+  promote-draft-assets:
     needs: release
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
@@ -148,77 +148,48 @@ jobs:
       image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
     env:
       TAG: ${{ needs.release.outputs.tag }}
-      GO_VERSION: "1.26.4"
+      DRAFT_TAG: draft-${{ github.sha }}
       FORGEJO_API: https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward
       GITHUB_REPO: coilyco-flight-deck/ward
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.release.outputs.tag }}
-          fetch-depth: 0
-
-      - name: Regenerate embedded smart-defaults asset
-        run: make sync-defaults-assets
-
-      - name: Install Go
+      - name: Fetch the draft assets staged on main
+        env:
+          TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
-          tar -xzf /tmp/go.tar.gz -C /usr/local
-          echo "/usr/local/go/bin" >> "$GITHUB_PATH"
-
-      - name: Cross-compile the full ward matrix (darwin + linux + windows, amd64 + arm64)
-        timeout-minutes: 12
-        run: |
-          set -euo pipefail
-          # GOPROXY=direct so fresh cli-guard pseudo-versions resolve for the
-          # release build. See docs/release-binaries.md. CGO stays off so every
-          # target cross-compiles from this linux/amd64 runner with no C
-          # toolchain - ward is pure Go (no `import "C"`). Building the whole
-          # matrix ONCE and uploading the same files to both forges is what
-          # guarantees the Forgejo and GitHub release pages carry identical
-          # SHA256SUMS for a tag (ward#454, ward#438). Windows joins the matrix so
-          # the scoop channel (coilyco-flight-deck/scoop-bucket ward.json) has a binary to
-          # install; its .exe assets also get per-asset .sha256 sidecars below,
-          # the contract scoop autoupdate reads (ward#561).
-          export GOPROXY=direct GOSUMDB=off CGO_ENABLED=0
           mkdir -p dist
-          # Pre-fetch modules in a bounded, retried block before building. A
-          # GOPROXY=direct git fetch hung ~5min then failed in run 405 and shipped
-          # v0.149.0 with zero binaries: the build step died, so the Upload step
-          # never ran. The only network-flaky part is resolving the cli-guard
-          # pseudo-version; bounding each attempt and retrying lets a transient
-          # hang recover instead of silently dropping a release's assets. The
-          # go build below then runs against the warm cache. See docs/release.md.
-          bound() { if command -v timeout >/dev/null 2>&1; then timeout 180 "$@"; else "$@"; fi; }
-          for attempt in 1 2 3; do
-            if bound go mod download; then break; fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "::error::go mod download failed after 3 attempts (GOPROXY=direct fetch); release binaries not built" >&2
-              exit 1
-            fi
-            echo "go mod download attempt ${attempt} failed/timed out; retrying in 5s" >&2
-            sleep 5
+          rel_json=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
+            "${FORGEJO_API}/releases/tags/${DRAFT_TAG}")
+          rel_id=$(printf '%s' "$rel_json" | node -e '
+            process.stdout.write(String(JSON.parse(require("fs").readFileSync(0, "utf8")).id || ""));
+          ')
+          if [ -z "${rel_id:-}" ]; then
+            echo "::error::no draft release found for ${DRAFT_TAG}" >&2
+            exit 1
+          fi
+          assets=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
+            "${FORGEJO_API}/releases/${rel_id}/assets?per_page=100" || echo '[]')
+          count=$(printf '%s' "$assets" | node -e '
+            const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
+            process.stdout.write(String((a || []).length));
+          ')
+          if [ "$count" = "0" ]; then
+            echo "::error::draft release ${DRAFT_TAG} has no assets to promote" >&2
+            exit 1
+          fi
+          printf '%s' "$assets" | node -e '
+            const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
+            for (const asset of a || []) {
+              console.log(`${asset.id}\t${asset.name}`);
+            }
+          ' | while IFS="$(printf '\t')" read -r asset_id name; do
+            [ -n "$asset_id" ] || continue
+            curl -fsSL -H "Authorization: token ${TOKEN}" \
+              -H "Accept: application/octet-stream" \
+              "${FORGEJO_API}/releases/${rel_id}/assets/${asset_id}" \
+              -o "dist/${name}"
+            echo "fetched ${name} from ${DRAFT_TAG}"
           done
-          for os in linux darwin windows; do
-            for arch in amd64 arm64; do
-              # Windows PE binaries carry the .exe suffix scoop and the OS expect.
-              ext=""; [ "$os" = "windows" ] && ext=".exe"
-              GOOS="$os" GOARCH="$arch" go build -trimpath \
-                -ldflags "-s -w -X main.Version=${TAG}" \
-                -o "dist/ward-${os}-${arch}${ext}" ./cmd/ward
-            done
-          done
-          # SHA256SUMS over the bare basenames, so `sha256sum -c SHA256SUMS`
-          # verifies from whichever release page a downloader pulled the binary.
-          ( cd dist && sha256sum ward-* > SHA256SUMS )
-          # Per-asset .sha256 sidecars for the windows exes: scoop autoupdate reads
-          # each app's hash from `<asset>.sha256` (bare digest), the fleet contract
-          # coily.json already relies on. Only windows needs them - brew/raw-binary
-          # installs verify against the combined SHA256SUMS above. See ward#561.
-          ( cd dist && for f in ward-windows-*.exe; do
-              sha256sum "$f" | awk '{print $1}' > "${f}.sha256"
-            done )
           ls -l dist
           cat dist/SHA256SUMS
 
@@ -421,7 +392,7 @@ jobs:
           main()
           PY
   bump-tap-formula:
-    needs: [release, publish-binaries]
+    needs: [release, promote-draft-assets]
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
     container:
@@ -438,7 +409,8 @@ jobs:
           TAP_WRITE_TOKEN: ${{ secrets.TAP_WRITE_TOKEN }}
         run: |
           set -euo pipefail
-          # Push auth is an explicit Actions secret, mirroring publish-binaries'
+          # Push auth is an explicit Actions secret, mirroring the draft asset
+          # promotion job's guarded secret handling:
           # CI_RELEASE_TOKEN: one rotatable, visible credential instead of the
           # tap-writer runner's hidden git credential helper, which broke silently
           # and froze the tap at v0.96.0 (ward#237, ward#243). Guard up front so a
@@ -455,7 +427,7 @@ jobs:
             tmp="$(mktemp)"
             code="$(curl -fsSL -w '%{http_code}' -o "$tmp" "$url" || true)"
             if [ "$code" != "200" ]; then
-              echo "::error::could not fetch ${asset} from ${url} (http ${code:-curl-failed}); publish-binaries may not have uploaded it yet" >&2
+              echo "::error::could not fetch ${asset} from ${url} (http ${code:-curl-failed}); draft assets may not have been promoted yet" >&2
               rm -f "$tmp"
               return 1
             fi
@@ -646,7 +618,7 @@ jobs:
           main()
           PY
   bump-scoop-manifest:
-    needs: [release, publish-binaries]
+    needs: [release, promote-draft-assets]
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
     container:
@@ -683,7 +655,8 @@ jobs:
             exit 1
           fi
           VER="${TAG#v}"
-          # Read the two windows hashes from the .sha256 sidecars publish-binaries
+          # Read the two windows hashes from the .sha256 sidecars the draft
+          # promotion job uploaded
           # uploaded (bare digest per asset, the scoop autoupdate contract, ward#561).
           # pipefail matters: a failed sidecar fetch must abort, not hash an empty body.
           dl="$FORGEJO_BASE_URL/${WARD_REPO}/releases/download/${TAG}"
