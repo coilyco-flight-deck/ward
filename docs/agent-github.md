@@ -8,6 +8,9 @@ This page is the durable anchor for GitHub token resolution and host selection.
 - It covers env, `gh`, and App-based token sources.
 - It keeps GitHub separate from Forgejo's canonical release path.
 - The token is resolved on the host, not from SSM.
+- The shipped GitHub control plane is the issue-thread surface plus PR-context
+  reads; Forgejo-native PR merge/status/backpressure verbs stay Forgejo-only
+  until GitHub grows matching adapters.
 
 ## See also
 

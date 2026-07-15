@@ -15,7 +15,10 @@ States mean:
 ## Git platforms / forges
 
 - Forgejo - shipped. `cmd/ward/forgejo_ops.go`, `docs/ops-forgejo.md`.
-- GitHub - shipped. `cmd/ward/github_ops.go`.
+- GitHub - shipped for the issue-thread control plane. `cmd/ward/github_ops.go`.
+  PR creation, the Forgejo-native PR workflow, PR-status merge gate, rerun,
+  and open-PR backpressure remain Forgejo-only until GitHub grows matching
+  adapters; the gap is called out in the GitHub contract tests.
 - GitLab - not a ward provider. `CONTRIBUTING.md`.
 
 ## Issue trackers
