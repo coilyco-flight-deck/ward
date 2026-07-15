@@ -1,0 +1,5 @@
+# Candidate review-skill locations, checked in order.
+${WARD_WORKSPACE_DEST}/ward/.agents/skills/tooling-code-review/SKILL.md
+/workspace/ward/.agents/skills/tooling-code-review/SKILL.md
+${WARD_SUBSTRATE_DEST}/ward/.agents/skills/tooling-code-review/SKILL.md
+/substrate/ward/.agents/skills/tooling-code-review/SKILL.md

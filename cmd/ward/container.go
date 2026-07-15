@@ -28,11 +28,8 @@ import (
 
 const wardBootstrapRepo = "coilyco-flight-deck/ward"
 
-// container.go wires the hidden `ward container` plumbing namespace (ward#263:
-// reap/bootstrap) + docker side effects + host forgejo-token resolution.
-
-//go:embed containerassets/entrypoint.sh AGENTS.container.txt
-//go:embed containerassets/settings.container.json containerassets/preclone-repos.txt
+//go:embed AGENTS.container.txt
+//go:embed containerassets/*
 var containerAssets embed.FS
 
 // loadSubstrateManifest parses the embedded preclone manifest - the single
@@ -102,8 +99,8 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []ag
 var directorSurfaceSessionSuffix = dictatableID
 var stageWardBootstrapBinary = realStageWardBootstrapBinary
 
-// dictatableID returns the aos/o2r short agent-id shape: two lowercase letters
-// from the dictatable alphabet, then two digits.
+// dictatableID returns the short agent-id shape: two lowercase letters from
+// the dictatable alphabet, then two digits.
 func dictatableID() string {
 	const letters = "abcdefghjkmpqrstuvwxyz"
 	const digits = "456789"

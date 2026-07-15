@@ -33,8 +33,8 @@ func TestReviewIssueRefFromEnv(t *testing.T) {
 func TestReviewSkillPathPrefersWorkspaceCopy(t *testing.T) {
 	workspace := t.TempDir()
 	substrate := t.TempDir()
-	workspaceSkill := filepath.Join(workspace, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md")
-	substrateSkill := filepath.Join(substrate, "agentic-os", ".agents", "skills", "tooling-code-review", "SKILL.md")
+	workspaceSkill := filepath.Join(workspace, "ward", ".agents", "skills", "tooling-code-review", "SKILL.md")
+	substrateSkill := filepath.Join(substrate, "ward", ".agents", "skills", "tooling-code-review", "SKILL.md")
 	if err := os.MkdirAll(filepath.Dir(workspaceSkill), 0o755); err != nil {
 		t.Fatal(err)
 	}

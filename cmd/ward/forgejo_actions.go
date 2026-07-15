@@ -44,9 +44,9 @@ func (c *forgejoClient) GetActionRun(ctx context.Context, owner, repo string, ru
 	return &run, nil
 }
 
-// errForgeRerunUnsupported marks the agentic-os#434 forge gap: the Forgejo
-// REST API exposes no rerun operation, so ward's native tool degrades loudly.
-var errForgeRerunUnsupported = fmt.Errorf("the Forgejo REST API on this forge exposes no Actions rerun operation (agentic-os#434)")
+// errForgeRerunUnsupported marks the Forgejo rerun gap: the REST API exposes
+// no rerun operation, so ward's native tool degrades loudly.
+var errForgeRerunUnsupported = fmt.Errorf("the Forgejo REST API on this forge exposes no Actions rerun operation")
 
 // rerunActionRun asks the forge to rerun one Actions run; 404/405 degrades to
 // errForgeRerunUnsupported with the manual fallback. docs/agent-pr-workflow.md.

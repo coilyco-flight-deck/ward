@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// agent_subsystem.go is the dispatch-side complement to the agentic-os doctrine
+// agent_subsystem.go is the dispatch-side complement to the front-load doctrine
 // "Front-load the context you know you need" (ward#236); see docs/agent-frontload.md.
 
 // subsystemPointerRepo scopes the ward-specific keyword map to ward's own clone;

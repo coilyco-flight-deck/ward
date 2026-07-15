@@ -83,8 +83,8 @@ const (
 type configSource struct {
 	fsys fs.FS
 
-	// desc names the selected source: raw config ref for external bundles, empty for
-	// baked. A fail-closed error must name the serving bundle (aos#452/aos#472).
+	// desc names the selected source for error messages: raw config ref for
+	// external bundles, empty for the baked default.
 	desc string
 
 	// auditVersion stamps the resolved bundle identity into the audit row.

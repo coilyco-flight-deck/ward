@@ -55,17 +55,17 @@ Inventory of what `ward` ships today.
 
 ## Release and docs
 
-- Two-stage release: promote gates main and fast-forwards `release`; release publishes the promoted sha on a queue. See [release.md](release.md).
-- [compat-surface.md](compat-surface.md) - release-facing provider matrix.
+- Two-stage release ([ward#1117](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1117)): promote.yml gates every main push and
+  fast-forwards `release` when green; release.yml runs on `release` pushes
+  under a no-cancel concurrency queue. See [release.md](release.md).
+- [compat-surface.md](compat-surface.md) - the release-facing provider matrix.
 - [release.md](release.md) and [release-binaries.md](release-binaries.md).
 - [homebrew-build.md](homebrew-build.md), [golangci.md](golangci.md), and [troubleshooting.md](troubleshooting.md).
 - [docs/README.md](README.md) - docs index.
 
 ## See also
 
-- [../README.md](../README.md) - the front page.
-- [../AGENTS.md](../AGENTS.md) - the operating rules.
-- [features-release-tooling.md](features-release-tooling.md) - the hook and release convention.
-- [../.ward/ward.yaml](../.ward/ward.yaml) - the repo allowlist.
-
-Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).
+- [../README.md](../README.md) - front page
+- [../AGENTS.md](../AGENTS.md) - operating rules.
+- [features-release-tooling.md](features-release-tooling.md) - release tooling.
+- [../.ward/ward.yaml](../.ward/ward.yaml) - repo allowlist.

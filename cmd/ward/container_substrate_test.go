@@ -4,7 +4,7 @@ import "testing"
 
 func TestParseSubstrateManifest(t *testing.T) {
 	good := `# a comment
-coilyco-flight-deck/agentic-os        image
+coilyco-flight-deck/ward              image
 
 coilyco-bridge/lore                   cache
 `
@@ -15,7 +15,7 @@ coilyco-bridge/lore                   cache
 	if len(repos) != 2 {
 		t.Fatalf("want 2 repos, got %d: %+v", len(repos), repos)
 	}
-	if repos[0].slug() != "coilyco-flight-deck/agentic-os" || repos[0].Tier != "image" {
+	if repos[0].slug() != "coilyco-flight-deck/ward" || repos[0].Tier != "image" {
 		t.Errorf("first entry wrong: %+v", repos[0])
 	}
 	if repos[1].slug() != "coilyco-bridge/lore" || repos[1].Tier != "cache" {
@@ -23,10 +23,10 @@ coilyco-bridge/lore                   cache
 	}
 
 	for _, bad := range []string{
-		"coilyco-bridge/lore",                 // missing tier
-		"coilyco-bridge/lore cache extra",     // too many fields
-		"not-an-owner-name image",             // not owner/name
-		"coilyco-flight-deck/agentic-os warm", // unknown tier
+		"coilyco-bridge/lore",             // missing tier
+		"coilyco-bridge/lore cache extra", // too many fields
+		"not-an-owner-name image",         // not owner/name
+		"coilyco-flight-deck/ward warm",   // unknown tier
 	} {
 		if _, err := parseSubstrateManifest(bad); err == nil {
 			t.Errorf("parseSubstrateManifest(%q): want error, got none", bad)

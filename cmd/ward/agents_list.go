@@ -124,15 +124,15 @@ func agentsCommand() *cli.Command {
 }
 
 // agentsListCommand builds `ward agents list [--json]`: a read-only dump of the
-// effective fleet roster (human table, or --json for the surface aos consumes).
+// effective fleet roster (human table, or --json for the JSON surface).
 func agentsListCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "list",
-		Usage: "Print the embedded fleet roster (agents + manifest fields). --json emits the stable read surface aos consumes.",
+		Usage: "Print the embedded fleet roster (agents + manifest fields). --json emits the stable JSON read surface.",
 		Description: `list dumps the fleet roster straight from the embedded fleetconfig.Fleet - the
 same parse cmd/ward/fleet.go embeds - so the roster the binary launches and the
 roster it reports can never drift. The default is a human table; --json emits a
-stable, deterministic JSON schema (schema_version, defaults, agents[]) that aos's
+stable, deterministic JSON schema (schema_version, defaults, agents[]) that the
 scripts/agent-compat.py consumes as its read surface (ward#417).`,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "json", Usage: "emit the stable JSON roster instead of the human table"},

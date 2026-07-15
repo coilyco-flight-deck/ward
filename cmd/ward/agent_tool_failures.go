@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	toolFailuresCacheApp  = "agentic-os"
+	toolFailuresCacheApp  = "ward"
 	toolFailuresCacheTail = "tool-failures"
 	toolFailuresSource    = "claude.transcript"
 	toolFailuresSchema    = "tool_failure"

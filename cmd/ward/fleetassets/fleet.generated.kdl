@@ -5,7 +5,7 @@
 // guardfile auto-discovery glob (ward-kdl.*.guardfile.kdl) and the exec/ops
 // mirrors; it rides its own embed dir (cmd/ward/fleetassets/) and parser
 // (cmd/ward/fleet.go via pkg/fleetconfig), legibly partitioned from the
-// permission dialect (aos#310 §6, ward#415).
+// permission dialect (ward#310 §6, ward#415).
 //
 // This file is the single hand-edited source. `make sync-fleet-assets` copies
 // it to cmd/ward/fleetassets/fleet.generated.kdl for go:embed (which cannot

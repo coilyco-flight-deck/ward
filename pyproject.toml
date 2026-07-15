@@ -1,6 +1,9 @@
 [tool.agentic-os.documentation-layout]
 readme_max_lines = 200
 readme_max_chars = 14000
+excludes = [
+  "ward-kdl.*.guardfile.md",
+]
 
 [tool.agentic-os.code-comments]
 excludes = [
