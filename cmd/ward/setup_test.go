@@ -13,6 +13,19 @@ func TestSetupCommandRegistered(t *testing.T) {
 	}
 }
 
+func TestSetupCommandDescriptionMentionsLocalConfigPath(t *testing.T) {
+	desc := setupCommand().Description
+	for _, want := range []string{
+		"Point `WARD_CONFIG_REF` at the local setup output directly",
+		"`/path/to/ward-config.kdl`",
+		"`file:///path/to/ward-config.kdl`",
+	} {
+		if !strings.Contains(desc, want) {
+			t.Errorf("setup description missing %q:\n%s", want, desc)
+		}
+	}
+}
+
 func TestRunSetupWithUnsetRef(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "")

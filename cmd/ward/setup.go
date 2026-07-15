@@ -24,13 +24,18 @@ func setupCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "setup",
 		Usage: "Warm and validate runtime config surfaces.",
-		Description: `setup is the cache warmer / config doctor for the selected runtime
-config source. It pre-bakes and validates config surfaces without building or
-replacing the ward binary, and it is not a hidden prerequisite for normal ward
-commands.
-
-Phases: config source -> auth/credential checks (stub) -> cache warm -> surface
-compile -> host integration checks (stub).`,
+		Description: strings.Join([]string{
+			"setup is the cache warmer / config doctor for the selected runtime",
+			"config source. It pre-bakes and validates config surfaces without building or",
+			"replacing the ward binary, and it is not a hidden prerequisite for normal ward",
+			"commands.",
+			"",
+			"Point `WARD_CONFIG_REF` at the local setup output directly when you want a",
+			"file form, for example `/path/to/ward-config.kdl` or `file:///path/to/ward-config.kdl`.",
+			"",
+			"Phases: config source -> auth/credential checks (stub) -> cache warm -> surface",
+			"compile -> host integration checks (stub).",
+		}, "\n"),
 		Action: func(ctx context.Context, _ *cli.Command) error {
 			report, err := runSetup(ctx)
 			if err != nil {

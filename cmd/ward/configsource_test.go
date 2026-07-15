@@ -154,6 +154,26 @@ func TestSelectConfigSourceRejectsMissingDir(t *testing.T) {
 	}
 }
 
+// TestSelectConfigSourceRejectsMissingLocalFilePath pins the local-file failure
+// path: a missing setup-generated file must fail loudly and name the path.
+func TestSelectConfigSourceRejectsMissingLocalFilePath(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "ward-config.kdl")
+	t.Setenv(wardConfigRefEnv, missing)
+	if _, err := selectConfigSource(); err == nil {
+		t.Fatal("missing local config file selected a source; want a loud error")
+	} else {
+		for _, want := range []string{
+			wardConfigRefEnv,
+			"local config path",
+			filepath.Base(missing),
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not contain %q", err, want)
+			}
+		}
+	}
+}
+
 // TestSelectConfigSourceFileRef selects a DirFS bundle for the file:// form.
 func TestSelectConfigSourceFileRef(t *testing.T) {
 	dir := t.TempDir()

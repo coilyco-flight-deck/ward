@@ -155,7 +155,7 @@ func selectConfigSource() (configSource, error) {
 	// (docs/config-source.md).
 	if localPath, ok, err := resolveLocalConfigRef(ref); ok {
 		if err != nil {
-			return configSource{}, fmt.Errorf("%s: bundle path %s: %w", wardConfigRefEnv, localPath, err)
+			return configSource{}, fmt.Errorf("%s: setup-generated local config path %s must exist: %w", wardConfigRefEnv, localPath, err)
 		}
 		src, err := localConfigSource(localPath, ref)
 		if err != nil {
