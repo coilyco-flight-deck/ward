@@ -664,6 +664,30 @@ func TestWardEnvCorrelationEnvelope(t *testing.T) {
 	}
 }
 
+// TestWardEnvCoilycoConfigRef exports the resolved bundle ref for a coilyco
+// checkout so repo-local `ward exec` sees the launch-selected config source.
+func TestWardEnvCoilycoConfigRef(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	gitFixture(t, work, "init", "-b", "main", ".")
+	gitFixture(t, work, "commit", "--allow-empty", "-m", "seed")
+	head := gitFixture(t, work, "rev-parse", "HEAD")
+
+	probe := &cli.Command{Name: "probe"}
+	p, err := buildUpPlan(probe, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, roleEngineer, work, t.TempDir(), nil, false)
+	if err != nil {
+		t.Fatalf("buildUpPlan: %v", err)
+	}
+	want := "forgejo.coilysiren.me/coilyco-flight-deck/ward@" + head + "//.ward"
+	if got := p.ConfigRef; got != want {
+		t.Fatalf("ConfigRef = %q, want %q", got, want)
+	}
+	if got := p.wardEnv()[wardConfigRefEnv]; got != want {
+		t.Fatalf("WARD_CONFIG_REF = %q, want %q", got, want)
+	}
+}
+
 // TestWardEnvContainerMarker asserts every run exports the WARD_CONTAINER=1 fence
 // marker host-only fleet scripts key off (ward#114).
 func TestWardEnvContainerMarker(t *testing.T) {

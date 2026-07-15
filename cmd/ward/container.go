@@ -177,6 +177,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		Name:              containerRoleName(role, mode, repo, 0, containerNameSuffix(role, machine)),
 		Role:              role,
 		ConfigRole:        role,
+		ConfigRef:         launchConfigRef(repo, cwd),
 		Machine:           machine,
 		Repo:              repo,
 		Mode:              mode,
@@ -199,6 +200,20 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		SkipPreflight:     c.Bool("skip-preflight") || c.Bool("no-preflight"),
 		ConfigEnv:         configEnv,
 	}, nil
+}
+
+func launchConfigRef(repo targetRepo, cwd string) string {
+	if !isCoilycoRepo(repo) {
+		return ""
+	}
+	if strings.TrimSpace(cwd) == "" {
+		return ""
+	}
+	ref, err := coilycoConfigRefFromTargetRepo(repo, cwd)
+	if err != nil {
+		return ""
+	}
+	return ref
 }
 
 func appendSurfaceMounts(mounts []mountSpec, mountSurfaceExtras bool) []mountSpec {
