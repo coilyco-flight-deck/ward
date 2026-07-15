@@ -527,7 +527,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	return nil
 }
 
-const surfaceScratchFloorBytes = 512 * 1024 * 1024
+const surfaceScratchFloorBytes = 8 * 1024 * 1024
 
 // surfaceScratchMnt is the doctrine-promised scratch path: the composed agent
 // context names it as the writable escape hatch on every surface.

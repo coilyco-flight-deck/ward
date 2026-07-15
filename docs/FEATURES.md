@@ -19,17 +19,18 @@ Inventory of what `ward` ships today.
 - `WARD_CONFIG_REF` accepts local KDL bundles.
 - `ward agent director queue` / `status` - read-only queue view.
 - Read-only Forgejo issue-comment guard.
-- Reservation and dispatch comments are cleaned up after release.
+- Reservation and dispatch comments clean up after release.
 - Harness install hooks for claude, codex, goose, and opencode.
 - Core tracker and forge adapters do not depend on generated `ward ops` leaves.
-- Launch-intent vs running-engineer split in list, dispatch-health, reap, burn-down.
-- Issue-thread-backed reservations with local sentinels.
-- Open-PR backpressure gate with PR burn-down.
+- Launch-intent vs running-engineer split in list, dispatch-health, reap.
+- Issue-thread reservations with local sentinels.
+- Open-PR backpressure gate.
 - Issue-scoped director dispatch.
 - Dispatch broker. See [agent-dispatch-broker.md](agent-dispatch-broker.md).
 - PR-workflow tools with KDL defaults. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR lifecycle close/reopen/recovery tools.
 - PR repair classification.
+- Ward-owned Claude tool-failure producer and local schema-v1 buffer. See [tool-failures.md](tool-failures.md).
 - Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
 - `ward agent` roles and workflows. See [agent.md](agent.md), [agent-roster.md](agent-roster.md), [agent-flags.md](agent-flags.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md), [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md), [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md), [dispatch-review.md](dispatch-review.md), and [agent-workflow.md](agent-workflow.md).
 - Dispatch-health surfacing.

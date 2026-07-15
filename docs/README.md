@@ -19,6 +19,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [workspace.md](workspace.md) - local checkout mode.
 - [homebrew-build.md](homebrew-build.md) - build and release packaging.
 - [error-reporting.md](error-reporting.md) - panic telemetry.
+- [tool-failures.md](tool-failures.md) - Claude tool-failure producer.
 - [golangci.md](golangci.md) - lint policy.
 - [release.md](release.md) - release pipeline.
 - [release-binaries.md](release-binaries.md) - tagged binaries and checksums.

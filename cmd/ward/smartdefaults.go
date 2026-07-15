@@ -1071,7 +1071,13 @@ func containerMemoryLimitDefault() string {
 
 func engineerContainerLimitDefault() int { return currentSmartDefaults().engineerContainerLimit }
 
-func engineerRepoWorkingLimitDefault() int { return currentSmartDefaults().engineerRepoWorkingLimit }
+func engineerRepoWorkingLimitDefault() int {
+	v := currentSmartDefaults().engineerRepoWorkingLimit
+	if v <= 0 {
+		return 3
+	}
+	return v
+}
 
 func engineerOpenPRBranchLimitDefault() int { return currentSmartDefaults().engineerOpenPRBranchLimit }
 

@@ -263,6 +263,9 @@ func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
 	// The redacted view rides the same disk gate. When the raw archive lands, its
 	// scrubbed sibling lands too, for the director surface mount (ward#526).
 	r.writeRedactedArtifacts(name, console, transcript, meta)
+	if containerModeFromContainerName(name) == modeClaude {
+		r.writeClaudeToolFailureRecords(name, meta, transcript)
+	}
 	fmt.Fprintf(os.Stderr, "ward container: drained %s (sink %s, outcome %s)\n", name, mode, meta.Outcome)
 }
 

@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -161,6 +162,62 @@ func TestWriteRedactedArtifacts(t *testing.T) {
 	// The raw tree must be untouched by the redacted write.
 	if _, err := os.Stat(filepath.Join(agentLogsDir(), name)); !os.IsNotExist(err) {
 		t.Errorf("redacted write must not create the raw agent-logs dir; stat err = %v", err)
+	}
+}
+
+// TestWriteClaudeToolFailureRecords appends Claude transcript failures to the
+// shared agentic-os buffer path with redacted, parseable JSONL rows.
+func TestWriteClaudeToolFailureRecords(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", "")
+
+	transcript := strings.Join([]string{
+		`{"type":"assistant","timestamp":"2026-07-15T01:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"grep ghp_1234567890abcdefghijklmnopqrstuvwxyz ."}}]}}`,
+		`{"type":"user","timestamp":"2026-07-15T01:00:02Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"exit code 1: fatal: ghp_1234567890abcdefghijklmnopqrstuvwxyz hidden"}]}}`,
+	}, "\n")
+	meta := runMeta{Repo: "coilyco-flight-deck/ward"}
+
+	r := &Runner{}
+	r.writeClaudeToolFailureRecords("engineer-claude-ward-871", meta, []byte(transcript))
+
+	path := toolFailureBufferPath(meta.Repo)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read tool-failure buffer: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("got %d buffered record(s), want 1: %q", len(lines), raw)
+	}
+	var rec toolFailureRecord
+	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+		t.Fatalf("buffer row is not JSON: %v (%q)", err, lines[0])
+	}
+	if rec.Harness != "claude" || rec.Repo != "ward" {
+		t.Fatalf("unexpected record identity: %+v", rec)
+	}
+	if rec.FailureClass != "nonzero_exit" {
+		t.Fatalf("failure_class = %q, want nonzero_exit", rec.FailureClass)
+	}
+	if rec.Fingerprint == "" {
+		t.Fatal("record fingerprint must be populated")
+	}
+	if strings.Contains(rec.StderrExcerpt, "ghp_") || strings.Contains(rec.Detail, "ghp_") {
+		t.Fatalf("failure detail was not scrubbed: %+v", rec)
+	}
+	if !strings.Contains(rec.StderrExcerpt, "[REDACTED]") {
+		t.Fatalf("expected redacted excerpt, got %+v", rec)
+	}
+}
+
+// TestExtractClaudeToolFailureRecordsDropsSuccessfulToolCalls keeps the first
+// producer scoped to genuine transcript failures only.
+func TestExtractClaudeToolFailureRecordsDropsSuccessfulToolCalls(t *testing.T) {
+	transcript := []byte(`{"type":"assistant","timestamp":"2026-07-15T01:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/workspace/ward/x.go"}}]}}` + "\n" + `{"type":"user","timestamp":"2026-07-15T01:00:01Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":false,"content":"ok"}]}}`)
+	got := extractClaudeToolFailureRecords(transcript, runMeta{Repo: "coilyco-flight-deck/ward"})
+	if len(got) != 0 {
+		t.Fatalf("successful tool call produced failures: %+v", got)
 	}
 }
 

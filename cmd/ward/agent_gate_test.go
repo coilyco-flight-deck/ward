@@ -29,16 +29,16 @@ func TestRenderScratchGateContents(t *testing.T) {
 	renderScratchGate(&b, newScratchGateStatus(p, true, false, "v0.16.0", ""))
 	got := b.String()
 	for _, want := range []string{
-		"read-only",                     // access
-		"coilyco-gaming/eco-app",        // repo slug
-		"claude (claude)",               // agent binary (mode)
-		p.Image,                         // resolved image
-		"explicit pin v0.16.0",          // ward version pin
-		"/gitcache/surface-scratch",     // read-only scratch root
-		"go-build",                      // Go cache root under the scratch
-		"at least 512.0MiB free",        // budget floor
-		"coilyco-flight-deck/cli-guard", // --with-repo grant
-		"Press Enter to launch",         // action prompt
+		"read-only",                         // access
+		"coilyco-gaming/eco-app",            // repo slug
+		"claude (claude)",                   // agent binary (mode)
+		p.Image,                             // resolved image
+		"explicit pin v0.16.0",              // ward version pin
+		"/gitcache/surface-scratch",         // read-only scratch root
+		"go-build",                          // Go cache root under the scratch
+		diskBytes(surfaceScratchFloorBytes), // budget floor
+		"coilyco-flight-deck/cli-guard",     // --with-repo grant
+		"Press Enter to launch",             // action prompt
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("status block missing %q; got:\n%s", want, got)
