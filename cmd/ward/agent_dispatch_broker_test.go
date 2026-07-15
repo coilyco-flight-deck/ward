@@ -1656,6 +1656,8 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Cleanup(func() {
+		// Let the temp-home teardown own the whole .ward tree; per-artifact
+		// removal races the broker's final redacted/raw artifact writes.
 		_ = os.RemoveAll(filepath.Join(home, ".ward"))
 	})
 	origReadOnly, hadReadOnly := os.LookupEnv("WARD_READONLY")
@@ -1780,14 +1782,6 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 		default:
 			time.Sleep(10 * time.Millisecond)
 		}
-	}
-	dispatchDir := filepath.Join(agentLogsDir(), dispatchArtifactsSubdir)
-	if err := os.RemoveAll(dispatchDir); err != nil {
-		t.Fatalf("remove dispatch artifact dir %s: %v", dispatchDir, err)
-	}
-	redactedDispatchDir := filepath.Join(agentLogsRedactedDir(), dispatchArtifactsSubdir)
-	if err := os.RemoveAll(redactedDispatchDir); err != nil {
-		t.Fatalf("remove redacted dispatch artifact dir %s: %v", redactedDispatchDir, err)
 	}
 }
 
