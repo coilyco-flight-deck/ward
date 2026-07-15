@@ -35,6 +35,8 @@ Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.c
   already-vouched sha.
 - the published binaries are built once on `main` and then retagged on
   `release`.
+- Ward publishes immutable version tags and checksums, not moving `release` or
+  `latest` aliases.
 - the install channel update should follow the release, not invent a second
   release story.
 

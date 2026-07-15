@@ -7,6 +7,8 @@ Each release publishes a tagged binary matrix plus checksums.
 - The matrix is built once on `main` as a draft release, then promoted to the
   public release tag without rebuilding.
 - The release pages on Forgejo and GitHub mirror the same artifacts.
+- Ward does not publish moving `release` or `latest` aliases for these binary
+  artifacts; consumers install the tagged release assets directly.
 
 ## Why it exists
 
