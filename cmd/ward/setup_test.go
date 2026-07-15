@@ -128,8 +128,10 @@ wrap ward-kdl ops forgejo {
 	}
 	for _, want := range []string{
 		"setup surface compile: ops",
-		bundleFixtureForgejoPath,
+		filepath.Join(dir, bundleFixtureForgejoPath),
 		"placeholder sentinel survived at wrap > base-url",
+		"rerun ward setup",
+		"restart warded",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q does not contain %q", err, want)

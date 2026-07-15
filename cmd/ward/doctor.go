@@ -225,7 +225,7 @@ func validateForgejoOpsOperational(src configSource, allowPlaceholders bool) err
 	}
 	if !allowPlaceholders {
 		if err := validateNoPlaceholderSentinels(node); err != nil {
-			return fmt.Errorf("%s: %w", file.path, err)
+			return fmt.Errorf("%s: %w; %s", setupBundlePathOnDisk(src, file.path), err, setupPlaceholderRemediation())
 		}
 	}
 	if _, err := buildForgejoOpsFrom(src); err != nil {

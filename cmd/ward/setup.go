@@ -136,6 +136,32 @@ func setupCachePath(rawRef string) string {
 	return cache
 }
 
+func setupBundlePathOnDisk(src configSource, bundlePath string) string {
+	ref := strings.TrimSpace(src.desc)
+	if ref == "" {
+		return bundlePath
+	}
+	if localPath, ok, _ := resolveLocalConfigRef(ref); ok {
+		st, err := os.Stat(localPath)
+		if err == nil && st.IsDir() {
+			return filepath.Join(localPath, bundlePath)
+		}
+		if err == nil {
+			return localPath
+		}
+		return filepath.Join(localPath, bundlePath)
+	}
+	cachePath := setupCachePath(ref)
+	if cachePath == "" {
+		return bundlePath
+	}
+	return filepath.Join(cachePath, bundlePath)
+}
+
+func setupPlaceholderRemediation() string {
+	return "rerun ward setup after replacing the placeholder, then restart warded"
+}
+
 func printSetupReport(report setupReport) {
 	_, _ = fmt.Fprintf(os.Stdout, "ward setup: phases: %s\n", report.phasePlan)
 	_, _ = fmt.Fprintf(os.Stdout, "ward setup: source=%s; sha=%s; cache=%s; validated=%s\n",

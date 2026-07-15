@@ -90,8 +90,15 @@ wrap ward-kdl ops forgejo {
 	if !containsCheck(report.checks, "ops bundle") {
 		t.Fatalf("runDoctor did not flag the ops bundle: %+v", report.checks)
 	}
-	if !strings.Contains(lastCheckErr(report.checks).Error(), "placeholder sentinel") {
-		t.Fatalf("placeholder failure did not mention the sentinel: %v", lastCheckErr(report.checks))
+	for _, want := range []string{
+		filepath.Join(dir, bundleFixtureForgejoPath),
+		"placeholder sentinel survived at wrap > base-url",
+		"rerun ward setup",
+		"restart warded",
+	} {
+		if !strings.Contains(lastCheckErr(report.checks).Error(), want) {
+			t.Fatalf("placeholder failure %q does not contain %q", lastCheckErr(report.checks), want)
+		}
 	}
 }
 
