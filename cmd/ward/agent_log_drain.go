@@ -9,7 +9,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 )
@@ -54,6 +57,53 @@ const (
 	drainTranscriptFile = "transcript.jsonl"
 	drainMetaFile       = "meta.json"
 )
+
+const runSummarySchemaVersion = 1
+
+type runSummary struct {
+	SchemaVersion     int                 `json:"schema_version"`
+	Workflow          string              `json:"workflow"`
+	StartedAt         string              `json:"started_at,omitempty"`
+	EndedAt           string              `json:"ended_at,omitempty"`
+	DurationSeconds   float64             `json:"duration_seconds,omitempty"`
+	RawReapOutcome    string              `json:"raw_reap_outcome"`
+	NormalizedOutcome string              `json:"normalized_outcome"`
+	OutcomeConfidence string              `json:"outcome_confidence"`
+	Artifacts         runSummaryArtifacts `json:"artifacts"`
+	Git               runSummaryGit       `json:"git"`
+	Reap              runSummaryReap      `json:"reap"`
+	Signals           runSummarySignals   `json:"signals"`
+}
+
+type runSummaryArtifacts struct {
+	ConsoleLog string `json:"console_log,omitempty"`
+	Transcript string `json:"transcript,omitempty"`
+}
+
+type runSummaryGit struct {
+	Head         string `json:"head,omitempty"`
+	PushedBranch string `json:"pushed_branch,omitempty"`
+	PushedMain   string `json:"pushed_main,omitempty"`
+	PR           string `json:"pr,omitempty"`
+}
+
+type runSummaryReap struct {
+	Started                bool   `json:"started"`
+	PreservedBranch        string `json:"preserved_branch,omitempty"`
+	StandaloneSalvageIssue string `json:"standalone_salvage_issue,omitempty"`
+	Reason                 string `json:"reason,omitempty"`
+}
+
+type runSummarySignals struct {
+	WardOutcomeComment bool `json:"ward_outcome_comment"`
+	ChecksGreen        bool `json:"checks_green"`
+	TranscriptPresent  bool `json:"transcript_present"`
+
+	LatestOutcome          backlogOutcome `json:"-"`
+	PreservedBranch        string         `json:"-"`
+	StandaloneSalvageIssue string         `json:"-"`
+	ReapReason             string         `json:"-"`
+}
 
 // redacted-view artifact filenames inside ~/.ward/agent-logs-redacted/<slug>/ (ward#526).
 // meta.json is already secret-free, so it is copied over under drainMetaFile verbatim.
@@ -117,6 +167,8 @@ var metaEnvAllow = []string{
 	"WARD_TARGET_OWNER",
 	"WARD_TARGET_NAME",
 	"WARD_TARGET_ISSUE",
+	"WARD_CONTAINER_UP",
+	"WARD_FORGE",
 	"WARD_RUN_ID",
 	"WARD_HARNESS",
 	"WARD_ROLE",
@@ -277,18 +329,17 @@ func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping disk sink\n", name, dir, err)
 		return
 	}
-	if werr := os.WriteFile(filepath.Join(dir, drainConsoleFile), console, 0o644); werr != nil {
+	console = appendRunSummaryFooter(console, meta.Summary)
+	if werr := writeBytesAtomic(filepath.Join(dir, drainConsoleFile), console, 0o644); werr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: write console.log: %v\n", name, werr)
 	}
 	if len(transcript) > 0 {
-		if werr := os.WriteFile(filepath.Join(dir, drainTranscriptFile), transcript, 0o644); werr != nil {
+		if werr := writeBytesAtomic(filepath.Join(dir, drainTranscriptFile), transcript, 0o644); werr != nil {
 			fmt.Fprintf(os.Stderr, "ward container: drain %s: write transcript.jsonl: %v\n", name, werr)
 		}
 	}
-	if data, merr := json.MarshalIndent(meta, "", "  "); merr == nil {
-		if werr := os.WriteFile(filepath.Join(dir, drainMetaFile), append(data, '\n'), 0o644); werr != nil {
-			fmt.Fprintf(os.Stderr, "ward container: drain %s: write meta.json: %v\n", name, werr)
-		}
+	if werr := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta, 0o644); werr != nil {
+		fmt.Fprintf(os.Stderr, "ward container: drain %s: write meta.json: %v\n", name, werr)
 	}
 	fmt.Fprintf(os.Stderr, "ward container: wrote disk artifacts for %s -> %s\n", name, dir)
 }
@@ -301,18 +352,17 @@ func (r *Runner) writeRedactedArtifacts(name string, console, transcript []byte,
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping redacted view\n", name, dir, err)
 		return
 	}
-	if werr := os.WriteFile(filepath.Join(dir, drainConsoleRedactedFile), redactConsole(console), 0o644); werr != nil {
+	console = appendRunSummaryFooter(console, meta.Summary)
+	if werr := writeBytesAtomic(filepath.Join(dir, drainConsoleRedactedFile), redactConsole(console), 0o644); werr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: write console.redacted.log: %v\n", name, werr)
 	}
 	if red := redactedTranscript(transcript); len(red) > 0 {
-		if werr := os.WriteFile(filepath.Join(dir, drainTranscriptRedactedFile), red, 0o644); werr != nil {
+		if werr := writeBytesAtomic(filepath.Join(dir, drainTranscriptRedactedFile), red, 0o644); werr != nil {
 			fmt.Fprintf(os.Stderr, "ward container: drain %s: write transcript.redacted.jsonl: %v\n", name, werr)
 		}
 	}
-	if data, merr := json.MarshalIndent(meta, "", "  "); merr == nil {
-		if werr := os.WriteFile(filepath.Join(dir, drainMetaFile), append(data, '\n'), 0o644); werr != nil {
-			fmt.Fprintf(os.Stderr, "ward container: drain %s: write redacted meta.json: %v\n", name, werr)
-		}
+	if werr := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta, 0o644); werr != nil {
+		fmt.Fprintf(os.Stderr, "ward container: drain %s: write redacted meta.json: %v\n", name, werr)
 	}
 	fmt.Fprintf(os.Stderr, "ward container: wrote redacted view for %s -> %s\n", name, dir)
 }
@@ -399,6 +449,7 @@ type runMeta struct {
 	TranscriptPresent bool            `json:"transcript_present,omitempty"`
 	OOMKilled         bool            `json:"OOMKilled,omitempty"`
 	Outcome           string          `json:"outcome"`
+	Summary           runSummary      `json:"summary"`
 	Friction          []frictionEvent `json:"friction,omitempty"`
 }
 
@@ -418,6 +469,7 @@ func (r *Runner) buildRunMeta(ctx context.Context, name, console string, transcr
 		OOMKilled:         ok && state.OOMKilled,
 		Outcome:           classifyReapOutcome(console),
 	}
+	meta.Summary = r.buildRunSummary(ctx, name, env, state, meta, console, transcript)
 	meta.Friction = collectFrictionEvents(meta, console)
 	return meta
 }
@@ -442,7 +494,9 @@ func (r *Runner) inspectContainerEnv(ctx context.Context, name string) map[strin
 // dockerContainerState is the inspect-time Docker state subset used for the OOM
 // breadcrumb. The JSON tags mirror `docker inspect --format {{json .State}}`.
 type dockerContainerState struct {
-	OOMKilled bool `json:"OOMKilled"`
+	OOMKilled  bool   `json:"OOMKilled"`
+	StartedAt  string `json:"StartedAt"`
+	FinishedAt string `json:"FinishedAt"`
 }
 
 // inspectContainerState reads the container's inspected Docker state and returns
@@ -460,6 +514,272 @@ func (r *Runner) inspectContainerState(ctx context.Context, name string) (docker
 		return dockerContainerState{}, false
 	}
 	return state, true
+}
+
+func (r *Runner) buildRunSummary(ctx context.Context, name string, env map[string]string, state dockerContainerState, meta runMeta, console string, transcript []byte) runSummary {
+	startedAt := parseSummaryTime(firstNonEmpty(strings.TrimSpace(state.StartedAt), strings.TrimSpace(env["WARD_CONTAINER_UP"])))
+	endedAt := parseSummaryTime(strings.TrimSpace(state.FinishedAt))
+	if endedAt.IsZero() {
+		endedAt = time.Now().UTC()
+	}
+	if startedAt.IsZero() {
+		startedAt = endedAt
+	}
+	signals := r.loadRunSummarySignals(ctx, env, startedAt, console, transcript)
+	signals.TranscriptPresent = meta.TranscriptPresent
+	signals.PreservedBranch = parsePreservedBranch(console)
+	signals.StandaloneSalvageIssue = parseStandaloneSalvageIssue(env, console)
+	signals.ReapReason = parseReapReason(meta, console, signals)
+	normalized, confidence := normalizeRunSummaryOutcome(meta, env, signals)
+	summary := runSummary{
+		SchemaVersion:     runSummarySchemaVersion,
+		Workflow:          string(workflowMode(strings.TrimSpace(env["WARD_WORKFLOW"])).orDefault()),
+		StartedAt:         formatSummaryTime(startedAt),
+		EndedAt:           formatSummaryTime(endedAt),
+		DurationSeconds:   endedAt.Sub(startedAt).Seconds(),
+		RawReapOutcome:    meta.Outcome,
+		NormalizedOutcome: normalized,
+		OutcomeConfidence: confidence,
+		Artifacts: runSummaryArtifacts{
+			ConsoleLog: filepath.Join(agentLogsDir(), name, drainConsoleFile),
+		},
+		Git: runSummaryGit{
+			Head:         strings.TrimSpace(meta.Branch),
+			PushedBranch: signals.PreservedBranch,
+			PR:           strings.TrimSpace(signals.LatestOutcome.PRURL),
+		},
+		Reap: runSummaryReap{
+			Started:                strings.Contains(console, "WARD-REAP: start") || strings.Contains(console, "ward container reap: "),
+			PreservedBranch:        signals.PreservedBranch,
+			StandaloneSalvageIssue: signals.StandaloneSalvageIssue,
+			Reason:                 signals.ReapReason,
+		},
+		Signals: runSummarySignals{
+			WardOutcomeComment: signals.WardOutcomeComment,
+			ChecksGreen:        signals.ChecksGreen,
+			TranscriptPresent:  meta.TranscriptPresent,
+		},
+	}
+	if meta.TranscriptPresent {
+		summary.Artifacts.Transcript = filepath.Join(agentLogsDir(), name, drainTranscriptFile)
+	}
+	if summary.Git.PushedBranch == "" && summary.NormalizedOutcome != "landed-main" {
+		summary.Git.PushedBranch = strings.TrimSpace(meta.Branch)
+	}
+	if summary.Git.PushedMain == "" && summary.NormalizedOutcome == "landed-main" {
+		summary.Git.PushedMain = "main"
+	}
+	if summary.Reap.Reason == "" {
+		summary.Reap.Reason = summary.RawReapOutcome
+	}
+	return summary
+}
+
+func (r *Runner) loadRunSummarySignals(ctx context.Context, env map[string]string, afterAt time.Time, console string, transcript []byte) runSummarySignals {
+	signals := runSummarySignals{
+		TranscriptPresent: len(bytes.TrimSpace(transcript)) > 0,
+	}
+	if strings.Contains(strings.ToLower(console), "required ci checks are green") {
+		signals.ChecksGreen = true
+	}
+	issueNum, err := strconv.Atoi(strings.TrimSpace(env["WARD_TARGET_ISSUE"]))
+	if err != nil || issueNum <= 0 {
+		return signals
+	}
+	owner := strings.TrimSpace(env["WARD_TARGET_OWNER"])
+	repo := strings.TrimSpace(env["WARD_TARGET_NAME"])
+	if owner == "" || repo == "" {
+		return signals
+	}
+	mode := containerMode(strings.TrimSpace(env["WARD_MODE"]))
+	tracker := trackerFromForge(parseForge(env["WARD_FORGE"]))
+	cl, cerr := r.hostTrackerClient(ctx, tracker, mode)
+	if cerr != nil {
+		return signals
+	}
+	comments, cerr := cl.ListIssueComments(ctx, owner, repo, issueNum)
+	if cerr != nil {
+		return signals
+	}
+	if comment, ok := latestBacklogOutcomeCommentAfter(comments, afterAt); ok {
+		outcome, found := backlogOutcomeOfComment(comment.Body)
+		if !found {
+			return signals
+		}
+		signals.WardOutcomeComment = true
+		signals.LatestOutcome = outcome
+		switch strings.ToLower(strings.TrimSpace(outcome.Status)) {
+		case "submitted", "merge-ready", "done":
+			signals.ChecksGreen = true
+		}
+	}
+	return signals
+}
+
+func writeJSONAtomic(path string, v any, perm os.FileMode) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return writeBytesAtomic(path, data, perm)
+}
+
+func writeBytesAtomic(path string, data []byte, perm os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
+}
+
+func appendRunSummaryFooter(console []byte, summary runSummary) []byte {
+	if strings.TrimSpace(summary.NormalizedOutcome) == "" {
+		return console
+	}
+	transcriptPath := summary.Artifacts.Transcript
+	if strings.TrimSpace(transcriptPath) == "" {
+		transcriptPath = "none"
+	}
+	footer := fmt.Sprintf("WARD-RUN-SUMMARY: outcome=%s meta=meta.json transcript=%s\n", summary.NormalizedOutcome, transcriptPath)
+	if len(console) == 0 {
+		return []byte(footer)
+	}
+	out := append([]byte(strings.TrimRight(string(console), "\n")), '\n')
+	out = append(out, []byte(footer)...)
+	return out
+}
+
+func parseSummaryTime(s string) time.Time {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t.UTC()
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC()
+	}
+	return time.Time{}
+}
+
+func formatSummaryTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+//nolint:gocyclo,cyclop
+func normalizeRunSummaryOutcome(meta runMeta, env map[string]string, signals runSummarySignals) (string, string) {
+	workflow := workflowMode(strings.TrimSpace(env["WARD_WORKFLOW"])).orDefault()
+	switch {
+	case !meta.Launched && !meta.TranscriptPresent:
+		return "prelaunch-failure", "high"
+	case strings.EqualFold(meta.Outcome, outcomePushedMain):
+		return "landed-main", "high"
+	case strings.EqualFold(meta.Outcome, outcomeSalvage):
+		if strings.TrimSpace(signals.StandaloneSalvageIssue) != "" {
+			return "standalone-salvage-branch", "high"
+		}
+		return "preserved-salvage-branch", "high"
+	case signals.WardOutcomeComment && signals.ChecksGreen && (workflow == workflowPullRequest || workflow == workflowPullRequestAndMerge || workflow == workflowRemoteBranchOnly):
+		return "pr-green", "high"
+	case strings.EqualFold(strings.TrimSpace(signals.LatestOutcome.Status), "blocked"):
+		return "blocked", "high"
+	case strings.EqualFold(strings.TrimSpace(signals.LatestOutcome.Status), "failed"):
+		return "failed", "high"
+	case meta.Outcome == outcomeNothing && signals.ChecksGreen:
+		return "pr-green", "medium"
+	case meta.Outcome == outcomeNothing && strings.Contains(strings.ToLower(string(workflow)), "pull-request"):
+		return "pr-green", "medium"
+	case meta.Outcome == outcomeUnknown && !meta.TranscriptPresent:
+		return "prelaunch-failure", "medium"
+	default:
+		return "unknown", "low"
+	}
+}
+
+var (
+	preservedBranchRE        = regexp.MustCompile(`(?i)ward container reap: preserved(?: un-landed granted-repo work)? on ([^ ]+) \((.*)\)$`)
+	standaloneSalvageIssueRE = regexp.MustCompile(`(?i)ward container reap: filed standalone salvage issue #([0-9]+)$`)
+	nothingToReapRE          = regexp.MustCompile(`(?i)WARD-REAP: nothing to reap \((.*)\)$`)
+)
+
+func parsePreservedBranch(console string) string {
+	for _, line := range strings.Split(console, "\n") {
+		line = strings.TrimSpace(line)
+		if m := preservedBranchRE.FindStringSubmatch(line); m != nil {
+			return strings.TrimSpace(m[1])
+		}
+	}
+	return ""
+}
+
+func parseStandaloneSalvageIssue(env map[string]string, console string) string {
+	owner := strings.TrimSpace(env["WARD_TARGET_OWNER"])
+	repo := strings.TrimSpace(env["WARD_TARGET_NAME"])
+	for _, line := range strings.Split(console, "\n") {
+		line = strings.TrimSpace(line)
+		if m := standaloneSalvageIssueRE.FindStringSubmatch(line); m != nil {
+			if owner != "" && repo != "" {
+				return fmt.Sprintf("%s/%s#%s", owner, repo, m[1])
+			}
+			return "#" + m[1]
+		}
+	}
+	return ""
+}
+
+//nolint:gocyclo,cyclop
+func parseReapReason(meta runMeta, console string, signals runSummarySignals) string {
+	if trimmed := strings.TrimSpace(signals.ReapReason); trimmed != "" {
+		return trimmed
+	}
+	for _, line := range strings.Split(console, "\n") {
+		line = strings.TrimSpace(line)
+		if m := nothingToReapRE.FindStringSubmatch(line); m != nil {
+			return strings.TrimSpace(m[1])
+		}
+		switch {
+		case strings.Contains(strings.ToLower(line), "landed on main"):
+			return "landed on main"
+		case strings.Contains(strings.ToLower(line), "preserved work on"):
+			if m := preservedBranchRE.FindStringSubmatch(line); len(m) > 2 {
+				return strings.TrimSpace(m[2])
+			}
+		case strings.Contains(strings.ToLower(line), "preserved un-landed granted-repo work on"):
+			if m := preservedBranchRE.FindStringSubmatch(line); len(m) > 2 {
+				return strings.TrimSpace(m[2])
+			}
+		case strings.Contains(strings.ToLower(line), "filed standalone salvage issue"):
+			return line
+		}
+	}
+	if !meta.Launched && !meta.TranscriptPresent {
+		return "prelaunch failure"
+	}
+	if trimmed := strings.TrimSpace(signals.LatestOutcome.Text); trimmed != "" {
+		return trimmed
+	}
+	return ""
 }
 
 // pickMetaEnv selects only allowlisted keys from a docker `KEY=VALUE` env slice.
