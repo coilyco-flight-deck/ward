@@ -420,6 +420,8 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"  - `WARD-REVIEW: advisory ...` -> only if the gate had no runnable reviewer at all. Treat that as a "+
 			"block, not a pass, and write the skip/availability summary into the conclusion comment so the issue shows "+
 			"why the review could not run. `ward agent review` writes the exact one-line review summary to `~/.ward/review-summary.txt`; copy that line verbatim into the same conclusion comment.\n"+
+			"Human comments on the issue or "+workflowReviewNoun(ref.Forge)+" block landing and reopen until the "+
+			"run visibly acknowledges them.\n"+
 			"%s\n"+
 			"The gate's exit code mirrors the verdict (non-zero on block), so a shell `&&` also enforces it. Do "+
 			"not skip it, and do not land on a block. If the review was intentionally skipped via `--skip-review`, "+

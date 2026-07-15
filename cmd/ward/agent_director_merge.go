@@ -87,30 +87,41 @@ func (r *Runner) runDirectorMergeRepo(ctx context.Context, label string, prClien
 		return 0, 0, fmt.Errorf("%s: %w", label, err)
 	}
 	for _, pr := range prs {
-		ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, prClient, issueClient)
-		if !ok {
-			skipped++
-			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
-			continue
-		}
-		if preview {
-			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q, head %s, status %s)\n",
-				label, owner, name, pr.Number, linked, meta.Workflow, meta.Review, meta.PRHeadSHA, meta.Status.summary())
-			continue
-		}
-		status := directorMergeStatusCheck{Status: meta.Status}
-		mergedHead, err := mergeDirectorPullRequest(ctx, prClient, owner, name, pr.Number, meta.PRHeadSHA, "", &status)
+		repoMerged, repoSkipped, err := r.runDirectorMergeCandidate(ctx, label, prClient, issueClient, owner, name, pr, preview)
 		if err != nil {
-			return merged, skipped, fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
+			return merged, skipped, err
 		}
-		meta.Status = status.Status
-		if err := recordDirectorMergeDone(ctx, issueClient, owner, name, linked, pr.Number, meta); err != nil {
-			return merged, skipped, fmt.Errorf("%s: record done for %s/%s#%d after merge: %w", label, owner, name, pr.Number, err)
-		}
-		merged++
-		_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d, head %s)\n", label, owner, name, pr.Number, linked, mergedHead)
+		merged += repoMerged
+		skipped += repoSkipped
 	}
 	return merged, skipped, nil
+}
+
+func (r *Runner) runDirectorMergeCandidate(ctx context.Context, label string, prClient *forgejoClient, issueClient Tracker, owner, name string, pr directorPullRequest, preview bool) (merged, skipped int, err error) {
+	ok, reason, linked, meta := directorMergeEligibility(ctx, owner, name, pr, prClient, issueClient)
+	if !ok {
+		reportHumanInterventionBlock(ctx, owner, name, linked, pr.Number, reason, issueClient, prClient)
+		if reason != "" {
+			_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: skipping %s/%s#%d: %s\n", label, owner, name, pr.Number, reason)
+		}
+		return 0, 1, nil
+	}
+	if preview {
+		_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: would merge %s/%s#%d (issue #%d, workflow %s, review %q, head %s, status %s)\n",
+			label, owner, name, pr.Number, linked, meta.Workflow, meta.Review, meta.PRHeadSHA, meta.Status.summary())
+		return 0, 0, nil
+	}
+	status := directorMergeStatusCheck{Status: meta.Status}
+	mergedHead, err := mergeDirectorPullRequest(ctx, prClient, owner, name, pr.Number, meta.PRHeadSHA, "", &status)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
+	}
+	meta.Status = status.Status
+	if err := recordDirectorMergeDone(ctx, issueClient, owner, name, linked, pr.Number, meta); err != nil {
+		return 0, 0, fmt.Errorf("%s: record done for %s/%s#%d after merge: %w", label, owner, name, pr.Number, err)
+	}
+	_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d, head %s)\n", label, owner, name, pr.Number, linked, mergedHead)
+	return 1, 0, nil
 }
 
 func mergeDirectorPullRequest(ctx context.Context, cl *forgejoClient, owner, repo string, index int, head, mergeStyle string, status *directorMergeStatusCheck) (string, error) {
@@ -146,6 +157,16 @@ func recoverClosedUnmergedDirectorMerge(ctx context.Context, cl *forgejoClient, 
 	head, err := closedUnmergedRecoveryTarget(pr, postErr)
 	if err != nil {
 		return "", err
+	}
+	comments, err := cl.ListIssueComments(ctx, owner, repo, index)
+	if err != nil {
+		return "", fmt.Errorf("%w; could not read closed PR comments before recovery: %w", postErr, err)
+	}
+	if reason, blocked := humanInterventionBlockReason(comments, pr.UpdatedAt); blocked {
+		if cerr := cl.CommentIssue(ctx, owner, repo, index, humanInterventionBlockComment(reason)); cerr != nil {
+			return "", fmt.Errorf("%w; %s; could not post block comment: %w", postErr, reason, cerr)
+		}
+		return "", fmt.Errorf("%w; %s", postErr, reason)
 	}
 	status, reason, ok := directorMergeStatusGate(ctx, cl, owner, repo, pr.Base.Ref, head)
 	if !ok {
@@ -212,8 +233,25 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr direct
 	if !ok {
 		return false, "no same-repo closing reference in the PR body", 0, directorRunMeta{}
 	}
-	if pr.MergeableKnown && !pr.Mergeable {
+	if !pr.MergeableKnown {
+		if pr.MergeableError == "" {
+			return false, "could not read PR mergeability", linked, directorRunMeta{}
+		}
+		return false, "could not read PR mergeability: " + pr.MergeableError, linked, directorRunMeta{}
+	}
+	if !pr.Mergeable {
 		return false, directorMergeConflictReason(ctx, owner, repo, linked, pr, issueClient), linked, directorRunMeta{}
+	}
+	issueComments, err := issueClient.ListIssueComments(ctx, owner, repo, linked)
+	if err != nil {
+		return false, "could not read linked issue comments: " + firstLine(err.Error()), linked, directorRunMeta{}
+	}
+	prComments, err := prClient.ListIssueComments(ctx, owner, repo, pr.Number)
+	if err != nil {
+		return false, "could not read PR comments: " + firstLine(err.Error()), linked, directorRunMeta{}
+	}
+	if reason, blocked := humanInterventionBlockReason(append(append([]issueComment(nil), issueComments...), prComments...), time.Time{}); blocked {
+		return false, reason, linked, directorRunMeta{}
 	}
 	meta, reason, allowed := directorMergeIssueMeta(ctx, owner, repo, pr, linked, prClient, issueClient)
 	if !allowed {

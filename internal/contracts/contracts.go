@@ -101,15 +101,16 @@ func (s CommitStatus) EffectiveState() string {
 
 // PullRequest is the focused pull-request projection the workflow reads.
 type PullRequest struct {
-	Number    int    `json:"number"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	State     string `json:"state"`
-	Draft     bool   `json:"draft"`
-	Mergeable bool   `json:"mergeable"`
-	Additions int    `json:"additions"`
-	Deletions int    `json:"deletions"`
-	HTMLURL   string `json:"html_url"`
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	State     string    `json:"state"`
+	Draft     bool      `json:"draft"`
+	Mergeable bool      `json:"mergeable"`
+	Additions int       `json:"additions"`
+	Deletions int       `json:"deletions"`
+	HTMLURL   string    `json:"html_url"`
+	UpdatedAt time.Time `json:"updated_at"`
 	Head      struct {
 		SHA string `json:"sha"`
 		Ref string `json:"ref"`

@@ -223,8 +223,9 @@ func pullRequestCIWatchClauseFor(f forge) string {
 	noun := workflowReviewNoun(f)
 	return "After the " + noun + " opens, keep watching its CI/checks and fetch the status/logs if anything " +
 		"fails. Patch the branch, push updates, and repeat until the checks are green or the failure is " +
-		"genuinely blocked. A failing check is not a done state, and the final `WARDED_WORKFLOW` comment " +
-		"is not allowed until the " + noun + " is green. " + workflowFailureCommentClauseFor(f)
+		"genuinely blocked. A failing check is not a done state, human feedback on the issue or " + noun + " is " +
+		"blocking until it is visibly acknowledged, and the final `WARDED_WORKFLOW` comment is not allowed until " +
+		"the " + noun + " is green. " + workflowFailureCommentClauseFor(f)
 }
 
 // workflowFailureCommentClause tells PR workflows to mirror failure comments onto

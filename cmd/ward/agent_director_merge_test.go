@@ -94,6 +94,73 @@ func TestDirectorMergeDecision(t *testing.T) {
 	}
 }
 
+func TestDirectorMergeEligibilityBlocksOnHumanFeedback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number":   729,
+				"title":    "ship the fix",
+				"body":     "closes #729",
+				"state":    "open",
+				"html_url": "https://f/729",
+				"labels":   []map[string]any{},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"body": "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": "this is still missing the actual need", "created_at": "2026-07-09T00:10:00Z", "user": map[string]any{"login": "coilysiren"}},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/729":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number":   729,
+				"title":    "ship the fix",
+				"body":     "closes #729\n" + directorMergeWorkflowMarker + "\n",
+				"state":    "open",
+				"draft":    false,
+				"html_url": "https://f/pr/729",
+				"head": map[string]any{
+					"sha": "abc123",
+					"ref": "issue-729",
+				},
+				"base": map[string]any{
+					"ref": "main",
+				},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/branches/main":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"name":                "main",
+				"protected":           true,
+				"enable_status_check": true,
+				"status_check_contexts": []string{
+					"ci/build",
+				},
+			})
+		case "/api/v1/repos/coilyco-flight-deck/ward/commits/abc123/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"state":       "success",
+				"sha":         "abc123",
+				"total_count": 1,
+				"statuses": []map[string]any{
+					{"context": "ci/build", "state": "success"},
+				},
+			})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	allowed, reason, _, _ := directorMergeEligibility(context.Background(), "coilyco-flight-deck", "ward",
+		directorPullRequest{Issue: Issue{Number: 729, Title: "ship the fix", Body: "closes #729\n" + directorMergeWorkflowMarker + "\n"}, Mergeable: true, MergeableKnown: true}, cl, cl)
+	if allowed {
+		t.Fatal("human-feedback PR: want deny, got allow")
+	}
+	if !strings.Contains(reason, "human comment by @coilysiren") {
+		t.Fatalf("reason = %q, want human-feedback denial", reason)
+	}
+}
+
 func TestDirectorLinkedIssueNumber(t *testing.T) {
 	for _, tc := range []struct {
 		body string

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestPRWorkflowMergeAuthorityMatrix pins the ward#1067 matrix:
@@ -127,6 +128,8 @@ type prWorkflowFakeForge struct {
 	prAdditions                   int
 	prDeletions                   int
 	prDiffKnown                   bool
+	updatedAt                     time.Time
+	comments                      []issueComment
 	prStateAfterMerge             string
 	combinedState                 string
 	contextState                  string
@@ -177,7 +180,13 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 				additions = f.prAdditions
 				deletions = f.prDeletions
 			}
-			_, _ = w.Write([]byte(`{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"` + state + `","additions":` + strconv.Itoa(additions) + `,"deletions":` + strconv.Itoa(deletions) + `,"head":{"sha":"` + headSHA + `","ref":"` + headRef + `"},"base":{"ref":"` + baseRef + `"}}`))
+			body := `{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"` + state + `","head":{"sha":"` + headSHA + `","ref":"` + headRef + `"},"base":{"ref":"` + baseRef + `"}`
+			if !f.updatedAt.IsZero() {
+				body += `,"updated_at":` + jsonString(f.updatedAt.UTC().Format(time.RFC3339))
+			}
+			body += `,"additions":` + strconv.Itoa(additions) + `,"deletions":` + strconv.Itoa(deletions)
+			body += `}`
+			_, _ = w.Write([]byte(body))
 		case http.MethodPatch:
 			var body struct {
 				State string `json:"state"`
@@ -245,6 +254,9 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 			return
 		}
 		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues/7/comments", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(f.comments)
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/branches/main", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"name":"main","protected":true,"enable_status_check":true,"status_check_contexts":["test"]}`))
@@ -459,6 +471,54 @@ func TestPRWorkflowReopenExecRestoresAClosedPR(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("reopen output %q missing %q", out, want)
 		}
+	}
+}
+
+func TestPRWorkflowMergeExecBlocksOnHumanComment(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n\nward.workflow: pull-request-and-merge\n",
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+		allowMergeCommits: true,
+		comments: []issueComment{{
+			Body:      "please stop, this misses the real need",
+			CreatedAt: time.Date(2026, 7, 10, 9, 30, 0, 0, time.UTC),
+			User: struct {
+				Login string `json:"login"`
+			}{Login: "coilysiren"},
+		}},
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, "")
+	if err == nil || !strings.Contains(err.Error(), "human comment by @coilysiren") {
+		t.Fatalf("merge with human comment = %v, want human-feedback block", err)
+	}
+	if fake.mergeCalls != 0 {
+		t.Fatalf("merge calls = %d, want 0", fake.mergeCalls)
+	}
+}
+
+func TestPRWorkflowReopenExecBlocksOnManualCloseSnapshot(t *testing.T) {
+	fake := &prWorkflowFakeForge{
+		prBody:            "closes #6\n",
+		prState:           "closed",
+		updatedAt:         time.Date(2026, 7, 10, 9, 30, 0, 0, time.UTC),
+		combinedState:     "success",
+		contextState:      "success",
+		defaultMergeStyle: "merge",
+	}
+	srv := fake.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	_, err := prWorkflowReopenExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7)
+	if err == nil || !strings.Contains(err.Error(), "manual close/update snapshot") {
+		t.Fatalf("reopen with manual close snapshot = %v, want blocked", err)
+	}
+	if fake.prState != "closed" {
+		t.Fatalf("reopen blocked but PR state mutated to %q", fake.prState)
 	}
 }
 

@@ -190,6 +190,9 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if head == "" {
 		return "", fmt.Errorf("pr merge: %s/%s#%d did not expose a head SHA", owner, repo, index)
 	}
+	if err := prWorkflowHumanInterventionGuard(ctx, cl, owner, repo, index, time.Time{}, "pr merge"); err != nil {
+		return "", err
+	}
 	status, reason, ok := directorMergeStatusGate(ctx, cl, owner, repo, pr.Base.Ref, head)
 	if !ok {
 		return "", fmt.Errorf("pr merge: %s/%s#%d: %s", owner, repo, index, reason)
@@ -305,6 +308,9 @@ func prWorkflowReopenExec(ctx context.Context, cl *forgejoClient, role, owner, r
 	head := pr.HeadSHA()
 	if head == "" {
 		return "", fmt.Errorf("pr reopen: %s/%s#%d did not expose a head SHA", owner, repo, index)
+	}
+	if err := prWorkflowHumanInterventionGuard(ctx, cl, owner, repo, index, pr.UpdatedAt, "pr reopen"); err != nil {
+		return "", err
 	}
 	if err := cl.ReopenPullRequest(ctx, owner, repo, index); err != nil {
 		return "", fmt.Errorf("pr reopen: %s/%s#%d: %w", owner, repo, index, err)
