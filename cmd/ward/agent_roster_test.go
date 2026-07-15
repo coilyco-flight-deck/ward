@@ -139,6 +139,19 @@ func TestAgentRoleDefinitionsFromFleetAppliesOverlay(t *testing.T) {
 	}
 }
 
+func TestAgentRoleDefinitionsUseSelectedBundleCatalog(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "file://"+writeSelectedBundleFixture(t))
+	defs, err := agentRoleDefinitions()
+	if err != nil {
+		t.Fatalf("agentRoleDefinitions: %v", err)
+	}
+	for _, role := range []string{roleEngineer, roleDirector, roleAdvisor, "qa"} {
+		if got := defs[role].DefaultHarness; got != string(modeCodex) {
+			t.Fatalf("role %q default harness = %q, want %q", role, got, modeCodex)
+		}
+	}
+}
+
 // TestAgentRosterMarkdownShape sanity-checks the generated body: the doc_goal
 // front-matter, the generated-by header, and a flat bullet per role linking its doc.
 func TestAgentRosterMarkdownShape(t *testing.T) {

@@ -5,8 +5,10 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
@@ -168,14 +170,44 @@ func mustAgentAdapter(mode containerMode) agentAdapter {
 // defaultAgentMode returns the manifest's default mode, falling back to the
 // first roster entry when the bundle omits an explicit default.
 func defaultAgentMode() containerMode {
-	fleet, err := loadFleetConfig()
-	if err == nil && fleet.Defaults.Agent != "" {
-		return containerMode(fleet.Defaults.Agent)
+	fleet, err := currentFleetConfigWithError()
+	if err == nil {
+		if agent := strings.TrimSpace(fleet.Defaults.Agent); agent != "" {
+			return containerMode(agent)
+		}
+	}
+	if fleet, err := bakedProfileProvider().Fleet(); err == nil {
+		if agent := strings.TrimSpace(fleet.Defaults.Agent); agent != "" {
+			return containerMode(agent)
+		}
 	}
 	if names := frontierAgentNames(); len(names) > 0 {
 		return containerMode(names[0])
 	}
 	return modeClaude
+}
+
+// selectedAgentMode resolves the active bundle's default harness, falling back
+// to the baked default when the selected bundle omits one.
+func selectedAgentMode() (containerMode, error) {
+	fleet, err := currentFleetConfigWithError()
+	if err != nil {
+		return "", err
+	}
+	if agent := strings.TrimSpace(fleet.Defaults.Agent); agent != "" {
+		return containerMode(agent), nil
+	}
+	if ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv)); ref != "" {
+		if baked, berr := bakedProfileProvider().Fleet(); berr == nil {
+			if agent := strings.TrimSpace(baked.Defaults.Agent); agent != "" {
+				return containerMode(agent), nil
+			}
+		}
+	}
+	if names := frontierAgentNames(); len(names) > 0 {
+		return containerMode(names[0]), nil
+	}
+	return modeClaude, nil
 }
 
 // loadAgentManifest builds the manifest from the effective dialect-2 fleet config

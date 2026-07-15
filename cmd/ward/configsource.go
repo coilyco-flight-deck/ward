@@ -97,6 +97,10 @@ type configSource struct {
 	// fleetKDL feeds the legacy embedded fleetconfig parse path.
 	fleetKDL string
 
+	// roleDefinitionsKDL feeds the role catalog parser used by the startup-role
+	// roster and launch default-harness resolution.
+	roleDefinitionsKDL string
+
 	// defaultsKDL feeds the edge smart-defaults parser.
 	defaultsKDL string
 
@@ -114,24 +118,26 @@ type configSource struct {
 // today's behavior. The pre-filtered execassets mirror scans unfiltered.
 func bakedConfigSource() configSource {
 	return configSource{
-		fsys:              bakedAssets,
-		forgejoGuardfile:  opsForgejoGuardfilePath,
-		forgejoSpecLock:   opsForgejoSpecLockPath,
-		fleetKDL:          fleetGeneratedKDLPath,
-		defaultsKDL:       defaultsGeneratedKDLPath,
-		topologyKDL:       topologyGeneratedKDLPath,
-		execDir:           execAssetsDir,
-		execGuardfileGlob: "ward-kdl.*.guardfile.kdl",
+		fsys:               bakedAssets,
+		forgejoGuardfile:   opsForgejoGuardfilePath,
+		forgejoSpecLock:    opsForgejoSpecLockPath,
+		fleetKDL:           fleetGeneratedKDLPath,
+		roleDefinitionsKDL: roleDefinitionsGeneratedKDLPath,
+		defaultsKDL:        defaultsGeneratedKDLPath,
+		topologyKDL:        topologyGeneratedKDLPath,
+		execDir:            execAssetsDir,
+		execGuardfileGlob:  "ward-kdl.*.guardfile.kdl",
 	}
 }
 
 // bundleConfigSource reads the launch-selected .ward bundle layout out of dir.
 func bundleConfigSource(dir string) configSource {
 	return configSource{
-		fsys:              os.DirFS(dir),
-		execDir:           ".",
-		execGuardfileGlob: bundleExecGuardfileGlob,
-		execMixedDialects: true,
+		fsys:               os.DirFS(dir),
+		roleDefinitionsKDL: filepath.Join("ward-kdl", "ward-kdl.role-definitions.kdl"),
+		execDir:            ".",
+		execGuardfileGlob:  bundleExecGuardfileGlob,
+		execMixedDialects:  true,
 	}
 }
 

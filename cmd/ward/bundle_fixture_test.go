@@ -111,6 +111,11 @@ topology {
 		t.Fatalf("read baked ops spec lock: %v", err)
 	}
 	files[bundleFixtureSpecLockPath] = string(specLock)
+	roleDefs, err := bakedAssets.ReadFile(roleDefinitionsGeneratedKDLPath)
+	if err != nil {
+		t.Fatalf("read baked role definitions: %v", err)
+	}
+	files["ward-kdl/ward-kdl.role-definitions.kdl"] = string(roleDefs)
 
 	entries, err := fs.ReadDir(bakedAssets, execAssetsDir)
 	if err != nil {
@@ -294,6 +299,14 @@ topology {
 	writeBundleFixtureFile(t, dir, bundleSinglePath, body)
 	writeBundleFixtureFile(t, dir, bundleSingleSpecLock, string(specLock))
 	return filepath.Join(dir, bundleSinglePath)
+}
+
+func writeSelectedBundleFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeBundleFixtureFile(t, dir, "ward-kdl/ward-kdl.fleet.kdl", "agents {\n    schema-version 2\n    defaults {\n        agent codex\n        attribution name=example-bot email=bot@example.com\n    }\n    agent claude {\n    }\n    agent codex {\n    }\n}\n")
+	writeBundleFixtureFile(t, dir, "ward-kdl/ward-kdl.role-definitions.kdl", "agent-roles {\n    role engineer {\n        tagline \"Implements a ticket end to end.\"\n        capabilities read engineering\n        modes \"A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.\"\n        default-harness codex\n        posture code-landing\n        execution-time-limit \"90m\"\n    }\n    role director {\n        tagline \"Opens the read-only director surface. Autonomous burndown is opt-in.\"\n        capabilities read project-management\n        modes \"Attached read-only control surface over a repo's backlog (`--repo` scope). Use `--burndown` or `--drain` for the autonomous heartbeat.\"\n        default-harness codex\n        posture attached\n        execution-time-limit none\n    }\n    role advisor {\n        tagline \"Answers without writing code.\"\n        capabilities read\n        modes \"A ref researches the issue and posts the answer as a comment. Freeform text answers inline.\"\n        default-harness codex\n        posture no-code\n        execution-time-limit \"60m\"\n    }\n    role qa {\n        tagline \"Inspects a candidate and posts a structured verdict comment.\"\n        capabilities read\n        modes \"A ref inspects the issue, branch, pull request, and checks, then posts a structured QA verdict comment. Freeform mode is not exposed.\"\n        default-harness codex\n        posture no-code\n        execution-time-limit \"30m\"\n    }\n}\n")
+	return dir
 }
 
 func writeBundleFixtureFile(t *testing.T, dir, name, body string) {

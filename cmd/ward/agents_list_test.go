@@ -87,6 +87,17 @@ func TestAgentsListJSONMatchesEmbeddedFleet(t *testing.T) {
 	}
 }
 
+func TestAgentsListJSONUsesSelectedBundleDefaults(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "file://"+writeSelectedBundleFixture(t))
+	var got agentsRosterJSON
+	if err := json.Unmarshal([]byte(runAgentsList(t, "--json")), &got); err != nil {
+		t.Fatalf("emitted --json is not valid JSON: %v", err)
+	}
+	if got.Defaults.Agent != string(modeCodex) {
+		t.Fatalf("selected bundle default agent = %q, want %q", got.Defaults.Agent, modeCodex)
+	}
+}
+
 // TestAgentsListTableDefault asserts the bare `list` prints the human table (not
 // JSON), keeping the machine surface behind the explicit --json flag.
 func TestAgentsListTableDefault(t *testing.T) {

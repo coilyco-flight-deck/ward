@@ -139,8 +139,14 @@ func roleOverlaySummary(overlays map[string]fleetconfig.RoleAgentOverride) strin
 // agentRoleDefinitionsFromFleet resolves the built-in role presets over the
 // effective fleet config's `roles` overlay.
 func agentRoleDefinitionsFromFleet(f fleetconfig.Fleet) (map[string]agentRoleDefinition, error) {
-	defs := embeddedAgentRoleDefinitions()
-	order := embeddedAgentRoleDefinitionOrder()
+	return agentRoleDefinitionsFromCatalogAndFleet(mustEmbeddedAgentRoleCatalog(), f)
+}
+
+// agentRoleDefinitionsFromCatalogAndFleet resolves the supplied role catalog
+// over the effective fleet config's `roles` overlay.
+func agentRoleDefinitionsFromCatalogAndFleet(cat agentRoleCatalog, f fleetconfig.Fleet) (map[string]agentRoleDefinition, error) {
+	defs := cloneAgentRoleDefinitionMap(cat.Definitions)
+	order := append([]string(nil), cat.Order...)
 	for _, role := range f.Roles {
 		def, ok := defs[role.Name]
 		if !ok {
@@ -156,11 +162,15 @@ func agentRoleDefinitionsFromFleet(f fleetconfig.Fleet) (map[string]agentRoleDef
 
 // agentRoleDefinitions resolves the built-in presets against the live fleet config.
 func agentRoleDefinitions() (map[string]agentRoleDefinition, error) {
-	fleet, err := loadFleetConfig()
+	cat, err := currentAgentRoleCatalogWithError()
 	if err != nil {
 		return nil, err
 	}
-	return agentRoleDefinitionsFromFleet(fleet)
+	fleet, err := currentFleetConfigWithError()
+	if err != nil {
+		return nil, err
+	}
+	return agentRoleDefinitionsFromCatalogAndFleet(cat, fleet)
 }
 
 // agentMetaCommands are agent subcommands that are NOT startup roles, including

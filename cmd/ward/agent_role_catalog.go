@@ -31,11 +31,19 @@ func loadEmbeddedAgentRoleCatalog() (agentRoleCatalog, error) {
 
 func loadAgentRoleCatalogFrom(src configSource) (agentRoleCatalog, error) {
 	if src.fsys == nil {
-		return agentRoleCatalog{}, fmt.Errorf("read agent role catalog %s: no profile source available", roleDefinitionsGeneratedKDLPath)
+		path := src.roleDefinitionsKDL
+		if path == "" {
+			path = roleDefinitionsGeneratedKDLPath
+		}
+		return agentRoleCatalog{}, fmt.Errorf("read agent role catalog %s: no profile source available", path)
 	}
-	b, err := fs.ReadFile(src.fsys, roleDefinitionsGeneratedKDLPath)
+	path := src.roleDefinitionsKDL
+	if path == "" {
+		path = roleDefinitionsGeneratedKDLPath
+	}
+	b, err := fs.ReadFile(src.fsys, path)
 	if err != nil {
-		return agentRoleCatalog{}, fmt.Errorf("read agent role catalog %s: %w", roleDefinitionsGeneratedKDLPath, err)
+		return agentRoleCatalog{}, fmt.Errorf("read agent role catalog %s: %w", path, err)
 	}
 	return parseAgentRoleCatalog(b)
 }

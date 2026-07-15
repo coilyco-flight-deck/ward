@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
@@ -49,6 +50,34 @@ func currentProfileSourceProvider() (configSource, ProfileProvider, error) {
 
 func bakedProfileProvider() ProfileProvider {
 	return newProfileProvider(bakedConfigSource())
+}
+
+// currentFleetConfigWithError resolves the active fleet config from the selected
+// bundle when one exists, else the baked default.
+func currentFleetConfigWithError() (fleetconfig.Fleet, error) {
+	src, provider, err := currentProfileSourceProvider()
+	if err != nil {
+		return fleetconfig.Fleet{}, err
+	}
+	fleet, err := provider.Fleet()
+	if err != nil {
+		return fleetconfig.Fleet{}, fmt.Errorf("fleet config [config source: %s]: %w", src.sourceDesc(), err)
+	}
+	return fleet, nil
+}
+
+// currentAgentRoleCatalogWithError resolves the active role catalog from the
+// selected bundle when one exists, else the baked default.
+func currentAgentRoleCatalogWithError() (agentRoleCatalog, error) {
+	src, provider, err := currentProfileSourceProvider()
+	if err != nil {
+		return agentRoleCatalog{}, err
+	}
+	cat, err := provider.AgentRoles()
+	if err != nil {
+		return agentRoleCatalog{}, fmt.Errorf("agent role catalog [config source: %s]: %w", src.sourceDesc(), err)
+	}
+	return cat, nil
 }
 
 func (p *configProfileProvider) SmartDefaults() (smartDefaults, error) {

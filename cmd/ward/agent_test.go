@@ -1066,6 +1066,18 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessUsesSelectedBundleDefault(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "file://"+writeSelectedBundleFixture(t))
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1"})
+	got, err := agentHarness(cmd)
+	if err != nil {
+		t.Fatalf("agentHarness with selected bundle: %v", err)
+	}
+	if got != modeCodex {
+		t.Fatalf("agentHarness with selected bundle = %q, want %q", got, modeCodex)
+	}
+}
+
 // TestRetiredVerbsErrorAsUnknown covers ward#347's hard rename: a bare `ward agent
 // <old-verb>` (not a ref) errors as an unknown command, not filed as freeform work.
 func TestRetiredVerbsErrorAsUnknown(t *testing.T) {

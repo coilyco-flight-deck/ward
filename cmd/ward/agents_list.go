@@ -138,7 +138,7 @@ scripts/agent-compat.py consumes as its read surface (ward#417).`,
 			&cli.BoolFlag{Name: "json", Usage: "emit the stable JSON roster instead of the human table"},
 		},
 		Action: func(_ context.Context, c *cli.Command) error {
-			fleet, err := loadFleetConfig()
+			fleet, err := currentFleetConfigWithError()
 			if err != nil {
 				return fmt.Errorf("ward agents list: load fleet config: %w", err)
 			}

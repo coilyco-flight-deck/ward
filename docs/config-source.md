@@ -11,8 +11,10 @@ Some ward surfaces resolve config at launch instead of from the repo file.
 - `WARD_CONFIG_REF` can swap in a live bundle.
 - `WARD_CONFIG_REF` can also point at a local absolute or relative KDL file or
   bundle directory.
-- the selected source feeds guarded edge/operator surfaces.
-- core agent control-plane paths use ward-owned Go adapters and baked core data.
+- the selected source feeds guarded edge/operator surfaces and the `ward agent`
+  launch defaults when those bundle values exist.
+- core agent control-plane paths fall back to the baked bundle only when the
+  selected bundle does not supply a value.
 
 ## See also
 

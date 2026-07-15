@@ -587,11 +587,12 @@ func agentHarnessChoices() string {
 // agentHarnessFlags picks the harness driving a surface: --harness and --agent are
 // equal first-class spellings (ward#660).
 func agentHarnessFlags() []cli.Flag {
+	defaultHarness := string(defaultAgentMode())
 	return []cli.Flag{
 		&cli.StringFlag{
 			Name:  "harness",
-			Value: string(defaultAgentMode()),
-			Usage: "harness that drives the work: " + agentHarnessChoices() + " (default " + string(defaultAgentMode()) + ")",
+			Value: defaultHarness,
+			Usage: "harness that drives the work: " + agentHarnessChoices() + " (default " + defaultHarness + ")",
 		},
 		&cli.StringFlag{
 			Name: "agent",
@@ -631,14 +632,25 @@ func extraRepoGrant(c *cli.Command) []string {
 // agentHarness resolves the pick to a containerMode (default claude): --harness and
 // --agent are equal spellings.
 func agentHarness(c *cli.Command) (containerMode, error) {
-	raw, flag := c.String("harness"), "--harness"
 	switch {
 	case c.IsSet("harness") && c.IsSet("agent") && c.String("harness") != c.String("agent"):
 		return "", fmt.Errorf("--harness %q and --agent %q disagree: they are equal spellings of the same pick (ward#660), set one",
 			c.String("harness"), c.String("agent"))
 	case !c.IsSet("harness") && c.IsSet("agent"):
-		raw, flag = c.String("agent"), "--agent"
+		raw := c.String("agent")
+		m, err := parseMode(raw)
+		if err != nil {
+			return "", fmt.Errorf("invalid --agent %q: want %s", raw, agentHarnessChoices())
+		}
+		return m, nil
+	case !c.IsSet("harness") && !c.IsSet("agent"):
+		mode, err := selectedAgentMode()
+		if err != nil {
+			return "", err
+		}
+		return mode, nil
 	}
+	raw, flag := c.String("harness"), "--harness"
 	m, err := parseMode(raw)
 	if err != nil {
 		return "", fmt.Errorf("invalid %s %q: want %s", flag, raw, agentHarnessChoices())
