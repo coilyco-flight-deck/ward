@@ -854,6 +854,7 @@ type agentPullRequestContext struct {
 	Title        string
 	Body         string
 	URL          string
+	UpdatedAt    time.Time
 	HeadSHA      string
 	HeadRef      string
 	BaseRef      string

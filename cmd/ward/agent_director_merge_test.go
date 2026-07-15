@@ -161,6 +161,45 @@ func TestDirectorMergeEligibilityBlocksOnHumanFeedback(t *testing.T) {
 	}
 }
 
+func TestRecordDirectorMergeDoneBlocksOnHumanFeedback(t *testing.T) {
+	now := time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC)
+	f := &prWorkflowFakeForge{
+		updatedAt: now,
+		comments: []issueComment{
+			{
+				Body:      "WARDED_WORKFLOW: done ✅",
+				CreatedAt: now,
+				User: struct {
+					Login string `json:"login"`
+				}{Login: forgeForgejo.gitPushUser()},
+			},
+			{
+				Body:      "this still needs attention",
+				CreatedAt: now.Add(5 * time.Minute),
+				User: struct {
+					Login string `json:"login"`
+				}{Login: "repo-owner"},
+			},
+		},
+	}
+	srv := f.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	meta := directorRunMeta{
+		Workflow:   string(workflowPullRequestAndMerge),
+		Review:     "passed: all green",
+		Outcome:    backlogOutcome{Status: "merge-ready"},
+		HasOutcome: true,
+		IssueRef:   "coilyco-flight-deck/ward#7",
+		PRRef:      "coilyco-flight-deck/ward#7",
+		PRHeadSHA:  "abc123",
+		Status:     directorMergeStatusSummary{HeadSHA: "abc123", State: "success"},
+	}
+	if err := recordDirectorMergeDone(context.Background(), cl.withMode(modeGoose), cl, "coilyco-flight-deck", "ward", 7, 7, meta); err == nil || !strings.Contains(err.Error(), "human feedback remains newer") {
+		t.Fatalf("recordDirectorMergeDone error = %v, want human-feedback block", err)
+	}
+}
+
 func TestDirectorLinkedIssueNumber(t *testing.T) {
 	for _, tc := range []struct {
 		body string

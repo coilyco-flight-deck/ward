@@ -117,7 +117,7 @@ func (r *Runner) runDirectorMergeCandidate(ctx context.Context, label string, pr
 		return 0, 0, fmt.Errorf("%s: merge %s/%s#%d: %w", label, owner, name, pr.Number, err)
 	}
 	meta.Status = status.Status
-	if err := recordDirectorMergeDone(ctx, issueClient, owner, name, linked, pr.Number, meta); err != nil {
+	if err := recordDirectorMergeDone(ctx, issueClient, prClient, owner, name, linked, pr.Number, meta); err != nil {
 		return 0, 0, fmt.Errorf("%s: record done for %s/%s#%d after merge: %w", label, owner, name, pr.Number, err)
 	}
 	_, _ = fmt.Fprintf(r.Runner.Stderr, "%s: merged %s/%s#%d (issue #%d, head %s)\n", label, owner, name, pr.Number, linked, mergedHead)
@@ -242,6 +242,10 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr direct
 	if !pr.Mergeable {
 		return false, directorMergeConflictReason(ctx, owner, repo, linked, pr, issueClient), linked, directorRunMeta{}
 	}
+	issue, err := issueClient.GetIssue(ctx, owner, repo, linked)
+	if err != nil {
+		return false, "could not read linked issue: " + firstLine(err.Error()), linked, directorRunMeta{}
+	}
 	issueComments, err := issueClient.ListIssueComments(ctx, owner, repo, linked)
 	if err != nil {
 		return false, "could not read linked issue comments: " + firstLine(err.Error()), linked, directorRunMeta{}
@@ -250,7 +254,7 @@ func directorMergeEligibility(ctx context.Context, owner, repo string, pr direct
 	if err != nil {
 		return false, "could not read PR comments: " + firstLine(err.Error()), linked, directorRunMeta{}
 	}
-	if reason, blocked := humanInterventionBlockReason(append(append([]issueComment(nil), issueComments...), prComments...), time.Time{}); blocked {
+	if reason, blocked := humanInterventionBlockReason(append(append([]issueComment(nil), issueComments...), prComments...), laterTime(issue.UpdatedAt, pr.UpdatedAt)); blocked {
 		return false, reason, linked, directorRunMeta{}
 	}
 	meta, reason, allowed := directorMergeIssueMeta(ctx, owner, repo, pr, linked, prClient, issueClient)
@@ -554,10 +558,39 @@ func directorMergeQAGate(meta directorRunMeta) (reason string, ok bool) {
 }
 
 // recordDirectorMergeDone posts the director's final done outcome only after the
-// PR has actually merged to main.
-func recordDirectorMergeDone(ctx context.Context, cl Tracker, owner, repo string, linked, prNumber int, meta directorRunMeta) error {
+// PR has actually merged to main and no newer human feedback is waiting.
+func recordDirectorMergeDone(ctx context.Context, issueClient Tracker, prClient *forgejoClient, owner, repo string, linked, prNumber int, meta directorRunMeta) error {
+	issue, err := issueClient.GetIssue(ctx, owner, repo, linked)
+	if err != nil {
+		return fmt.Errorf("read linked issue before recording done: %w", err)
+	}
+	pr, err := prClient.GetPullRequest(ctx, owner, repo, prNumber)
+	if err != nil {
+		return fmt.Errorf("read PR before recording done: %w", err)
+	}
+	issueComments, err := issueClient.ListIssueComments(ctx, owner, repo, linked)
+	if err != nil {
+		return fmt.Errorf("read linked issue comments before recording done: %w", err)
+	}
+	prComments, err := prClient.ListIssueComments(ctx, owner, repo, prNumber)
+	if err != nil {
+		return fmt.Errorf("read PR comments before recording done: %w", err)
+	}
+	if reason, blocked := humanInterventionBlockReason(append(append([]issueComment(nil), issueComments...), prComments...), laterTime(issue.UpdatedAt, pr.UpdatedAt)); blocked {
+		return fmt.Errorf("human feedback remains newer than the latest ward acknowledgement: %s", reason)
+	}
 	body := directorMergeDoneComment(prNumber, meta)
-	return cl.CommentIssue(ctx, owner, repo, linked, body)
+	return issueClient.CommentIssue(ctx, owner, repo, linked, body)
+}
+
+func laterTime(times ...time.Time) time.Time {
+	var latest time.Time
+	for _, t := range times {
+		if t.After(latest) {
+			latest = t
+		}
+	}
+	return latest
 }
 
 func directorMergeDoneComment(prNumber int, meta directorRunMeta) string {

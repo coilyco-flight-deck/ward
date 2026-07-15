@@ -105,6 +105,37 @@ func TestPRWorkflowMarkerMode(t *testing.T) {
 	}
 }
 
+func TestPRWorkflowCloseBlocksOnHumanFeedback(t *testing.T) {
+	f := &prWorkflowFakeForge{
+		prState: "open",
+		comments: []issueComment{
+			{
+				Body:      "WARDED_WORKFLOW: done ✅",
+				CreatedAt: time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC),
+				User: struct {
+					Login string `json:"login"`
+				}{Login: forgeForgejo.gitPushUser()},
+			},
+			{
+				Body:      "please keep this open",
+				CreatedAt: time.Date(2026, 7, 15, 8, 5, 0, 0, time.UTC),
+				User: struct {
+					Login string `json:"login"`
+				}{Login: "repo-owner"},
+			},
+		},
+	}
+	srv := f.server(t)
+	defer srv.Close()
+	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
+	if _, err := prWorkflowCloseExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, "superseded by #8", ""); err == nil || !strings.Contains(err.Error(), "human comment by @repo-owner") {
+		t.Fatalf("prWorkflowCloseExec error = %v, want human-feedback block", err)
+	}
+	if f.prState != "open" {
+		t.Fatalf("close gate should not patch the PR state, got %q", f.prState)
+	}
+}
+
 // TestPRWorkflowRoleDefaultsToDirectorOnHost pins the acting-role resolution.
 func TestPRWorkflowRoleDefaultsToDirectorOnHost(t *testing.T) {
 	t.Setenv("WARD_ROLE", "")
@@ -248,15 +279,58 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 		}
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues/7", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPatch {
+		switch r.Method {
+		case http.MethodGet:
+			body := `{"number":7,"title":"t","body":"closes #7","state":"open","html_url":"https://f/issues/7"`
+			if !f.updatedAt.IsZero() {
+				body += `,"updated_at":` + jsonString(f.updatedAt.UTC().Format(time.RFC3339))
+			}
+			body += `}`
+			_, _ = w.Write([]byte(body))
+		case http.MethodPatch:
 			f.prState = "open"
 			w.WriteHeader(http.StatusOK)
 			return
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
-		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues/7/comments", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(f.comments)
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues/", func(w http.ResponseWriter, r *http.Request) {
+		rest := strings.TrimPrefix(r.URL.Path, "/api/v1/repos/coilyco-flight-deck/ward/issues/")
+		if rest == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if strings.HasSuffix(rest, "/comments") {
+			if r.Method != http.MethodGet {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(f.comments)
+			return
+		}
+		num, err := strconv.Atoi(rest)
+		if err != nil || num <= 0 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			body := `{"number":` + strconv.Itoa(num) + `,"title":"t","body":"closes #` + strconv.Itoa(num) + `","state":"open","html_url":"https://f/issues/` + strconv.Itoa(num) + `"`
+			if !f.updatedAt.IsZero() {
+				body += `,"updated_at":` + jsonString(f.updatedAt.UTC().Format(time.RFC3339))
+			}
+			body += `}`
+			_, _ = w.Write([]byte(body))
+		case http.MethodPatch:
+			f.prState = "open"
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
 	})
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/branches/main", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"name":"main","protected":true,"enable_status_check":true,"status_check_contexts":["test"]}`))

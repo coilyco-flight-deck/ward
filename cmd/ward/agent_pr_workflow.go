@@ -256,6 +256,9 @@ func prWorkflowClosePrepare(ctx context.Context, cl *forgejoClient, role, owner,
 	if head == "" {
 		return "", "", "", fmt.Errorf("pr close: %s/%s#%d did not expose a head SHA", owner, repo, index)
 	}
+	if err := prWorkflowHumanInterventionGuard(ctx, cl, owner, repo, index, pr.UpdatedAt, "pr close"); err != nil {
+		return "", "", "", err
+	}
 	superseding, err := prWorkflowSupersedingRef(owner, repo, supersedes)
 	if err != nil {
 		return "", "", "", fmt.Errorf("pr close: %s/%s#%d superseding ref %q is invalid: %w", owner, repo, index, supersedes, err)

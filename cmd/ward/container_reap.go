@@ -1024,6 +1024,9 @@ func postLaunchedNoOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, 
 // latestBacklogOutcomeCommentAfter returns the most recent WARDED_WORKFLOW comment at
 // or after afterAt, if any.
 func latestBacklogOutcomeCommentAfter(comments []issueComment, afterAt time.Time) (issueComment, bool) {
+	if humanFeedbackOutcomeBlocked(comments, time.Time{}) {
+		return issueComment{}, false
+	}
 	var latest issueComment
 	ok := false
 	for _, c := range comments {

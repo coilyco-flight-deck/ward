@@ -495,6 +495,10 @@ type wardGlobalConfig struct {
 		Review struct {
 			Skip []string `yaml:"skip"`
 		} `yaml:"review"`
+		HumanFeedback struct {
+			IgnoreAuthors     []string `yaml:"ignore-authors"`
+			AutomationMarkers []string `yaml:"automation-markers"`
+		} `yaml:"human-feedback"`
 	} `yaml:"agent"`
 	Container struct {
 		MemoryLimit string `yaml:"memory-limit"`
@@ -827,6 +831,9 @@ func parseBacklogOutcome(comments []issueComment) *backlogOutcome {
 // latestBacklogOutcomeComment returns the most recent comment body carrying a
 // WARDED_WORKFLOW marker.
 func latestBacklogOutcomeComment(comments []issueComment) (issueComment, bool) {
+	if humanFeedbackOutcomeBlocked(comments, time.Time{}) {
+		return issueComment{}, false
+	}
 	type hit struct {
 		at time.Time
 		c  issueComment

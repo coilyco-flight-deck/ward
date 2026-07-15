@@ -47,7 +47,7 @@ func (r *Runner) mergeEligibleDirectorPR(ctx context.Context, label string, prCl
 		return fmt.Errorf("merge failed for %s/%s#%d (issue #%d, workflow %s, review %q, head %s, status %s): %w",
 			owner, name, pr.Number, linked, meta.Workflow, meta.Review, meta.PRHeadSHA, meta.Status.summary(), err)
 	}
-	if err := recordDirectorMergeDone(ctx, issueClient, owner, name, linked, pr.Number, meta); err != nil {
+	if err := recordDirectorMergeDone(ctx, issueClient, prClient, owner, name, linked, pr.Number, meta); err != nil {
 		return fmt.Errorf("merged %s/%s#%d for issue #%d but could not record done: %w", owner, name, pr.Number, linked, err)
 	}
 	fmt.Fprintf(os.Stderr, "%s: merged eligible PR %s/%s#%d for issue #%d (head %s, status %s)\n", label, owner, name, pr.Number, linked, meta.PRHeadSHA, meta.Status.summary())

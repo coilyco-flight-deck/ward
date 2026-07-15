@@ -21,12 +21,13 @@ type Harness interface {
 
 // Issue is the forge-neutral issue row shared by the tracker seams.
 type Issue struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
-	State  string `json:"state"`
-	URL    string `json:"html_url"`
-	Labels []string
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	State     string    `json:"state"`
+	URL       string    `json:"html_url"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Labels    []string
 }
 
 // IssueComment is one row of an issue thread.
