@@ -54,7 +54,46 @@ if [ -z "${asset_id:-}" ]; then
   exit 1
 fi
 
-curl -fsSL \
+asset_json=$(mktemp)
+cleanup_json() {
+  [ -n "${asset_json:-}" ] && rm -f "$asset_json"
+}
+trap 'cleanup_json; cleanup' EXIT
+
+asset_code=$(curl -sS -o "$asset_json" -w '%{http_code}' \
   "${auth_args[@]}" \
   -H "Accept: application/octet-stream" \
-  "${FORGEJO_API}/releases/${release_id}/assets/${asset_id}"
+  "${FORGEJO_API}/releases/${release_id}/assets/${asset_id}")
+case "$asset_code" in
+  200)
+    asset_body=$(cat "$asset_json")
+    if printf '%s' "$asset_body" | grep -Eq '^[0-9a-f]{64}$'; then
+      printf '%s' "$asset_body"
+      exit 0
+    fi
+    browser_download_url=$(node -e '
+      const fs = require("fs");
+      try {
+        const body = fs.readFileSync(0, "utf8");
+        const parsed = JSON.parse(body);
+        process.stdout.write(String(parsed.browser_download_url || ""));
+      } catch {
+        process.stdout.write("");
+      }
+    ' < "$asset_json")
+    if [ -z "${browser_download_url:-}" ]; then
+      echo "::error::release ${RELEASE_TAG} asset ${ASSET_NAME} did not return raw body or browser_download_url" >&2
+      cat "$asset_json" >&2 || true
+      exit 1
+    fi
+    curl -fsSL \
+      "${auth_args[@]}" \
+      -H "Accept: application/octet-stream" \
+      "$browser_download_url"
+    ;;
+  *)
+    echo "::error::could not fetch release asset ${ASSET_NAME} (HTTP ${asset_code})" >&2
+    cat "$asset_json" >&2 || true
+    exit 1
+    ;;
+esac

@@ -204,10 +204,10 @@ func TestForgejoReleaseAssetHelperReadsRawAssetBody(t *testing.T) {
 		t.Fatalf("asset list count = %d, want 1", got)
 	}
 	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/7"); got != 1 {
-		t.Fatalf("asset body fetch count = %d, want 1", got)
+		t.Fatalf("asset metadata fetch count = %d, want 1", got)
 	}
-	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/download/v9.9.9/ward-windows-amd64.exe.sha256"); got != 0 {
-		t.Fatalf("direct download path should stay unused, count = %d", got)
+	if got := srv.count("GET /attachments/7"); got != 1 {
+		t.Fatalf("browser download body fetch count = %d, want 1", got)
 	}
 }
 
@@ -357,8 +357,8 @@ func newReleaseAssetTestServer(t *testing.T) *releaseAssetTestServer {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/tags/v9.9.9", s.handleReleaseByTag)
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets", s.handleReleaseAssets)
-	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/7", s.handleReleaseAssetBody)
-	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/download/v9.9.9/ward-windows-amd64.exe.sha256", s.handleReleaseDownloadMetadata)
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/7", s.handleReleaseAssetMetadata)
+	mux.HandleFunc("/attachments/7", s.handleReleaseAttachmentBody)
 	s.Server = httptest.NewServer(mux)
 	t.Cleanup(s.Close)
 	return s
@@ -393,12 +393,12 @@ func (s *releaseAssetTestServer) handleReleaseAssets(w http.ResponseWriter, r *h
 	]`))
 }
 
-func (s *releaseAssetTestServer) handleReleaseAssetBody(w http.ResponseWriter, r *http.Request) {
+func (s *releaseAssetTestServer) handleReleaseAssetMetadata(w http.ResponseWriter, r *http.Request) {
 	s.record(r)
-	_, _ = w.Write([]byte(strings.Repeat("a", 64)))
+	_, _ = w.Write([]byte(`{"id":7,"name":"ward-windows-amd64.exe.sha256","browser_download_url":"http://` + r.Host + `/attachments/7","type":"attachment"}`))
 }
 
-func (s *releaseAssetTestServer) handleReleaseDownloadMetadata(w http.ResponseWriter, r *http.Request) {
+func (s *releaseAssetTestServer) handleReleaseAttachmentBody(w http.ResponseWriter, r *http.Request) {
 	s.record(r)
-	_, _ = w.Write([]byte(`{"id":7,"name":"ward-windows-amd64.exe.sha256","browser_download_url":"https://forgejo.example/attachments/7","type":"attachment"}`))
+	_, _ = w.Write([]byte(strings.Repeat("a", 64)))
 }
