@@ -71,7 +71,7 @@ func dispatchHealthFlags() []cli.Flag {
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: the cwd git origin)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped"},
 		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo before the health snapshot refreshes"},
-		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight engineer cap used to judge backpressure (bundled default: 6)"},
+		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight engineer cap used to judge backpressure from the bundled smart-defaults file"},
 		&cli.BoolFlag{Name: "json", Usage: "emit the stable machine-readable JSON schema"},
 		&cli.BoolFlag{Name: "line", Usage: "emit the single-line summary used by the Claude status line"},
 	}

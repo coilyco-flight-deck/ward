@@ -6,6 +6,8 @@ doc_goal: Describe the launch-time config source model in one compact place so t
 Some ward surfaces resolve config at launch instead of from the repo file.
 
 - The runtime keeps a baked default bundle.
+- The baked defaults asset is mechanically derived from
+  `.ward/ward-kdl/ward-kdl.defaults.kdl`.
 - `WARD_CONFIG_REF` can swap in a live bundle.
 - `WARD_CONFIG_REF` can also point at a local absolute or relative KDL file or
   bundle directory.

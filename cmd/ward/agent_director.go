@@ -160,7 +160,7 @@ func directorFlags() []cli.Flag {
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
-		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight container cap (bundled default: 6)"},
+		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight container cap from the bundled smart-defaults file"},
 		&cli.BoolFlag{Name: "burndown", Aliases: []string{"drain"}, Usage: "run the autonomous headless backlog burndown loop. Without this flag, director opens its read-only surface after status refresh"},
 		&cli.BoolFlag{Name: "triage", Value: true, Usage: "run the startup triage pass before burndown: label each untriaged open issue's tier (P0-P4) + automation mode (headless/interactive/consult) to warm the headless lane (ward#397). On by default for --burndown. --no-triage skips it"},
 		&cli.BoolFlag{Name: "no-triage", Usage: "skip the startup triage pass and leave existing labels untouched (ward#397)"},
@@ -228,7 +228,7 @@ same session.
   warded director --repo coilyco-flight-deck/ward         # one repo
   warded director coilyco-flight-deck/ward#988            # one issue, fail-closed scope
   warded director https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/988 # same as above
-  warded director --repo a/b,c/d --max-parallel 6         # comma-separated scope
+  warded director --repo a/b,c/d --max-parallel <bundled-default> # comma-separated scope
   warded director --org coilyco-flight-deck                # every repo the org owns (ward#370)
   warded director --burndown --repo coilyco-flight-deck/ward # opt into autonomous dispatch
   warded director --dry-run                                # ranked lanes + planned dispatches, launch nothing

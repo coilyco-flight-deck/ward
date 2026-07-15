@@ -65,31 +65,30 @@ var smartDefaultsCache struct {
 	err         error
 }
 
+var bakedSmartDefaultsCache struct {
+	sync.Once
+	defaults smartDefaults
+	err      error
+}
+
 func bakedSmartDefaults() smartDefaults {
-	return smartDefaults{
-		agentReservationTTL:           3 * time.Hour,
-		reservationRecheckDefaultMax:  15 * time.Second,
-		agentReapIdleDefault:          time.Hour,
-		agentReapMaxCPUDefault:        5.0,
-		agentImage:                    containerImageDefault,
-		agentTag:                      containerImageTagDefault,
-		containerMemoryLimit:          "2g",
-		engineerContainerLimit:        12,
-		engineerRepoWorkingLimit:      3,
-		engineerOpenPRBranchLimit:     6,
-		directorMaxParallel:           6,
-		directorLimit:                 50,
-		directorPollInterval:          30 * time.Second,
-		reviewerTimeout:               8 * time.Minute,
-		configBundleTTL:               600 * time.Second,
-		containerAssetsTTL:            time.Hour,
-		containerReadOnlyExtraRepoTTL: 24 * time.Hour,
-		containerReapKeep:             10,
-		agentWorkflowDefault:          defaultWorkflow,
-		agentWorkflowRepos:            map[string]workflowMode{},
-		repoAuthorityDefault:          forgeForgejo,
-		trustedOwners:                 []string{},
+	defs, err := bakedSmartDefaultsWithError()
+	if err != nil {
+		panic(fmt.Sprintf("load baked smart defaults: %v", err))
 	}
+	return cloneSmartDefaults(defs)
+}
+
+func bakedSmartDefaultsWithError() (smartDefaults, error) {
+	bakedSmartDefaultsCache.Do(func() {
+		b, err := fs.ReadFile(bakedDefaultsAssets, defaultsGeneratedKDLPath)
+		if err != nil {
+			bakedSmartDefaultsCache.err = fmt.Errorf("read baked smart defaults %s: %w", defaultsGeneratedKDLPath, err)
+			return
+		}
+		bakedSmartDefaultsCache.defaults, bakedSmartDefaultsCache.err = parseSmartDefaultsBundle(b)
+	})
+	return cloneSmartDefaults(bakedSmartDefaultsCache.defaults), bakedSmartDefaultsCache.err
 }
 
 // currentSmartDefaults returns ward's runtime policy, caching the baked parse.
@@ -153,7 +152,7 @@ func loadSmartDefaultsFrom(src configSource) (smartDefaults, error) {
 		if err != nil {
 			return smartDefaults{}, fmt.Errorf("read smart defaults %s: %w", src.defaultsKDL, err)
 		}
-		defs, err := parseSmartDefaults(b)
+		defs, err := parseSmartDefaultsBundle(b)
 		if err != nil {
 			return smartDefaults{}, err
 		}
@@ -205,12 +204,12 @@ func loadBundleSmartDefaultsFrom(src configSource) (smartDefaults, error) {
 	return defs, nil
 }
 
-func parseSmartDefaults(src []byte) (smartDefaults, error) {
+func parseSmartDefaultsBundle(src []byte) (smartDefaults, error) {
 	doc, err := kdl.ParseString(string(src))
 	if err != nil {
 		return smartDefaults{}, fmt.Errorf("smart defaults: parse KDL: %w", err)
 	}
-	defs := bakedSmartDefaults()
+	defs := smartDefaults{}
 	seenDefaults := false
 	seenAuthority := false
 	for _, n := range doc.Nodes {
@@ -225,6 +224,30 @@ func parseSmartDefaults(src []byte) (smartDefaults, error) {
 		return smartDefaults{}, fmt.Errorf("smart defaults: missing top-level `repo-authority` block (fail-closed)")
 	}
 	return defs, nil
+}
+
+func parseSmartDefaults(src []byte) (smartDefaults, error) {
+	return parseSmartDefaultsBundle(src)
+}
+
+func cloneSmartDefaults(in smartDefaults) smartDefaults {
+	out := in
+	if in.agentWorkflowRepos != nil {
+		out.agentWorkflowRepos = make(map[string]workflowMode, len(in.agentWorkflowRepos))
+		for repo, wf := range in.agentWorkflowRepos {
+			out.agentWorkflowRepos[repo] = wf
+		}
+	}
+	if in.trustedOwners != nil {
+		out.trustedOwners = append([]string{}, in.trustedOwners...)
+	}
+	if in.repoAuthorityRules != nil {
+		out.repoAuthorityRules = append([]repoAuthorityRule{}, in.repoAuthorityRules...)
+	}
+	if in.burndownRules != nil {
+		out.burndownRules = append([]burndownRule{}, in.burndownRules...)
+	}
+	return out
 }
 
 func parseBundleDefaultsNode(srcPath string, n *kdl.Node, defs *smartDefaults) error {

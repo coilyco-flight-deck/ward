@@ -138,10 +138,10 @@ sync-fleet-assets: ## Mirror the dialect-2 ward-kdl.fleet.kdl into cmd/ward for 
 	@mkdir -p ./cmd/ward/fleetassets
 	cp ./.ward/ward-kdl/ward-kdl.fleet.kdl ./cmd/ward/fleetassets/fleet.generated.kdl
 
-sync-defaults-assets: ## Mirror the smart-defaults ward-kdl.defaults.kdl into cmd/ward for embedding (ward#679).
+sync-defaults-assets: ## Mirror the canonical smart-defaults KDL into cmd/ward for embedding (ward#679).
 	# The smart-defaults bundle carries launch-selected runtime policy knobs. go:embed
-	# can't reach the sibling .ward/ward-kdl/ dir, so mirror the canonical source here
-	# as defaults.generated.kdl. defaultsassets_test.go fails the build on drift.
+	# can't reach the sibling .ward/ward-kdl/ dir, so mirror the canonical source
+	# here as defaults.generated.kdl. defaultsassets_test.go fails the build on drift.
 	@mkdir -p ./cmd/ward/defaultsassets
 	cp ./.ward/ward-kdl/ward-kdl.defaults.kdl ./cmd/ward/defaultsassets/defaults.generated.kdl
 

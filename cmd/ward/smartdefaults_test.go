@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -16,23 +17,9 @@ func TestSmartDefaultsBaked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("currentSmartDefaultsWithError(baked): %v", err)
 	}
-	if defs.agentReservationTTL != 3*time.Hour {
-		t.Errorf("baked reservation ttl = %s, want 3h", defs.agentReservationTTL)
-	}
-	if defs.agentImage != containerImageDefault || defs.agentTag != containerImageTagDefault {
-		t.Errorf("baked agent image/tag = %q:%q, want %q:%q", defs.agentImage, defs.agentTag, containerImageDefault, containerImageTagDefault)
-	}
-	if defs.containerMemoryLimit != "2g" {
-		t.Errorf("baked container memory limit = %q, want 2g", defs.containerMemoryLimit)
-	}
-	if defs.engineerContainerLimit != 12 || defs.directorMaxParallel != 6 || defs.directorLimit != 50 || defs.containerReapKeep != 10 {
-		t.Errorf("baked defaults = %+v, want the neutral policy bundle", defs)
-	}
-	if len(defs.trustedOwners) == 0 || defs.trustedOwners[0] != "coilysiren" {
-		t.Errorf("baked trusted owners = %v, want coilysiren", defs.trustedOwners)
-	}
-	if len(defs.repoAuthorityRules) == 0 || defs.repoAuthorityRules[0].Pattern != "coilysiren/*" || defs.repoAuthorityRules[0].Forge != forgeGitHub {
-		t.Errorf("baked repo authority = %+v, want coilysiren/* on github", defs.repoAuthorityRules)
+	want := canonicalSmartDefaults(t)
+	if !reflect.DeepEqual(defs, want) {
+		t.Fatalf("baked smart defaults no longer match the canonical defaults source\nwant: %#v\ngot:  %#v", want, defs)
 	}
 }
 
