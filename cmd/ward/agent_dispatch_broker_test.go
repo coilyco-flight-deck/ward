@@ -753,7 +753,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	}
 }
 
-func TestForwardAgentDispatchToHostBrokerSkipsUnreachableBroker(t *testing.T) {
+func TestForwardAgentDispatchToHostBrokerReportsUnreachableBroker(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen broker: %v", err)
@@ -765,15 +765,38 @@ func TestForwardAgentDispatchToHostBrokerSkipsUnreachableBroker(t *testing.T) {
 	t.Setenv(envDispatchBrokerToken, "nonce-123")
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+	r := &Runner{Runner: &shell.Runner{
+		Resolve: func(bin string) (string, error) {
+			if bin == "docker" {
+				t.Fatal("local launch path was attempted after broker reachability failed")
+			}
+			return "/bin/true", nil
+		},
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}}
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--skip-preflight", "--skip-review",
 	})
-	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
-	if err != nil {
-		t.Fatalf("forward dispatch: %v", err)
+	err = r.runAgentEngineer(t.Context(), cmd, modeClaude)
+	if err == nil {
+		t.Fatal("runAgentEngineer unexpectedly succeeded with an unreachable broker")
 	}
-	if forwarded {
-		t.Fatal("dispatch forwarded despite an unreachable broker")
+	var diag *dispatchBrokerDiagnostic
+	if !errors.As(err, &diag) {
+		t.Fatalf("runAgentEngineer returned %v, want a broker diagnostic", err)
+	}
+	if diag.kind != dispatchBrokerDiagnosticBrokerUnreachable {
+		t.Fatalf("diagnostic kind = %q, want broker-unreachable", diag.kind)
+	}
+	for _, want := range []string{
+		"address source: WARD_DISPATCH_BROKER_ADDR=" + addr,
+		"connection: dial tcp",
+		"remediation: exit this director surface and start a fresh `warded director ...` session",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("diagnostic %q missing %q", err, want)
+		}
 	}
 }
 
@@ -923,7 +946,7 @@ func TestForwardAgentDispatchToHostBrokerAllowsRefWithoutPrompt(t *testing.T) {
 	}
 }
 
-func TestPRWorkflowForwardedSkipsUnreachableBroker(t *testing.T) {
+func TestPRWorkflowForwardedReportsUnreachableBroker(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen broker: %v", err)
@@ -940,10 +963,93 @@ func TestPRWorkflowForwardedSkipsUnreachableBroker(t *testing.T) {
 		Target: "coilyco-flight-deck/ward#7",
 	})
 	if err != nil {
-		t.Fatalf("prWorkflowForwarded: %v", err)
+		var diag *dispatchBrokerDiagnostic
+		if !errors.As(err, &diag) {
+			t.Fatalf("prWorkflowForwarded returned %v, want a broker diagnostic", err)
+		}
+		if diag.kind != dispatchBrokerDiagnosticBrokerUnreachable {
+			t.Fatalf("diagnostic kind = %q, want broker-unreachable", diag.kind)
+		}
+		if !strings.Contains(err.Error(), "address source: WARD_DISPATCH_BROKER_ADDR="+addr) {
+			t.Fatalf("diagnostic %q does not name the broker addr source", err)
+		}
+		return
 	}
 	if handled {
 		t.Fatal("PR workflow forwarded despite an unreachable broker")
+	}
+	t.Fatal("PR workflow unexpectedly fell through with an unreachable broker")
+}
+
+func TestRunAgentListReportsUnreachableBrokerAndAvoidsLocalFallback(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+
+	t.Setenv(envDispatchBrokerAddr, addr)
+	t.Setenv("WARD_READONLY", "1")
+	r := &Runner{Runner: &shell.Runner{
+		Resolve: func(bin string) (string, error) {
+			if bin == "docker" {
+				t.Fatal("local list fallback was attempted after broker reachability failed")
+			}
+			return "/bin/true", nil
+		},
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}}
+	cmd := parseCommandForTest(t, nil, []string{"list"})
+	err = r.runAgentList(t.Context(), cmd)
+	if err == nil {
+		t.Fatal("runAgentList unexpectedly succeeded with an unreachable broker")
+	}
+	var diag *dispatchBrokerDiagnostic
+	if !errors.As(err, &diag) {
+		t.Fatalf("runAgentList returned %v, want a broker diagnostic", err)
+	}
+	if diag.kind != dispatchBrokerDiagnosticBrokerUnreachable {
+		t.Fatalf("diagnostic kind = %q, want broker-unreachable", diag.kind)
+	}
+	for _, want := range []string{
+		"address source: WARD_DISPATCH_BROKER_ADDR=" + addr,
+		"connection: dial tcp",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("diagnostic %q missing %q", err, want)
+		}
+	}
+}
+
+func TestProbeHostDispatchBrokerReportsTimeout(t *testing.T) {
+	origDial := dispatchBrokerDialContext
+	t.Cleanup(func() { dispatchBrokerDialContext = origDial })
+	dispatchBrokerDialContext = func(context.Context, string, string) (net.Conn, error) {
+		return nil, context.DeadlineExceeded
+	}
+
+	err := probeHostDispatchBroker(t.Context(), "host.docker.internal:54321")
+	if err == nil {
+		t.Fatal("probeHostDispatchBroker unexpectedly succeeded")
+	}
+	var diag *dispatchBrokerDiagnostic
+	if !errors.As(err, &diag) {
+		t.Fatalf("probeHostDispatchBroker returned %v, want a broker diagnostic", err)
+	}
+	if diag.kind != dispatchBrokerDiagnosticBrokerTimeout {
+		t.Fatalf("diagnostic kind = %q, want broker-timeout", diag.kind)
+	}
+	for _, want := range []string{
+		"ward dispatch broker: broker-timeout",
+		"address source: WARD_DISPATCH_BROKER_ADDR=host.docker.internal:54321",
+		"connection: timed out dialing TCP after 250ms",
+		"remediation: exit this director surface and start a fresh `warded director ...` session",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("timeout diagnostic %q missing %q", err, want)
+		}
 	}
 }
 
@@ -1794,7 +1900,7 @@ func TestCommentDispatchLaunchErrorReportsCapacityLocally(t *testing.T) {
 		r.commentDispatchLaunchError(context.Background(), req, "/tmp/ward/dispatch.log", capacityErr)
 	})
 	for _, want := range []string{
-		"ward dispatch broker: engineer pool full, 10/10 active launches, not dispatched",
+		"ward dispatch broker: capacity-defer: engineer pool full, 10/10 active launches, not dispatched",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("capacity stderr missing %q: %q", want, stderr)

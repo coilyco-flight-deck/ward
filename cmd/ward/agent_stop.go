@@ -99,10 +99,8 @@ func (r *Runner) forwardAgentStopToHostBroker(ctx context.Context, target string
 			"dispatch broker (%s is unset here); halt a run host-side with `docker container stop` instead "+
 			"(see docs/container-stop.md)", envDispatchBrokerAddr)
 	}
-	if !hostDispatchBrokerReachable(ctx, addr) {
-		return fmt.Errorf("ward agent stop only works from a director read-only surface with a host "+
-			"dispatch broker at %s, but that broker is unreachable here; halt a run host-side with "+
-			"`docker container stop` instead (see docs/container-stop.md)", addr)
+	if err := probeHostDispatchBroker(ctx, addr); err != nil {
+		return err
 	}
 	req := dispatchBrokerRequest{
 		Action:    dispatchActionStop,

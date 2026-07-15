@@ -370,9 +370,9 @@ func isEngineerCapacityError(err error) bool {
 func engineerCapacityBackpressureSummary(err error) string {
 	var capErr *engineerCapacityError
 	if errors.As(err, &capErr) {
-		return fmt.Sprintf("engineer pool full, %d/%d active launches, not dispatched", capErr.active, capErr.limit)
+		return fmt.Sprintf("capacity-defer: engineer pool full, %d/%d active launches, not dispatched", capErr.active, capErr.limit)
 	}
-	return "engineer pool full, not dispatched"
+	return "capacity-defer: engineer pool full, not dispatched"
 }
 
 // engineerReapState gathers one engineer's idle inputs: idle from its last log

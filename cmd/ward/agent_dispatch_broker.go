@@ -39,6 +39,49 @@ const (
 
 var errDispatchBrokerUnavailable = errors.New("dispatch broker unavailable")
 
+type dispatchBrokerDiagnosticKind string
+
+const (
+	dispatchBrokerDiagnosticBrokerUnreachable dispatchBrokerDiagnosticKind = "broker-unreachable"
+	dispatchBrokerDiagnosticBrokerTimeout     dispatchBrokerDiagnosticKind = "broker-timeout"
+)
+
+// dispatchBrokerDiagnostic carries the operator-facing classification for a
+// broker contact failure.
+type dispatchBrokerDiagnostic struct {
+	kind        dispatchBrokerDiagnosticKind
+	addrSource  string
+	addr        string
+	connection  string
+	remediation string
+}
+
+func (d *dispatchBrokerDiagnostic) Error() string {
+	if d == nil {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "ward dispatch broker: %s\n", d.kind)
+	fmt.Fprintf(&b, "address source: %s=%s\n", d.addrSource, d.addr)
+	if conn := strings.TrimSpace(d.connection); conn != "" {
+		fmt.Fprintf(&b, "connection: %s\n", conn)
+	}
+	if remediation := strings.TrimSpace(d.remediation); remediation != "" {
+		fmt.Fprintf(&b, "remediation: %s", remediation)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func (d *dispatchBrokerDiagnostic) Unwrap() error {
+	return errDispatchBrokerUnavailable
+}
+
+// dispatchBrokerDialContext is a test hook for the broker dial path.
+var dispatchBrokerDialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+	var d net.Dialer
+	return d.DialContext(ctx, network, addr)
+}
+
 // dispatchBrokerProbeTimeout bounds the reachability check we use before
 // choosing the brokered path on a read-only surface.
 const dispatchBrokerProbeTimeout = 250 * time.Millisecond
@@ -1185,8 +1228,8 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return false, nil
 	}
-	if !hostDispatchBrokerReachable(ctx, addr) {
-		return false, nil
+	if err := probeHostDispatchBroker(ctx, addr); err != nil {
+		return true, err
 	}
 	argv, ok := brokerDispatchArgvForRole(ctx, r, c, role, mode)
 	if !ok {
@@ -1200,9 +1243,6 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	}
 	if role == "advisor" {
 		if err := fireAndForgetDispatchBrokerRequest(ctx, addr, req); err != nil {
-			if errors.Is(err, errDispatchBrokerUnavailable) {
-				return false, nil
-			}
 			return true, err
 		}
 		displayArgv := redactDispatchBrokerArgv(argv)
@@ -1211,9 +1251,6 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 	}
 	logPath, err := sendDispatchBrokerRequest(ctx, addr, req)
 	if err != nil {
-		if errors.Is(err, errDispatchBrokerUnavailable) {
-			return false, nil
-		}
 		if logPath != "" {
 			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
 		}
@@ -1225,10 +1262,9 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 
 // fireAndForgetDispatchBrokerRequest sends one dispatch request.
 func fireAndForgetDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBrokerRequest) error {
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	conn, err := dispatchBrokerDialContext(ctx, "tcp", addr)
 	if err != nil {
-		return dispatchBrokerUnavailableAt(addr)
+		return dispatchBrokerDialDiagnostic(addr, err)
 	}
 	defer func() { _ = conn.Close() }()
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
@@ -1244,8 +1280,8 @@ func (r *Runner) forwardFreeformEngineerLaunchToHostBroker(ctx context.Context, 
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
 		return false, nil
 	}
-	if !hostDispatchBrokerReachable(ctx, addr) {
-		return false, nil
+	if err := probeHostDispatchBroker(ctx, addr); err != nil {
+		return true, err
 	}
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
@@ -1255,9 +1291,6 @@ func (r *Runner) forwardFreeformEngineerLaunchToHostBroker(ctx context.Context, 
 	}
 	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
 	if err != nil {
-		if errors.Is(err, errDispatchBrokerUnavailable) {
-			return false, nil
-		}
 		if logPath != "" {
 			return true, fmt.Errorf("%w (dispatch log: %s)", err, logPath)
 		}
@@ -1434,10 +1467,9 @@ func redactDispatchBrokerArgv(argv []string) string {
 }
 
 func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	conn, err := dispatchBrokerDialContext(ctx, "tcp", addr)
 	if err != nil {
-		return "", dispatchBrokerUnavailableAt(addr)
+		return "", dispatchBrokerDialDiagnostic(addr, err)
 	}
 	defer func() { _ = conn.Close() }()
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
@@ -1461,10 +1493,9 @@ func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBro
 }
 
 func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	conn, err := dispatchBrokerDialContext(ctx, "tcp", addr)
 	if err != nil {
-		return "", dispatchBrokerUnavailableAt(addr)
+		return "", dispatchBrokerDialDiagnostic(addr, err)
 	}
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		_ = conn.Close()
@@ -1514,10 +1545,9 @@ func launchDispatchBrokerResponseErr(addr string, err error) error {
 // sendDispatchBrokerLogsRequest sends a logs request and returns the source + body
 // stream for the caller to relay.
 func sendDispatchBrokerLogsRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, io.ReadCloser, error) {
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	conn, err := dispatchBrokerDialContext(ctx, "tcp", addr)
 	if err != nil {
-		return "", nil, dispatchBrokerUnavailableAt(addr)
+		return "", nil, dispatchBrokerDialDiagnostic(addr, err)
 	}
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		_ = conn.Close()
@@ -1546,27 +1576,66 @@ func sendDispatchBrokerLogsRequest(ctx context.Context, addr string, req dispatc
 	}, nil
 }
 
-// hostDispatchBrokerReachable probes whether the advertised host dispatch broker
+// probeHostDispatchBroker probes whether the advertised host dispatch broker
 // accepts TCP connections before we choose the brokered path.
-func hostDispatchBrokerReachable(ctx context.Context, addr string) bool {
+func probeHostDispatchBroker(ctx context.Context, addr string) error {
 	if strings.TrimSpace(addr) == "" {
-		return false
+		return nil
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, dispatchBrokerProbeTimeout)
 	defer cancel()
-	var d net.Dialer
-	conn, err := d.DialContext(probeCtx, "tcp", addr)
+	conn, err := dispatchBrokerDialContext(probeCtx, "tcp", addr)
 	if err != nil {
-		return false
+		return dispatchBrokerDialDiagnostic(addr, err)
 	}
 	_ = conn.Close()
-	return true
+	return nil
 }
 
-func dispatchBrokerUnavailableAt(addr string) error {
-	return fmt.Errorf("%w: the host dispatch broker did not answer at %s "+
-		"(WARD_DISPATCH_BROKER_ADDR, TCP over the docker gateway - see ward#382)",
-		errDispatchBrokerUnavailable, addr)
+func dispatchBrokerDialDiagnostic(addr string, err error) error {
+	kind := dispatchBrokerDiagnosticBrokerUnreachable
+	if isDialTimeoutError(err) {
+		kind = dispatchBrokerDiagnosticBrokerTimeout
+	}
+	return &dispatchBrokerDiagnostic{
+		kind:        kind,
+		addrSource:  envDispatchBrokerAddr,
+		addr:        addr,
+		connection:  dispatchBrokerConnectionText(kind, err),
+		remediation: dispatchBrokerRemediationText(),
+	}
+}
+
+func dispatchBrokerConnectionText(kind dispatchBrokerDiagnosticKind, err error) string {
+	switch kind {
+	case dispatchBrokerDiagnosticBrokerUnreachable:
+		if err == nil {
+			return ""
+		}
+		return err.Error()
+	case dispatchBrokerDiagnosticBrokerTimeout:
+		return fmt.Sprintf("timed out dialing TCP after %s", dispatchBrokerProbeTimeout)
+	default:
+		if err == nil {
+			return ""
+		}
+		return err.Error()
+	}
+}
+
+func dispatchBrokerRemediationText() string {
+	return "exit this director surface and start a fresh `warded director ...` session so host ward creates a new dispatch broker address."
+}
+
+func isDialTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
 // isCredentialBrokerReply spots the credential broker's protocol-version refusal:

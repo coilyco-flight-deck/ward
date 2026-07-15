@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -121,13 +120,9 @@ func agentListCommand() *cli.Command {
 // runAgentList renders the running engineers locally or forwards the read through
 // the director broker when the surface has one.
 func (r *Runner) runAgentList(ctx context.Context, c *cli.Command) error {
-	if addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)); addr != "" && os.Getenv("WARD_READONLY") == "1" {
-		if err := r.forwardAgentListToHostBroker(ctx, addr, c.Bool("json")); err != nil {
-			if !errors.Is(err, errDispatchBrokerUnavailable) {
-				return err
-			}
-		} else {
-			return nil
+	if addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)); addr != "" {
+		if handled, err := r.runAgentListThroughBroker(ctx, addr, c.Bool("json")); handled || err != nil {
+			return err
 		}
 	}
 	body, err := r.renderAgentList(ctx, c.Bool("json"))
@@ -140,6 +135,22 @@ func (r *Runner) runAgentList(ctx context.Context, c *cli.Command) error {
 	}
 	_, err = io.WriteString(w, body)
 	return err
+}
+
+func (r *Runner) runAgentListThroughBroker(ctx context.Context, addr string, jsonOut bool) (bool, error) {
+	if os.Getenv("WARD_READONLY") == "1" {
+		if err := probeHostDispatchBroker(ctx, addr); err != nil {
+			return true, err
+		}
+		return true, r.forwardAgentListToHostBroker(ctx, addr, jsonOut)
+	}
+	if err := r.forwardAgentListToHostBroker(ctx, addr, jsonOut); err != nil {
+		if errors.Is(err, errDispatchBrokerUnavailable) {
+			return false, nil
+		}
+		return true, err
+	}
+	return true, nil
 }
 
 // forwardAgentListToHostBroker forwards the list read and relays the rendered body.
@@ -163,10 +174,9 @@ func (r *Runner) forwardAgentListToHostBroker(ctx context.Context, addr string, 
 
 // sendDispatchBrokerListRequest sends a list request and returns the body stream.
 func sendDispatchBrokerListRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (io.ReadCloser, error) {
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	conn, err := dispatchBrokerDialContext(ctx, "tcp", addr)
 	if err != nil {
-		return nil, dispatchBrokerUnavailableAt(addr)
+		return nil, dispatchBrokerDialDiagnostic(addr, err)
 	}
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		_ = conn.Close()
