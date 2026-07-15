@@ -1030,6 +1030,7 @@ func TestReservationSeedContextRender(t *testing.T) {
 		RunID:        "engineer-claude-ward-609",
 		WardVersion:  "v0.80.0",
 		Workflow:     workflowDirectToMain,
+		Reservation:  "held",
 		Included:     []reservationThreadEntry{{Author: "kai", At: now.Add(-time.Hour)}},
 		Stripped:     []reservationThreadEntry{{Author: "coilyco-ops", At: now.Add(-30 * time.Minute)}},
 		DispatchedAt: now,
@@ -1043,6 +1044,7 @@ func TestReservationSeedContextRender(t *testing.T) {
 		"engineer-claude-ward-609",
 		"v0.80.0",
 		"2026-07-05T02:13:22Z",
+		"**Reservation:** held",
 		"1 included in the pre-flight read, 1 stripped",
 		"@kai",
 		"@coilyco-ops",
@@ -1061,6 +1063,46 @@ func TestReservationSeedContextRender(t *testing.T) {
 	// A nil context renders nothing (an override path with no captured context).
 	if s := (*reservationSeedContext)(nil).render(); s != "" {
 		t.Errorf("nil render should be empty, got %q", s)
+	}
+}
+
+// TestLaunchPreflightSeedContext carries the pre-flight transcript into the
+// launched seed artifact instead of the host audit stream.
+func TestLaunchPreflightSeedContext(t *testing.T) {
+	now := time.Date(2026, 7, 5, 2, 13, 22, 0, time.UTC)
+	sc := &reservationSeedContext{
+		Ref:          agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1335},
+		Branch:       "issue-1335",
+		Driver:       "codex",
+		RunID:        "engineer-codex-ward-1335",
+		WardVersion:  "v0.81.0",
+		Workflow:     workflowPullRequestAndMerge,
+		Reservation:  "held",
+		Included:     []reservationThreadEntry{{Author: "kai", At: now}},
+		DispatchedAt: now,
+	}
+	got := launchPreflightSeedContext(sc, preflightOutcome{Verdict: verdictGo}, "GO\n\ncarry it")
+	for _, want := range []string{
+		"----- launch pre-flight -----",
+		"host pre-flight: passed",
+		"checked: trusted owner and issue/ref resolution -> passed",
+		"reservation re-check: passed",
+		"reservation state: held",
+		"resolved launch context:",
+		"coilyco-flight-deck/ward#1335",
+		"branch `issue-1335`",
+		"workflow `pull-request-and-merge`",
+		"pre-flight read:",
+		"GO",
+		"carry it",
+		"----- end launch pre-flight -----",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("launch pre-flight seed missing %q\n got: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "host dispatch broker") {
+		t.Fatalf("launch pre-flight seed should not contain broker-only logs:\n%s", got)
 	}
 }
 

@@ -827,6 +827,7 @@ type reservationSeedContext struct {
 	RunID        string // the container name, the run correlation id
 	WardVersion  string // the ward release the container pins/resolves
 	Workflow     workflowMode
+	Reservation  string                   // the reservation state the launched run should see
 	Included     []reservationThreadEntry // comments fed to the pre-flight read
 	Stripped     []reservationThreadEntry // comments ward stripped (its own automation)
 	DispatchedAt time.Time
@@ -849,6 +850,7 @@ func buildReservationSeedContext(w resolvedWork, plan upPlan, now time.Time) *re
 		RunID:        plan.Name,
 		WardVersion:  plan.WardVersion,
 		Workflow:     w.Workflow,
+		Reservation:  "held",
 		DispatchedAt: now,
 	}
 	for _, c := range w.Comments {
@@ -868,13 +870,28 @@ func (sc *reservationSeedContext) render() string {
 	if sc == nil {
 		return ""
 	}
-	ward := reservationWardVersionLabel(sc.WardVersion)
 	var b strings.Builder
 	b.WriteString("\n\n<details><summary>run seed context — what this run is carrying (ward#609)</summary>\n\n")
+	b.WriteString(sc.body())
+	b.WriteString("\n</details>\n")
+	return b.String()
+}
+
+// body renders the seed context without the surrounding details wrapper so the
+// same resolved launch context can be reused in the launched run's startup seed.
+func (sc *reservationSeedContext) body() string {
+	if sc == nil {
+		return ""
+	}
+	ward := reservationWardVersionLabel(sc.WardVersion)
+	var b strings.Builder
 	fmt.Fprintf(&b, "- **Resolved:** `%s` · branch `%s` · harness `%s` · workflow `%s`\n",
 		sc.Ref, orNoneLabel(sc.Branch), orNoneLabel(sc.Driver), sc.Workflow.orDefault())
 	fmt.Fprintf(&b, "- **Run:** `%s` · ward `%s` · dispatched `%s`\n",
 		orNoneLabel(sc.RunID), ward, sc.DispatchedAt.UTC().Format(time.RFC3339))
+	if strings.TrimSpace(sc.Reservation) != "" {
+		fmt.Fprintf(&b, "- **Reservation:** %s\n", sc.Reservation)
+	}
 	fmt.Fprintf(&b, "- **Comment thread:** %d included in the pre-flight read, %d stripped (ward's own automated comments).\n",
 		len(sc.Included), len(sc.Stripped))
 	if len(sc.Included) > 0 {
@@ -884,7 +901,6 @@ func (sc *reservationSeedContext) render() string {
 		fmt.Fprintf(&b, "  - stripped: %s\n", renderThreadEntries(sc.Stripped))
 	}
 	fmt.Fprintf(&b, "\nStatic container doctrine and seed boilerplate are identical every run and omitted here (they ride ward %s).\n", ward)
-	b.WriteString("\n</details>\n")
 	return b.String()
 }
 

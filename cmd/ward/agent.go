@@ -1332,28 +1332,11 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, overrideReservation(c)); err != nil {
 		return err
 	}
-	var justification string
-	if preflightWanted(c) {
-		// ward#184: gate on the cheap, authoritative reservation before a full LLM
-		// pre-flight is spent on an issue another run holds. See docs/agent.md.
-		if perr := r.precheckReservation(ctx, agentCmdline(mode, surface), w, overrideReservation(c)); perr != nil {
-			return perr
-		}
-		proceed, read, perr := r.runPreflight(ctx, mode, surface, w)
-		if perr != nil {
-			// A Coded decline (NO-GO / WRONG-REPO, already reported) or a plain
-			// execution error; both surface as-is for the right exit code (ward#485).
-			return perr
-		}
-		if !proceed {
-			// Defensive: a non-proceed with no error shouldn't happen (declines carry
-			// perr now), but never launch when the pre-flight said not to.
-			return nil
-		}
-		// On a GO, carry the read into the reservation comment (ward#383).
-		justification = read
+	justification, preflightRead, preflightVerdict, err := r.resolveLaunchPreflight(ctx, c, mode, surface, w)
+	if err != nil {
+		return err
 	}
-	return r.launchAgentContainer(ctx, c, mode, surface, w, justification)
+	return r.launchAgentContainer(ctx, c, mode, surface, w, justification, preflightVerdict, preflightRead)
 }
 
 func (r *Runner) runAgentWorkPreLaunchChecks(ctx context.Context, c *cli.Command, mode containerMode, surface, label string, w resolvedWork) error {
@@ -1371,6 +1354,33 @@ func (r *Runner) runAgentWorkPreLaunchChecks(ctx context.Context, c *cli.Command
 		r.maybeWriteSkippedReviewSummaryHandoff(mode, c, surface, w.Ref)
 	}
 	return r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w)
+}
+
+func (r *Runner) resolveLaunchPreflight(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork) (justification, preflightRead string, verdict preflightOutcome, err error) {
+	if !preflightWanted(c) {
+		return "", "", preflightOutcome{Verdict: verdictUnknown}, nil
+	}
+	// ward#184: gate on the cheap, authoritative reservation before a full LLM
+	// pre-flight is spent on an issue another run holds. See docs/agent.md.
+	if err := r.precheckReservation(ctx, agentCmdline(mode, surface), w, overrideReservation(c)); err != nil {
+		return "", "", preflightOutcome{}, err
+	}
+	proceed, read, outcome, perr := r.runPreflight(ctx, mode, surface, w)
+	if perr != nil {
+		// A Coded decline (NO-GO / WRONG-REPO, already reported) or a plain
+		// execution error; both surface as-is for the right exit code (ward#485).
+		return "", "", outcome, perr
+	}
+	if !proceed {
+		// Defensive: a non-proceed with no error shouldn't happen (declines carry
+		// perr now), but never launch when the pre-flight said not to.
+		return "", "", outcome, nil
+	}
+	// On a GO, carry the read into the reservation comment (ward#383).
+	if outcome.Verdict == verdictGo {
+		justification = read
+	}
+	return justification, read, outcome, nil
 }
 
 func (r *Runner) maybeWriteSkippedReviewSummaryHandoff(mode containerMode, c *cli.Command, surface string, ref agentIssueRef) {
@@ -1586,7 +1596,7 @@ func (r *Runner) captureWithStdin(ctx context.Context, stdin, bin string, argv .
 
 // runPreflight acts on the agent's feasibility verdict with no human, shared by
 // the headless + task surfaces (ward#147, ward#149): only NO-GO blocks. See docs.
-func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, string, error) {
+func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, string, preflightOutcome, error) {
 	label := agentCmdline(mode, surface)
 	bin := lookupAgent(mode).Record().Binary
 	argv, stdin, ok := hostOneShot(mode, preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
@@ -1598,7 +1608,7 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 		} else {
 			writef(os.Stderr, "%s: %s self-assessment unavailable on this host; proceeding with the detached run.\n", label, bin)
 		}
-		return true, "", nil
+		return true, "", preflightOutcome{Verdict: verdictUnknown}, nil
 	}
 
 	writef(os.Stderr, "%s: preflight start for %s via %s\n", label, w.Ref, bin)
@@ -1616,7 +1626,7 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 		// A read that didn't complete is not the agent saying no: fail open so a
 		// flaky host agent never strands an otherwise-workable issue.
 		writef(os.Stderr, "%s: pre-flight read did not complete (%v); proceeding with the detached run.\n", label, err)
-		return true, "", nil
+		return true, "", preflightOutcome{Verdict: verdictUnknown}, nil
 	}
 	outcome := parsePreflightVerdict(read)
 	writef(os.Stderr, "%s: preflight result for %s verdict=%v repo=%q reason=%q\n", label, w.Ref, outcome.Verdict, outcome.Repo, outcome.Reason)
@@ -1625,26 +1635,26 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 	case verdictWrongRepo:
 		// WRONG-REPO always launches nothing here (it either blind-fires elsewhere
 		// or bounces to a human), so proceed is false regardless of the error.
-		return false, "", r.handlePreflightWrongRepo(ctx, mode, surface, w, outcome, read)
+		return false, "", outcome, r.handlePreflightWrongRepo(ctx, mode, surface, w, outcome, read)
 	case verdictNoGo:
 		writef(os.Stderr, "%s: pre-flight NO-GO for %s; launching nothing, commenting on the issue.\n", label, w.Ref)
 		if cerr := r.postPreflightNoGo(ctx, mode, surface, w.Ref, outcome.Reason, read); cerr != nil {
-			return false, "", fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
+			return false, "", outcome, fmt.Errorf("post NO-GO comment on %s: %w", w.Ref, cerr)
 		}
 		writef(os.Stderr, "%s: commented NO-GO on %s - %s\n", label, w.Ref, w.Ref.url())
-		return false, "", dispatchDeclineErr(dispatchNoGo, "preflight_no_go",
+		return false, "", outcome, dispatchDeclineErr(dispatchNoGo, "preflight_no_go",
 			"%s: pre-flight NO-GO for %s: %s", label, w.Ref, outcome.Reason)
 	case verdictGo:
 		// An explicit GO: proceed and hand the read back so the reservation comment
 		// records the agent's own justification for carrying it (ward#383).
 		writef(os.Stderr, "%s: preflight GO for %s\n", label, w.Ref)
-		return true, read, nil
+		return true, read, outcome, nil
 	case verdictUnknown:
 		// No clear verdict line: proceed, but there is no GO conclusion to justify.
 		writef(os.Stderr, "%s: preflight verdict unclear for %s; proceeding open\n", label, w.Ref)
-		return true, "", nil
+		return true, read, outcome, nil
 	default:
-		return true, "", nil
+		return true, read, outcome, nil
 	}
 }
 
@@ -2004,6 +2014,39 @@ func seedLogBlock(seed string) string {
 	return fmt.Sprintf("----- seeded prompt -----\n%s\n----- end -----\n", seed)
 }
 
+func launchPreflightVerdictLabel(verdict preflightVerdict) string {
+	switch verdict {
+	case verdictGo:
+		return "passed"
+	case verdictNoGo, verdictWrongRepo:
+		return "refused"
+	case verdictUnknown:
+		return "deferred"
+	default:
+		return "deferred"
+	}
+}
+
+func launchPreflightSeedContext(sc *reservationSeedContext, verdict preflightOutcome, read string) string {
+	if sc == nil && strings.TrimSpace(read) == "" {
+		return ""
+	}
+	var b strings.Builder
+	writef(&b, "----- launch pre-flight -----\n")
+	writef(&b, "host pre-flight: %s\n", launchPreflightVerdictLabel(verdict.Verdict))
+	if sc != nil {
+		writef(&b, "checked: trusted owner and issue/ref resolution -> passed\n")
+		writef(&b, "reservation re-check: passed\n")
+		writef(&b, "reservation state: %s\n", orNoneLabel(sc.Reservation))
+		writef(&b, "resolved launch context:\n%s", sc.body())
+	}
+	if read = strings.TrimSpace(read); read != "" {
+		writef(&b, "\npre-flight read:\n%s\n", read)
+	}
+	writef(&b, "----- end launch pre-flight -----")
+	return b.String()
+}
+
 // maybeDumpSeed writes the seed block to w for a killed run's audit record (ward#400),
 // unless quiet - director auto-dispatch sets it to keep the dump off the console (#519).
 func maybeDumpSeed(w io.Writer, seed string, quiet bool) {
@@ -2025,7 +2068,7 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 
 // launchAgentContainer turns a resolved (ref, title, seed) into the container plan and
 // fires it detached - the shared tail of engineer, freeform task, and route (ward#356).
-func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string) error { //nolint:gocyclo,cyclop,gocognit,funlen
+func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string, preflight preflightOutcome, preflightRead string) error { //nolint:gocyclo,cyclop,gocognit,funlen
 	label := agentCmdline(mode, surface)
 	ref, title, seed := w.Ref, w.Title, w.Seed
 
@@ -2081,6 +2124,10 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// Reserve the issue so another run won't redo it. Fold the dynamic seed context into
 	// the comment so a pre-launch-gate death self-documents on the thread (ward#609).
 	seedCtx := buildReservationSeedContext(w, plan, time.Now().UTC())
+	if launchPreflight := launchPreflightSeedContext(seedCtx, preflight, preflightRead); launchPreflight != "" {
+		seed = joinNonEmptyBlocks(launchPreflight, seed)
+		plan.AgentArgs = []string{seed}
+	}
 	var release func()
 	var partialLaunch error
 	if err := r.withAgentRepoLaunchLock(w.Ref.repoSlug(), func() error {
@@ -2459,18 +2506,9 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 
 	// The freeform engineer run carries headless, so it gets the same pre-flight
 	// (ward#149): a NO-GO comments on the just-filed issue and launches nothing.
-	var justification string
-	if preflightWanted(c) {
-		proceed, read, perr := r.runPreflight(ctx, mode, "engineer", resolvedWork{Ref: ref, Title: title, Body: body})
-		if perr != nil {
-			return fmt.Errorf("%s: pre-flight: %w", label, perr)
-		}
-		if !proceed {
-			// runPreflight already reported the NO-GO and posted the issue comment.
-			return nil
-		}
-		// On a GO, carry the read into the reservation comment (ward#383).
-		justification = read
+	justification, preflightRead, preflightVerdict, err := r.resolveLaunchPreflight(ctx, c, mode, "engineer", resolvedWork{Ref: ref, Title: title, Body: body})
+	if err != nil {
+		return fmt.Errorf("%s: pre-flight: %w", label, err)
 	}
 
 	if forwarded, ferr := r.forwardFreeformEngineerLaunchToHostBroker(ctx, c, mode, ref); forwarded {
@@ -2483,7 +2521,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	seed := agentSeedPromptWorkflow(ref, title, body, "", true, nil, wf, reviewGate, "")
 	seed += agentRunBudgetNote(roleEngineer)
 	return r.launchAgentContainer(ctx, c, mode, "engineer",
-		resolvedWork{Ref: ref, Title: title, Body: body, Workflow: wf, ReviewGate: reviewGate, Seed: seed}, justification)
+		resolvedWork{Ref: ref, Title: title, Body: body, Workflow: wf, ReviewGate: reviewGate, Seed: seed}, justification, preflightVerdict, preflightRead)
 }
 
 // maybeWarnWardOutdatedForTask keeps the freeform engineer reminder branch out of

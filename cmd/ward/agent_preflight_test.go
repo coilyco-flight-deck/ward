@@ -25,9 +25,10 @@ func TestRunPreflightGooseNeverRunsHostOneShot(t *testing.T) {
 
 	var proceed bool
 	var read string
+	var outcome preflightOutcome
 	var err error
 	stderr := captureTestStderr(t, func() {
-		proceed, read, err = r.runPreflight(context.Background(), modeGoose, "engineer", w)
+		proceed, read, outcome, err = r.runPreflight(context.Background(), modeGoose, "engineer", w)
 	})
 
 	if err != nil {
@@ -38,6 +39,9 @@ func TestRunPreflightGooseNeverRunsHostOneShot(t *testing.T) {
 	}
 	if read != "" {
 		t.Errorf("a barred goose pre-flight hands back no read; got %q", read)
+	}
+	if outcome.Verdict != verdictUnknown {
+		t.Errorf("goose pre-flight outcome = %v, want unknown", outcome.Verdict)
 	}
 	// The stderr must name the local-model bar - proof the host one-shot was skipped
 	// rather than run in the dispatcher cwd (the ward#153 failure).

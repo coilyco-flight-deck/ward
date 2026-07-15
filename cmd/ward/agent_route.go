@@ -153,7 +153,7 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 	// ROUTE used the survey as its feasibility gate, not the GO pre-flight, so there
 	// is no GO justification to fold into the reservation comment (ward#383).
 	return r.launchAgentContainer(ctx, c, mode, "task",
-		resolvedWork{Ref: child, Title: title, Body: childBody, Seed: seed}, "")
+		resolvedWork{Ref: child, Title: title, Body: childBody, Seed: seed}, "", preflightOutcome{Verdict: verdictUnknown}, "")
 }
 
 // routeSurveyPreconditions gates ROUTE before it files anything: a non-empty task
