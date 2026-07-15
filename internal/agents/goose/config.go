@@ -20,7 +20,10 @@ func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
 	dir := filepath.Join(rc.AgentHome, ".config", "goose")
 	_ = os.MkdirAll(dir, 0o755)
 	provider := envOr("WARD_GOOSE_PROVIDER", "ollama")
-	model := envOr("WARD_GOOSE_MODEL", "qwen3-coder:30b")
+	model := rc.GooseModel
+	if model == "" {
+		model = envOr("WARD_GOOSE_MODEL", "qwen3-coder:30b")
+	}
 	host := ""
 	if b64 := os.Getenv(ollamaHostEnvKey); b64 != "" {
 		if dec, derr := base64.StdEncoding.DecodeString(b64); derr == nil {

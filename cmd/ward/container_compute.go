@@ -582,6 +582,7 @@ var configEnvKeys = map[string]string{
 	"agent.codex.model":       "WARD_CODEX_MODEL",
 	"agent.codex.effort":      "WARD_CODEX_REASONING_EFFORT",
 	"agent.codex.verbosity":   "WARD_CODEX_VERBOSITY",
+	"agent.goose.model":       "WARD_GOOSE_MODEL",
 	"agent.opencode.model":    "WARD_OPENCODE_MODEL",
 	"agent.opencode.endpoint": "WARD_OLLAMA_URL",
 }

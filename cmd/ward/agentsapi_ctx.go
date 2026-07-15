@@ -114,6 +114,7 @@ func (r *Runner) agentRunCtx(ctx context.Context, e bootstrapEnv, seed []string)
 		CodexVerbosity: e.CodexVerbosity,
 		ClaudeModel:    e.ClaudeModel,
 		ClaudeEffort:   e.ClaudeEffort,
+		GooseModel:     e.GooseModel,
 		OpencodeModel:  e.OpencodeModel,
 		OllamaURL:      e.OllamaURL,
 		Correlation:    agentCorrelation(e, containerMode(e.Mode)),

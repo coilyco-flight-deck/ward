@@ -194,6 +194,28 @@ func TestComposeAgentContainerPerMode(t *testing.T) {
 	}
 }
 
+// TestComposeAgentContainerGooseUsesRunCtxModel pins the end-to-end Goose path:
+// the resolved run context model lands in goose's config.yaml unchanged.
+func TestComposeAgentContainerGooseUsesRunCtxModel(t *testing.T) {
+	home := t.TempDir()
+	r := testRunner()
+	rc := r.agentRunCtx(context.Background(), bootstrapEnv{
+		Mode:       string(modeGoose),
+		AgentHome:  home,
+		TargetName: "ward",
+		GooseModel: "qwen3-coder:30b-instruct",
+		OllamaURL:  "http://host.docker.internal:8082/v1",
+	}, nil)
+	composeAgentContainer(lookupAgent(modeGoose), rc)
+	got, err := os.ReadFile(filepath.Join(home, ".config", "goose", "config.yaml"))
+	if err != nil {
+		t.Fatalf("read goose config: %v", err)
+	}
+	if !strings.Contains(string(got), "GOOSE_MODEL: qwen3-coder:30b-instruct") {
+		t.Fatalf("goose config missing verbatim model:\n%s", got)
+	}
+}
+
 // TestSelfContainedHarnessInstall verifies the self-contained harnesses
 // explicitly prove their binary is already present and do not need Exec.
 func TestSelfContainedHarnessInstall(t *testing.T) {

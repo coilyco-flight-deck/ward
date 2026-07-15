@@ -39,6 +39,7 @@ type bootstrapEnv struct {
 	GitCache      string
 	ContextSrc    string
 	OpencodeModel string
+	GooseModel    string
 	OllamaURL     string
 	// Cheapest codex posture by default (ward#379): mini model + low reasoning +
 	// verbosity, each overridable via WARD_CODEX_*. docs/agent-credentials.md.
@@ -155,6 +156,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	opencode := fleetAgentByName(fleet, string(modeOpencode))
 	codex := fleetAgentByName(fleet, string(modeCodex))
 	claude := fleetAgentByName(fleet, string(modeClaude))
+	goose := fleetAgentByName(fleet, string(modeGoose))
 	// Per-role model/effort overlay (ward#620): the resolved role's per-agent overlay
 	// slots into the precedence between WARD_* env and the flat per-agent fleet default.
 	role := os.Getenv("WARD_ROLE")
@@ -176,6 +178,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		// Precedence WARD_* env > role overlay > flat per-agent default (ward#620): the
 		// role's opencode overlay (if any) leads the fleet manifest's opencode node.
 		OpencodeModel: envOr("WARD_OPENCODE_MODEL", firstNonEmpty(opencodeOv.Model, opencode.Model)),
+		GooseModel:    envOr("WARD_GOOSE_MODEL", goose.Model),
 		OllamaURL:     envOr("WARD_OLLAMA_URL", firstNonEmpty(opencodeOv.Endpoint, opencode.Endpoint)),
 		// Cheapest codex settings (ward#379): fleet manifest's codex node, role overlay
 		// ahead of it (ward#620).
@@ -319,7 +322,7 @@ func resolvedAgentKnobs(rc agentsapi.RunCtx, mode containerMode) (model, effort,
 	case modeOpencode:
 		return rc.OpencodeModel, "", rc.OllamaURL
 	case modeGoose:
-		return "", "", ""
+		return rc.GooseModel, "", rc.OllamaURL
 	case modeClaude:
 		return rc.ClaudeModel, rc.ClaudeEffort, ""
 	default:

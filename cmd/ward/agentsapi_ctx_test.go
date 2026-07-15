@@ -32,6 +32,7 @@ func TestAgentRunCtxCarve(t *testing.T) {
 		CodexVerbosity: "low",
 		ClaudeModel:    "sonnet",
 		ClaudeEffort:   "medium",
+		GooseModel:     "qwen3-coder:30b",
 		OpencodeModel:  "qwen3-coder:30b",
 		OllamaURL:      "http://host.docker.internal:8082/v1",
 	}
@@ -58,6 +59,9 @@ func TestAgentRunCtxCarve(t *testing.T) {
 	if rc.ClaudeModel != e.ClaudeModel || rc.ClaudeEffort != e.ClaudeEffort {
 		t.Errorf("claude knobs = %q/%q, want %q/%q (ward#616)",
 			rc.ClaudeModel, rc.ClaudeEffort, e.ClaudeModel, e.ClaudeEffort)
+	}
+	if rc.GooseModel != e.GooseModel {
+		t.Errorf("GooseModel = %q, want %q", rc.GooseModel, e.GooseModel)
 	}
 	// The carve reads the bootstrapEnv.OpencodeModel field into the neutral
 	// OpencodeModel today.

@@ -8,6 +8,8 @@ This page is the durable anchor for per-role overlay precedence.
 - It covers the merge between fleet defaults and role-specific overrides.
 - It keeps the embedded fleet config and the launch source model distinct.
 - The comment trail points here when a role overlay wins over a base value.
+- The shared model override shape is `agent.<harness>.model`, including Goose
+  through `--config agent.goose.model=<model>`.
 
 ## See also
 

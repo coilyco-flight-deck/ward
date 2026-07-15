@@ -47,3 +47,24 @@ func TestComposeConfigScrubsEnv(t *testing.T) {
 		t.Errorf("%s should be scrubbed after seeding, got %q", ollamaHostEnvKey, v)
 	}
 }
+
+// TestComposeConfigUsesRunCtxModelVerbatim pins the Goose model pass-through:
+// the run context model lands in config.yaml unchanged, without normalization.
+func TestComposeConfigUsesRunCtxModelVerbatim(t *testing.T) {
+	home := t.TempDir()
+	model := "qwen3-coder:30b-instruct"
+	rc := agentsapi.RunCtx{AgentHome: home, Log: noopLog, GooseModel: model}
+	if err := (Agent{}).ComposeConfig(rc); err != nil {
+		t.Fatalf("ComposeConfig: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(home, ".config", "goose", "config.yaml"))
+	if err != nil {
+		t.Fatalf("expected config.yaml written: %v", err)
+	}
+	if !strings.Contains(string(got), "GOOSE_MODEL: "+model) {
+		t.Fatalf("config.yaml missing verbatim model %q:\n%s", model, got)
+	}
+	if strings.Contains(string(got), "GOOSE_MODEL: qwen3-coder:30b\n") {
+		t.Fatalf("config.yaml should not normalize the model:\n%s", got)
+	}
+}

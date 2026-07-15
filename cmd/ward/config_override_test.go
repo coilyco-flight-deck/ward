@@ -13,6 +13,7 @@ func TestResolvedAgentKnobs(t *testing.T) {
 	rc := agentsapi.RunCtx{
 		ClaudeModel: "sonnet", ClaudeEffort: "medium",
 		CodexModel: "gpt-5.4", CodexEffort: "low",
+		GooseModel:    "qwen3-coder:30b",
 		OpencodeModel: "qwen", OllamaURL: "http://x:1/v1",
 	}
 	cases := []struct {
@@ -22,7 +23,7 @@ func TestResolvedAgentKnobs(t *testing.T) {
 		{modeClaude, "sonnet", "medium", ""},
 		{modeCodex, "gpt-5.4", "low", ""},
 		{modeOpencode, "qwen", "", "http://x:1/v1"},
-		{modeGoose, "", "", ""},
+		{modeGoose, "qwen3-coder:30b", "", "http://x:1/v1"},
 	}
 	for _, tc := range cases {
 		m, e, ep := resolvedAgentKnobs(rc, tc.mode)
@@ -43,6 +44,8 @@ func TestParseConfigOverrides(t *testing.T) {
 		{"nil is nil", nil, nil},
 		{"claude model + effort", []string{"agent.claude.model=sonnet", "agent.claude.effort=medium"},
 			map[string]string{"WARD_CLAUDE_MODEL": "sonnet", "WARD_CLAUDE_REASONING_EFFORT": "medium"}},
+		{"goose model", []string{"agent.goose.model=qwen3-coder:30b"},
+			map[string]string{"WARD_GOOSE_MODEL": "qwen3-coder:30b"}},
 		{"codex verbosity", []string{"agent.codex.verbosity=high"},
 			map[string]string{"WARD_CODEX_VERBOSITY": "high"}},
 		{"opencode endpoint maps to ollama url", []string{"agent.opencode.endpoint=http://x:1/v1"},
@@ -90,14 +93,20 @@ func TestParseConfigOverrides(t *testing.T) {
 // the container env as its WARD_* key, winning over a default (ward#616).
 func TestWardEnvMergesConfigOverrides(t *testing.T) {
 	p := upPlan{
-		Name:      "c",
-		Repo:      targetRepo{Owner: "o", Name: "r"},
-		Mode:      modeClaude,
-		ConfigEnv: map[string]string{"WARD_CLAUDE_MODEL": "sonnet"},
+		Name: "c",
+		Repo: targetRepo{Owner: "o", Name: "r"},
+		Mode: modeClaude,
+		ConfigEnv: map[string]string{
+			"WARD_CLAUDE_MODEL": "sonnet",
+			"WARD_GOOSE_MODEL":  "qwen3-coder:30b",
+		},
 	}
 	env := p.wardEnv()
 	if got := env["WARD_CLAUDE_MODEL"]; got != "sonnet" {
 		t.Errorf("wardEnv WARD_CLAUDE_MODEL = %q, want %q", got, "sonnet")
+	}
+	if got := env["WARD_GOOSE_MODEL"]; got != "qwen3-coder:30b" {
+		t.Errorf("wardEnv WARD_GOOSE_MODEL = %q, want %q", got, "qwen3-coder:30b")
 	}
 }
 

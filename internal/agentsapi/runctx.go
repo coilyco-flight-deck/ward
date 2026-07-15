@@ -59,6 +59,8 @@ type RunCtx struct {
 	// Empty ClaudeModel omits --model; claude has no effort flag, so it is echo-only.
 	ClaudeModel  string
 	ClaudeEffort string
+	// GooseModel is goose's model knob, carried through unchanged to goose config.
+	GooseModel string
 	// OpencodeModel is the ollama-backed model the opencode config points at.
 	OpencodeModel string
 	// OllamaURL is the local ollama endpoint the opencode config binds.
