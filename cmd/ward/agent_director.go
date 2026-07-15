@@ -390,8 +390,10 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 	if cfg.triage && !preview && cfg.issueRef == nil {
 		r.backlogTriage(ctx, label, repos, cfg.mode, cfg.limit)
 	}
-	if err := r.backlogRefreshForDirector(ctx, label, cfg, repos); err != nil {
-		return err
+	if directorNeedsLiveBacklog(cfg) {
+		if err := r.backlogRefreshForDirector(ctx, label, cfg, repos); err != nil {
+			return err
+		}
 	}
 	if err := r.backlogPrintStatus(repos); err != nil {
 		return err
@@ -411,6 +413,12 @@ func (r *Runner) driveBacklog(ctx context.Context, label string, repos []string,
 		return err
 	}
 	return runDirectorLoop(ctx, cfg, &liveDirector{r: r, label: label, repos: repos, cfg: cfg})
+}
+
+// directorNeedsLiveBacklog reports whether startup needs to enumerate the live backlog
+// instead of opening the read-only surface from the stored ledger.
+func directorNeedsLiveBacklog(cfg backlogConfig) bool {
+	return cfg.burndown || cfg.triage || cfg.issueRef != nil
 }
 
 // backlogRefreshForDirector keeps the live heartbeat on exactly one issue when the

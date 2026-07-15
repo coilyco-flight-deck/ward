@@ -39,6 +39,27 @@ func TestDirectorHelpNamesInteractiveStartup(t *testing.T) {
 	}
 }
 
+func TestDirectorNeedsLiveBacklog(t *testing.T) {
+	ref := &agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 5}
+	cases := []struct {
+		name string
+		cfg  backlogConfig
+		want bool
+	}{
+		{"plain interactive", backlogConfig{}, false},
+		{"burndown", backlogConfig{burndown: true}, true},
+		{"startup triage", backlogConfig{triage: true}, true},
+		{"issue scoped", backlogConfig{issueRef: ref}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := directorNeedsLiveBacklog(tc.cfg); got != tc.want {
+				t.Fatalf("directorNeedsLiveBacklog(%+v) = %v, want %v", tc.cfg, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDirectorDispatchDisposition covers ward#352 + ward#524: a coded per-issue decline
 // parks `failed`; a reservation conflict or a launch-time infra failure stays `queued`.
 func TestDirectorDispatchDisposition(t *testing.T) {
@@ -807,6 +828,48 @@ func TestBacklogRefreshUsesForgejoTokenForPrivateRepos(t *testing.T) {
 
 	if err := (&Runner{}).backlogRefresh(t.Context(), "director", []string{"coilyco-flight-deck/ward"}, 50); err != nil {
 		t.Fatalf("backlogRefresh: %v", err)
+	}
+}
+
+func TestPlainDirectorPrintDoesNotEnumerateIssues(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FORGEJO_TOKEN", "secret")
+
+	bundleDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
+
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+
+	sawIssueList := false
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/issues") && r.URL.Query().Get("type") == "issues":
+			sawIssueList = true
+			t.Fatal("plain director startup must not enumerate the live issue backlog")
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/issues") && r.URL.Query().Get("type") == "pulls":
+			sawIssueList = true
+			t.Fatal("plain director startup must not enumerate the live issue backlog")
+		default:
+			t.Fatalf("unexpected request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	cmd := &cli.Command{Name: "director", Flags: directorFlags(), Action: func(context.Context, *cli.Command) error { return nil }}
+	if err := cmd.Run(t.Context(), []string{"director", "--print", "--repo", "coilyco-flight-deck/ward"}); err != nil {
+		t.Fatalf("parse print run: %v", err)
+	}
+	r := &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
+	if err := r.runAgentBacklog(t.Context(), cmd, modeGoose); err != nil {
+		t.Fatalf("runAgentBacklog: %v", err)
+	}
+	if sawIssueList {
+		t.Fatal("plain director startup enumerated the issue backlog")
 	}
 }
 

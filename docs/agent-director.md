@@ -12,8 +12,9 @@ The director surface is the read-only control plane for runs.
 - Its implicit repo scope comes from `~/.ward/config.yaml` or an explicit
   `--repo` / `--org` launch. It does not need the current directory to be a git
   repo.
-- By default it refreshes and prints status, then opens the attached read-only
-  surface. Add `--burndown` to run the autonomous dispatch heartbeat.
+- By default it prints status from the stored ledger, then opens the attached
+  read-only surface without enumerating the live issue backlog. Add `--burndown`
+  to run the autonomous dispatch heartbeat, or `--triage` to opt into startup issue inventory.
 - The bundled burndown default comes from `.ward/ward-kdl/ward-kdl.defaults.kdl`, which keeps the interactive lane on the bundled smart-defaults file without hardcoding a number in docs.
 - When issue-scoped under `--burndown`, each heartbeat refresh stays pinned to
   that exact issue instead of rehydrating the repo backlog.

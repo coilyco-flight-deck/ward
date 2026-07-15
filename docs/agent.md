@@ -67,7 +67,7 @@ The bare ref form defaults to `engineer`. The ref can be a bare `#N`, a full
 `owner/repo#N`, a full Forgejo issue URL, or, for `director`, an issue-scoped
 positional ref.
 
-The director has no separate interactive subcommand. Start `warded director --repo owner/name` from a terminal to open the read-only session. Add `--burndown` only when the command should autonomously dispatch queued headless work. During a full burndown lane, press Enter during the sleep offer to open the same session.
+The director has no separate interactive subcommand. Start `warded director --repo owner/name` from a terminal to open the read-only session from the stored ledger. Add `--burndown` only when the command should autonomously dispatch queued headless work or enumerate the live backlog. During a full burndown lane, press Enter during the sleep offer to open the same session.
 
 ## Why the docs are smaller
 
