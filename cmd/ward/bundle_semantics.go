@@ -216,10 +216,11 @@ func sameWrapBinaryAlias(a, b string) bool {
 	if a == b {
 		return true
 	}
-	if (a == "ward" && b == "ward-kdl") || (a == "ward-kdl" && b == "ward") {
-		return true
-	}
-	return false
+	return normalizeWrapBinaryName(a) == normalizeWrapBinaryName(b)
+}
+
+func normalizeWrapBinaryName(name string) string {
+	return strings.TrimSuffix(name, "-kdl")
 }
 
 func cloneNodes(nodes []*kdl.Node) []*kdl.Node {
@@ -234,5 +235,18 @@ func wrapNodeMatchesPath(n *kdl.Node, want ...string) bool {
 	if n.Name() != "wrap" {
 		return false
 	}
-	return nodeArgEquals(n, want...)
+	args := n.Arguments()
+	if len(args) == len(want) {
+		return nodeArgEquals(n, want...)
+	}
+	if len(args) != len(want)+1 {
+		return false
+	}
+	for i, w := range want {
+		arg := args[i+1]
+		if arg.Kind() != kdl.String || arg.String() != w {
+			return false
+		}
+	}
+	return true
 }

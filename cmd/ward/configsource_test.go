@@ -125,7 +125,7 @@ func TestOpsForgejoUnavailableNestedHelpReportsMountFailure(t *testing.T) {
 	for _, want := range []string{
 		"ward ops forgejo: unavailable",
 		"guardfile runtime failed to mount",
-		"missing top-level `wrap ward-kdl ops forgejo` block",
+		"missing top-level `wrap ops forgejo` block",
 		"Try `ward ops forgejo --help` or `ward ops forgejo describe` once the bundle is mounted",
 	} {
 		if !strings.Contains(err.Error(), want) {
@@ -324,6 +324,29 @@ func TestBuildForgejoOpsFromNeutralBundle(t *testing.T) {
 	}
 	if commandNamed(baked.Commands, "admin") != nil {
 		t.Error("baked build still mounted the removed admin surface")
+	}
+}
+
+// TestBuildForgejoOpsFromWardBrandedBundle keeps the Forgejo lookup brand-agnostic:
+// a bundle whose top-level wrap is `ward` rather than `ward-kdl` must still mount.
+func TestBuildForgejoOpsFromWardBrandedBundle(t *testing.T) {
+	dir := writeBundleFixture(t)
+	body, err := os.ReadFile(filepath.Join(dir, bundleFixtureForgejoPath))
+	if err != nil {
+		t.Fatalf("read forgejo fixture: %v", err)
+	}
+	rewritten := strings.Replace(string(body), "wrap ward-kdl ops forgejo {", "wrap ward ops forgejo {", 1)
+	if rewritten == string(body) {
+		t.Fatal("rewrite did not change the ward-kdl brand")
+	}
+	writeBundleFixtureFile(t, dir, bundleFixtureForgejoPath, rewritten)
+
+	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(dir))
+	if err != nil {
+		t.Fatalf("buildForgejoOpsFrom(ward-branded bundle): %v", err)
+	}
+	if commandNamed(forgejo.Commands, "issue") == nil {
+		t.Fatalf("ward-branded forgejo bundle lost the issue surface; got %v", commandNames(forgejo.Commands))
 	}
 }
 
