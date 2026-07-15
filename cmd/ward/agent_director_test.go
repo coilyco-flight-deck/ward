@@ -740,6 +740,7 @@ func TestBacklogRefreshReservationStates(t *testing.T) {
 	defer srv.Close()
 	forgejoBaseURL = srv.URL
 
+	t.Setenv("WARD_CONFIG_REF", "")
 	t.Setenv("WARD_AGENT_RESERVE_RECHECK", "off")
 	r := &Runner{}
 	if err := r.backlogRefresh(t.Context(), "director", []string{"coilyco-flight-deck/ward"}, 50); err != nil {
