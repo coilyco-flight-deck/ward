@@ -2073,7 +2073,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		if err := r.launchOpenPRBackpressureCheck(ctx, label, w.Ref.repoSlug(), openPRBackpressureApplies(c, w)); err != nil {
 			return err
 		}
-		if err := r.launchRepoEngineerBackpressureCheck(ctx, label, w.Ref, overrideReservation(c)); err != nil {
+		if err := r.launchRepoEngineerBackpressureCheck(ctx, label, w.Ref, c.Bool("override-capacity")); err != nil {
 			return err
 		}
 		if !c.Bool("print") {

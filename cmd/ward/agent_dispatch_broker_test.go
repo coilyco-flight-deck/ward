@@ -728,7 +728,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	t.Setenv(envAgentTag, "")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "merge-remote-main",
-		"--details", "repair after PR #357", "--skip-preflight", "--skip-review",
+		"--details", "repair after PR #357", "--skip-preflight", "--skip-review", "--override-capacity",
 	})
 	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, "engineer", modeClaude)
 	if err != nil {
@@ -744,7 +744,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	if req.Token != "nonce-123" {
 		t.Errorf("forwarded token = %q, want the per-launch nonce", req.Token)
 	}
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "merge-remote-main", "--details", "repair after PR #357", "--skip-preflight", "--skip-review"}
+	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "merge-remote-main", "--details", "repair after PR #357", "--override-capacity", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
 	}

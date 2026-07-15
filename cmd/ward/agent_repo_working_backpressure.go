@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -31,8 +32,8 @@ func newEngineerRepoWorkingBackpressureError(label, repo string, working, limit 
 }
 
 // launchRepoEngineerBackpressureCheck refuses engineer launches once the repo
-// hits the carried issue/repo authority's tracker-aware active-engineer limit.
-func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label string, ref agentIssueRef, overrideReservation bool) error {
+// hits the active-engineer limit; --override-capacity grants one extra slot.
+func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label string, ref agentIssueRef, overrideCapacity bool) error {
 	count, err := r.activeEngineerLaunchCountForRepo(ctx, ref)
 	if err != nil {
 		return fmt.Errorf("%s: count repo engineer launches for backpressure: %w", label, err)
@@ -41,7 +42,13 @@ func (r *Runner) launchRepoEngineerBackpressureCheck(ctx context.Context, label 
 	if count < limit {
 		return nil
 	}
-	_ = overrideReservation
+	if overrideCapacity {
+		if count == limit {
+			fmt.Fprintf(os.Stderr, "%s: WARNING: launching over the repo engineer ceiling (%d/%d) - host may thrash or OOM (--override-capacity)\n", label, count+1, limit)
+			return nil
+		}
+		fmt.Fprintf(os.Stderr, "%s: note: --override-capacity grants exactly one launch past the repo ceiling and the pool is already past it (%d/%d); refusing (ward#1347)\n", label, count, limit)
+	}
 	return newEngineerRepoWorkingBackpressureError(label, ref.repoSlug(), count, limit)
 }
 
@@ -51,7 +58,7 @@ func (r *Runner) maybeLaunchRepoEngineerBackpressure(ctx context.Context, label 
 	if c != nil && c.Bool("print") {
 		return nil
 	}
-	return r.launchRepoEngineerBackpressureCheck(ctx, label, ref, overrideReservation(c))
+	return r.launchRepoEngineerBackpressureCheck(ctx, label, ref, c != nil && c.Bool("override-capacity"))
 }
 
 type repoIssueScanner interface {

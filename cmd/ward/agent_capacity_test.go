@@ -292,6 +292,71 @@ func TestLaunchRepoEngineerBackpressureIgnoresStaleDockerWhenIssueThreadIsClear(
 	}
 }
 
+func TestLaunchRepoEngineerBackpressureOverrideCapacity(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+	now := time.Now().UTC()
+	limit := engineerRepoWorkingLimitDefault()
+	rows := make([]issueThreadAuthorityRow, 0, limit)
+	for i := 0; i < limit; i++ {
+		rows = append(rows, issueThreadAuthorityRow{
+			Number:   i + 1,
+			Title:    fmt.Sprintf("held issue %d", i+1),
+			Body:     "body",
+			Labels:   []string{"P0", "headless"},
+			Comments: []issueComment{reservationIssueComment(reservationCommentBody(modeCodex, fmt.Sprintf("engineer-codex-ward-%d", i+1), "box", now.Add(-time.Minute), "", nil), now.Add(-time.Minute))},
+		})
+	}
+	srv := issueThreadAuthorityServer(t, rows)
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	r, _, _ := bufRunner(stubCommandInPath(t, "docker"))
+	var err error
+	stderr := captureTestStderr(t, func() {
+		err = r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"}, true)
+	})
+	if err != nil {
+		t.Fatalf("launchRepoEngineerBackpressureCheck at limit with override-capacity: %v", err)
+	}
+	for _, want := range []string{
+		"WARNING",
+		fmt.Sprintf("(%d/%d)", limit+1, limit),
+		"--override-capacity",
+		"repo engineer ceiling",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("override-capacity warning missing %q: %q", want, stderr)
+		}
+	}
+
+	rows = append(rows, issueThreadAuthorityRow{
+		Number:   limit + 1,
+		Title:    "over limit issue",
+		Body:     "body",
+		Labels:   []string{"P0", "headless"},
+		Comments: []issueComment{reservationIssueComment(reservationCommentBody(modeCodex, fmt.Sprintf("engineer-codex-ward-%d", limit+1), "box", now.Add(-time.Minute), "", nil), now.Add(-time.Minute))},
+	})
+	srv2 := issueThreadAuthorityServer(t, rows)
+	defer srv2.Close()
+	forgejoBaseURL = srv2.URL
+
+	stderr = captureTestStderr(t, func() {
+		err = r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward"}, true)
+	})
+	if err == nil {
+		t.Fatal("launchRepoEngineerBackpressureCheck over limit with override-capacity: want error, got nil")
+	}
+	var capErr *engineerRepoWorkingBackpressureError
+	if !errors.As(err, &capErr) {
+		t.Fatalf("over-limit override-capacity error = %T %v, want *engineerRepoWorkingBackpressureError", err, err)
+	}
+	if !strings.Contains(stderr, "exactly one launch past the repo ceiling") {
+		t.Fatalf("override-capacity refusal note missing from stderr: %q", stderr)
+	}
+}
+
 func repoReservation(t *testing.T, ref agentIssueRef, container string, at time.Time) {
 	t.Helper()
 	path, err := agentReservationPath(ref)
@@ -479,7 +544,7 @@ func TestActiveEngineerLaunchCountIgnoresTerminalGhostRowsAndCacheClears(t *test
 		t.Fatalf("activeEngineerLaunchCountForRepo after cache clear = %d, want 2", count)
 	}
 	if err := r.launchRepoEngineerBackpressureCheck(context.Background(), "lbl", ref, true); err != nil {
-		t.Fatalf("launchRepoEngineerBackpressureCheck with override-reservation should still ignore the terminal ghost row: %v", err)
+		t.Fatalf("launchRepoEngineerBackpressureCheck with override-capacity should still ignore the terminal ghost row: %v", err)
 	}
 }
 
