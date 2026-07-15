@@ -174,6 +174,8 @@ type PRWorkflowClient interface {
 	GetPullRequest(context.Context, string, string, int) (*PullRequest, error)
 	GetCommitCombinedStatus(context.Context, string, string, string) (*CommitCombinedStatus, error)
 	PullRequestMerged(context.Context, string, string, int) (bool, error)
+	ClosePullRequest(context.Context, string, string, int) error
+	ReopenPullRequest(context.Context, string, string, int) error
 	MergePullRequestWithHeadAndStyle(context.Context, string, string, int, string, string) error
 	ListActionRuns(context.Context, string, string, int) ([]ActionRun, error)
 	GetActionRun(context.Context, string, string, int64) (*ActionRun, error)

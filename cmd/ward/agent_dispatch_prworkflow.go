@@ -35,41 +35,83 @@ func execDispatchBrokerPRWorkflowWith(ctx context.Context, cl *forgejoClient, re
 	if err := validateDispatchBrokerPRWorkflow(req); err != nil {
 		return "", err
 	}
-	action := dispatchAction(req.Action)
-	role := strings.TrimSpace(req.Role)
-	switch action {
-	case dispatchActionPRStatus:
-		ref, err := parseAgentIssueRef(req.Target)
-		if err != nil {
-			return "", fmt.Errorf("dispatch broker: %s target: %w", action, err)
-		}
-		if err := prWorkflowPermitted(role, "", prOpStatus); err != nil {
-			return "", fmt.Errorf("dispatch broker: %w", err)
-		}
-		return prWorkflowStatusReport(ctx, cl, ref.Owner, ref.Repo, ref.Number)
-	case dispatchActionPRMerge:
-		ref, err := parseAgentIssueRef(req.Target)
-		if err != nil {
-			return "", fmt.Errorf("dispatch broker: %s target: %w", action, err)
-		}
-		// The merge gate needs the PR's workflow marker, so it runs inside the
-		// executor - after the PR body is in hand, before any mutation.
-		return prWorkflowMergeExec(ctx, cl, role, ref.Owner, ref.Repo, ref.Number, req.MergeStyle)
-	case dispatchActionCIRuns:
-		owner, name, _ := strings.Cut(req.Target, "/")
-		if err := prWorkflowPermitted(role, "", prOpRuns); err != nil {
-			return "", fmt.Errorf("dispatch broker: %w", err)
-		}
-		return prWorkflowRunsReport(ctx, cl, owner, name, req.Limit)
-	case dispatchActionCIRerun:
-		owner, name, _ := strings.Cut(req.Target, "/")
-		if err := prWorkflowPermitted(role, "", prOpRerun); err != nil {
-			return "", fmt.Errorf("dispatch broker: %w", err)
-		}
-		return prWorkflowRerunExec(ctx, cl, owner, name, req.RunID)
-	default:
-		return "", fmt.Errorf("dispatch broker: action %q is not a PR-workflow action", req.Action)
+	if handler, ok := prWorkflowDispatchExecutors[dispatchAction(req.Action)]; ok {
+		return handler(ctx, cl, req)
 	}
+	return "", fmt.Errorf("dispatch broker: action %q is not a PR-workflow action", req.Action)
+}
+
+type prWorkflowDispatchExecutor func(context.Context, *forgejoClient, dispatchBrokerRequest) (string, error)
+
+var prWorkflowDispatchExecutors = map[string]prWorkflowDispatchExecutor{
+	dispatchActionPRStatus:  execDispatchBrokerPRStatus,
+	dispatchActionPRMerge:   execDispatchBrokerPRMerge,
+	dispatchActionPRClose:   execDispatchBrokerPRClose,
+	dispatchActionPRReopen:  execDispatchBrokerPRReopen,
+	dispatchActionPRRecover: execDispatchBrokerPRRecover,
+	dispatchActionCIRuns:    execDispatchBrokerCIRuns,
+	dispatchActionCIRerun:   execDispatchBrokerCIRerun,
+}
+
+func execDispatchBrokerPRStatus(ctx context.Context, cl *forgejoClient, req dispatchBrokerRequest) (string, error) {
+	ref, err := parseAgentIssueRef(req.Target)
+	if err != nil {
+		return "", fmt.Errorf("dispatch broker: %s target: %w", dispatchActionPRStatus, err)
+	}
+	if err := prWorkflowPermitted(strings.TrimSpace(req.Role), "", prOpStatus); err != nil {
+		return "", fmt.Errorf("dispatch broker: %w", err)
+	}
+	return prWorkflowStatusReport(ctx, cl, ref.Owner, ref.Repo, ref.Number)
+}
+
+func execDispatchBrokerPRMerge(ctx context.Context, cl *forgejoClient, req dispatchBrokerRequest) (string, error) {
+	ref, err := parseAgentIssueRef(req.Target)
+	if err != nil {
+		return "", fmt.Errorf("dispatch broker: %s target: %w", dispatchActionPRMerge, err)
+	}
+	// The merge gate needs the PR's workflow marker, so it runs inside the
+	// executor - after the PR body is in hand, before any mutation.
+	return prWorkflowMergeExec(ctx, cl, strings.TrimSpace(req.Role), ref.Owner, ref.Repo, ref.Number, req.MergeStyle)
+}
+
+func execDispatchBrokerPRClose(ctx context.Context, cl *forgejoClient, req dispatchBrokerRequest) (string, error) {
+	ref, err := parseAgentIssueRef(req.Target)
+	if err != nil {
+		return "", fmt.Errorf("dispatch broker: %s target: %w", dispatchActionPRClose, err)
+	}
+	return prWorkflowCloseExec(ctx, cl, strings.TrimSpace(req.Role), ref.Owner, ref.Repo, ref.Number, req.Reason, req.Supersedes)
+}
+
+func execDispatchBrokerPRReopen(ctx context.Context, cl *forgejoClient, req dispatchBrokerRequest) (string, error) {
+	ref, err := parseAgentIssueRef(req.Target)
+	if err != nil {
+		return "", fmt.Errorf("dispatch broker: %s target: %w", dispatchActionPRReopen, err)
+	}
+	return prWorkflowReopenExec(ctx, cl, strings.TrimSpace(req.Role), ref.Owner, ref.Repo, ref.Number)
+}
+
+func execDispatchBrokerPRRecover(ctx context.Context, cl *forgejoClient, req dispatchBrokerRequest) (string, error) {
+	ref, err := parseAgentIssueRef(req.Target)
+	if err != nil {
+		return "", fmt.Errorf("dispatch broker: %s target: %w", dispatchActionPRRecover, err)
+	}
+	return prWorkflowRecoverReport(ctx, cl, strings.TrimSpace(req.Role), ref.Owner, ref.Repo, ref.Number)
+}
+
+func execDispatchBrokerCIRuns(ctx context.Context, cl *forgejoClient, req dispatchBrokerRequest) (string, error) {
+	owner, name, _ := strings.Cut(req.Target, "/")
+	if err := prWorkflowPermitted(strings.TrimSpace(req.Role), "", prOpRuns); err != nil {
+		return "", fmt.Errorf("dispatch broker: %w", err)
+	}
+	return prWorkflowRunsReport(ctx, cl, owner, name, req.Limit)
+}
+
+func execDispatchBrokerCIRerun(ctx context.Context, cl *forgejoClient, req dispatchBrokerRequest) (string, error) {
+	owner, name, _ := strings.Cut(req.Target, "/")
+	if err := prWorkflowPermitted(strings.TrimSpace(req.Role), "", prOpRerun); err != nil {
+		return "", fmt.Errorf("dispatch broker: %w", err)
+	}
+	return prWorkflowRerunExec(ctx, cl, owner, name, req.RunID)
 }
 
 // validateDispatchBrokerPRWorkflow checks the ward#1067 request shape: no launch
@@ -79,6 +121,13 @@ func validateDispatchBrokerPRWorkflow(req dispatchBrokerRequest) error {
 	if !prWorkflowDispatchActions[action] {
 		return fmt.Errorf("dispatch broker: action %q is not a PR-workflow action", req.Action)
 	}
+	if err := validateDispatchBrokerPRWorkflowShape(action, req); err != nil {
+		return err
+	}
+	return validateDispatchBrokerPRWorkflowTarget(action, req)
+}
+
+func validateDispatchBrokerPRWorkflowShape(action string, req dispatchBrokerRequest) error {
 	if len(req.Argv) != 0 {
 		return fmt.Errorf("dispatch broker: %s takes no launch argv, got %v", action, req.Argv)
 	}
@@ -95,11 +144,43 @@ func validateDispatchBrokerPRWorkflow(req dispatchBrokerRequest) error {
 	if target == "" || strings.ContainsRune(target, '\x00') || strings.HasPrefix(target, "-") {
 		return fmt.Errorf("dispatch broker: %s requires a well-formed target, got %q", action, target)
 	}
+	return nil
+}
+
+func validateDispatchBrokerPRWorkflowTarget(action string, req dispatchBrokerRequest) error {
+	target := strings.TrimSpace(req.Target)
 	switch action {
 	case dispatchActionPRStatus, dispatchActionPRMerge:
 		return validateDispatchBrokerPRRefTarget(action, target)
+	case dispatchActionPRClose, dispatchActionPRReopen, dispatchActionPRRecover:
+		return validateDispatchBrokerPRLifecycleTarget(action, target, req)
 	case dispatchActionCIRuns, dispatchActionCIRerun:
 		return validateDispatchBrokerCITarget(action, target, req)
+	default:
+		return nil
+	}
+}
+
+func validateDispatchBrokerPRLifecycleTarget(action, target string, req dispatchBrokerRequest) error {
+	ref, err := parseAgentIssueRef(target)
+	if err != nil || ref.Owner == "" || ref.Repo == "" {
+		return fmt.Errorf("dispatch broker: %s target %q is not an owner/repo#N pull-request ref", action, target)
+	}
+	if ref.trackerOrDefault() != trackerForgejo {
+		return fmt.Errorf("dispatch broker: %s target %q is not a Forgejo ref", action, target)
+	}
+	if err := prWorkflowOwnerScope("dispatch broker: "+action, ref.Owner); err != nil {
+		return err
+	}
+	if action == dispatchActionPRClose {
+		if strings.TrimSpace(req.Reason) == "" && strings.TrimSpace(req.Supersedes) == "" {
+			return fmt.Errorf("dispatch broker: %s requires a reason or superseding issue/PR reference", action)
+		}
+		if refText := strings.TrimSpace(req.Supersedes); refText != "" {
+			if _, err := prWorkflowSupersedingRef(ref.Owner, ref.Repo, refText); err != nil {
+				return fmt.Errorf("dispatch broker: %s supersedes ref %q is not a valid issue/PR reference: %w", action, refText, err)
+			}
+		}
 	}
 	return nil
 }

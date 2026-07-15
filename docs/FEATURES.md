@@ -27,7 +27,8 @@ Inventory of what `ward` ships today.
 - Open-PR backpressure gate with PR burn-down.
 - Issue-scoped director dispatch.
 - Dispatch broker. See [agent-dispatch-broker.md](agent-dispatch-broker.md).
-- PR-workflow tools with KDL merge-style and delete-branch defaults. See [agent-pr-workflow.md](agent-pr-workflow.md).
+- PR-workflow tools with KDL defaults. See [agent-pr-workflow.md](agent-pr-workflow.md).
+- PR lifecycle close/reopen/recovery tools.
 - PR repair classification.
 - `ward agent` roles and workflows. See [agent.md](agent.md), [agent-roster.md](agent-roster.md), [agent-flags.md](agent-flags.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md), [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md), [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md), [dispatch-review.md](dispatch-review.md), and [agent-workflow.md](agent-workflow.md).
 - Dispatch-health surfacing.
@@ -46,7 +47,7 @@ Inventory of what `ward` ships today.
 - The build-time authoring layer - see [ward-kdl.md](ward-kdl.md), [ward-kdl-authoring.md](ward-kdl-authoring.md), [ward-kdl-surface.md](ward-kdl-surface.md), and [ward-kdl-in-ward.md](ward-kdl-in-ward.md).
 - It embeds the shipped agent role catalog from [ward-kdl.role-definitions.kdl](../.ward/ward-kdl/ward-kdl.role-definitions.kdl).
 - It accepts `first input` as exec-guard sugar for `arg0`.
-- The embedded Forgejo surface includes the raw Actions log fetch leaf, runner-token mint leaf, and PR-native edit leaf.
+- Embedded Forgejo surface includes raw Actions log fetch, runner-token mint, and PR edit leaves.
 - Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core agent control plane.
 - Coilyco-targeted operator surfaces fail fast when they would otherwise fall back to the baked example bundle.
 

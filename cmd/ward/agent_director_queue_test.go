@@ -46,6 +46,7 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 	cases := []struct {
 		name      string
 		kind      string
+		openPR    bool
 		comments  []issueComment
 		wantState string
 		wantAct   string
@@ -78,8 +79,9 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			wantAct:   directorQueueActionRedispatch,
 		},
 		{
-			name: "submitted pr",
-			kind: backlogKindPullRequest,
+			name:   "submitted pr",
+			kind:   backlogKindPullRequest,
+			openPR: true,
 			comments: []issueComment{{
 				Body:      "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/4",
 				CreatedAt: now.Add(-10 * time.Minute),
@@ -88,8 +90,9 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			wantAct:   directorQueueActionWait,
 		},
 		{
-			name: "merge-ready pr",
-			kind: backlogKindPullRequest,
+			name:   "merge-ready pr",
+			kind:   backlogKindPullRequest,
+			openPR: true,
 			comments: []issueComment{{
 				Body: strings.Join([]string{
 					"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/5",
@@ -106,6 +109,17 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			wantAct:   directorQueueActionMergePR,
 		},
 		{
+			name:   "closed-unmerged pr",
+			kind:   backlogKindPullRequest,
+			openPR: false,
+			comments: []issueComment{{
+				Body:      "WARD-OUTCOME: merge-ready - review passed, handoff to director",
+				CreatedAt: now.Add(-10 * time.Minute),
+			}},
+			wantState: directorQueueStateRecoverPR,
+			wantAct:   directorQueueActionRecoverPR,
+		},
+		{
 			name: "done issue",
 			comments: []issueComment{{
 				Body:      "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nmerged and pushed\n\n</details>",
@@ -115,8 +129,9 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			wantAct:   directorQueueActionCloseDone,
 		},
 		{
-			name: "done pr",
-			kind: backlogKindPullRequest,
+			name:   "done pr",
+			kind:   backlogKindPullRequest,
+			openPR: true,
 			comments: []issueComment{{
 				Body:      "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nmerged and pushed\n\n</details>",
 				CreatedAt: now.Add(-10 * time.Minute),
@@ -133,9 +148,13 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			}
 			var got directorQueueItem
 			if tc.kind == backlogKindPullRequest {
-				got = classifyDirectorQueuePR(repo, directorPullRequest{Issue: Issue{Number: 1, Title: tc.name, Labels: []string{"P0"}}}, tc.comments, now, ttl)
+				if tc.openPR {
+					got = classifyDirectorQueuePR(repo, directorPullRequest{Issue: Issue{Number: 1, Title: tc.name, Labels: []string{"P0"}}}, tc.comments, now, ttl)
+				} else {
+					got = classifyDirectorQueueIssue(repo, issue, tc.comments, false, now, ttl)
+				}
 			} else {
-				got = classifyDirectorQueueIssue(repo, issue, tc.comments, now, ttl)
+				got = classifyDirectorQueueIssue(repo, issue, tc.comments, true, now, ttl)
 			}
 			if got.State != tc.wantState || got.Action != tc.wantAct {
 				t.Fatalf("state/action = %q/%q, want %q/%q", got.State, got.Action, tc.wantState, tc.wantAct)
@@ -178,6 +197,7 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 				{Number: 1, Title: "stale reservation", Labels: []string{"P0"}},
 				{Number: 2, Title: "redispatch", Labels: []string{"P1"}},
 				{Number: 3, Title: "done issue", Labels: []string{"P2"}},
+				{Number: 7, Kind: backlogKindPullRequest, Title: "closed unmerged pr", Labels: []string{"P0"}},
 			},
 		},
 		prs: map[string][]directorPullRequest{
@@ -220,6 +240,10 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 				Body:      "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nmerged\n\n</details>",
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
+			repo + "#7": {{
+				Body:      "WARD-OUTCOME: merge-ready - review passed, handoff to director",
+				CreatedAt: now.Add(-10 * time.Minute),
+			}},
 		},
 	}
 	out, err := renderDirectorQueueStatus(context.Background(), cl, []string{repo}, 50)
@@ -230,9 +254,12 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 		"next actions:",
 		directorQueueActionRedispatch,
 		directorQueueActionMergePR,
+		directorQueueActionRecoverPR,
 		directorQueueActionCloseDone,
 		directorQueueActionWait,
 		"PR     " + repo + "#6",
+		"recover PR",
+		directorQueueStateRecoverPR,
 		"issue  " + repo + "#3",
 	} {
 		if !strings.Contains(out, want) {

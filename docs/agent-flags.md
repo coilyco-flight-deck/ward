@@ -57,6 +57,18 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 
 - No direct flags.
 
+## `ward agent pr close`
+
+- --reason, --supersedes
+
+## `ward agent pr reopen`
+
+- No direct flags.
+
+## `ward agent pr recover`
+
+- No direct flags.
+
 ## `ward agent pr runs`
 
 - --limit
