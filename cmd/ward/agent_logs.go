@@ -184,7 +184,7 @@ func (r *Runner) forwardAgentLogsToHostBroker(ctx context.Context, addr, target 
 	return nil
 }
 
-// resolveAgentLogsSource resolves the target to a live engineer container or a
+// resolveAgentLogsSource resolves the target to a live agent container or a
 // drained log file, preferring the live Docker path when available.
 func (r *Runner) resolveAgentLogsSource(ctx context.Context, target string, tail int, follow bool) (agentLogSource, error) {
 	if ref, err := parseAgentIssueRef(target); err == nil && ref.Owner != "" && ref.Repo != "" {
@@ -193,11 +193,11 @@ func (r *Runner) resolveAgentLogsSource(ctx context.Context, target string, tail
 	return r.resolveAgentLogsSourceForName(ctx, target, tail, follow)
 }
 
-// resolveAgentLogsSourceForIssue resolves a carried issue to one engineer container
+// resolveAgentLogsSourceForIssue resolves a carried issue to one live agent container
 // when possible, else to a drained archive for that same issue.
 func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIssueRef, tail int, follow bool) (agentLogSource, error) {
-	if names := r.allEngineerContainersForIssue(ctx, ref); len(names) > 0 {
-		name, err := selectSingleEngineerTarget("read", ref.String(), names)
+	if names := r.allAgentContainersForIssue(ctx, ref); len(names) > 0 {
+		name, err := selectSingleLogTarget("read", ref.String(), names)
 		if err != nil {
 			return agentLogSource{}, err
 		}
@@ -227,7 +227,7 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 		}
 		return agentLogSource{Kind: agentLogSourceFile, Label: "dispatch log path", Path: path}, nil
 	}
-	return agentLogSource{}, fmt.Errorf("dispatch broker: no engineer log source matches %q", ref.String())
+	return agentLogSource{}, fmt.Errorf("dispatch broker: no agent log source matches %q", ref.String())
 }
 
 func (r *Runner) resolveAgentLogsSourceForName(ctx context.Context, name string, tail int, follow bool) (agentLogSource, error) {
@@ -247,19 +247,35 @@ func (r *Runner) resolveAgentLogsSourceForName(ctx context.Context, name string,
 	} else if src.Kind != "" {
 		return src, nil
 	}
-	return agentLogSource{}, fmt.Errorf("dispatch broker: no engineer log source matches %q", name)
+	return agentLogSource{}, fmt.Errorf("dispatch broker: no agent log source matches %q", name)
 }
 
 func (r *Runner) resolveAgentLogsSourceForRunningName(ctx context.Context, name string, tail int, follow bool) (agentLogSource, error) {
 	role, err := r.containerRoleLabel(ctx, name)
 	if err != nil {
 		return agentLogSource{}, fmt.Errorf("dispatch broker: refusing to read %q: could not read its %s label (%w) - "+
-			"fail-closed, only %s containers are readable", name, labelRole, err, roleEngineer)
+			"fail-closed, only %s and %s containers are readable", name, labelRole, err, roleEngineer, roleDirector)
 	}
-	if err := stopTargetGuard(name, role); err != nil {
-		return agentLogSource{}, err
+	switch role {
+	case roleEngineer, roleDirector:
+		// readable
+	default:
+		return agentLogSource{}, fmt.Errorf("dispatch broker: refusing to read %q: it is a %q container, not a readable agent - "+
+			"logs only target %s and %s (advisor/session are never read here)", name, role, roleEngineer, roleDirector)
 	}
 	return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: r.containerTranscriptTree(ctx, name), Tail: tail, Follow: follow}, nil
+}
+
+func selectSingleLogTarget(action, target string, names []string) (string, error) {
+	switch len(names) {
+	case 1:
+		return names[0], nil
+	case 0:
+		return "", fmt.Errorf("dispatch broker: no running agent container matches %q - nothing to %s", target, action)
+	default:
+		return "", fmt.Errorf("dispatch broker: %q matches %d running agent containers (%s) - refusing to guess; %s one by its container name",
+			target, len(names), strings.Join(names, ", "), action)
+	}
 }
 
 func (r *Runner) resolveArchivedAgentLogSourceForName(name string, tail int, follow bool) (agentLogSource, error) {
@@ -390,18 +406,32 @@ func (r *Runner) liveTranscriptSource(ctx context.Context, name, transcriptTree 
 	return extractTranscriptFromTar(out)
 }
 
-// allEngineerContainersForIssue lists every live or exited engineer container that
+// allAgentContainersForIssue lists every live or exited readable agent container that
 // matches ref's repo + issue, so the read path can fail loud on ambiguity.
-func (r *Runner) allEngineerContainersForIssue(ctx context.Context, ref agentIssueRef) []string {
+func (r *Runner) allAgentContainersForIssue(ctx context.Context, ref agentIssueRef) []string {
 	out, err := r.dockerCapture(ctx, "ps", "-a", "--format", "{{.Names}}",
 		"--filter", "label="+containerLabel,
-		"--filter", "label="+labelRole+"="+roleEngineer,
 		"--filter", "label="+labelRepo+"="+ref.repoSlug(),
 		"--filter", fmt.Sprintf("label=%s=%d", labelIssue, ref.Number))
 	if err != nil {
 		return nil
 	}
-	return parseExitedContainerNames(string(out))
+	names := parseExitedContainerNames(string(out))
+	if len(names) == 0 {
+		return nil
+	}
+	matches := make([]string, 0, len(names))
+	for _, name := range names {
+		role, err := r.containerRoleLabel(ctx, name)
+		if err != nil {
+			continue
+		}
+		switch role {
+		case roleEngineer, roleDirector:
+			matches = append(matches, name)
+		}
+	}
+	return matches
 }
 
 // containerPresent reports whether the named container exists in Docker, regardless
@@ -418,7 +448,7 @@ func (r *Runner) containerPresent(ctx context.Context, name string) bool {
 	return strings.TrimSpace(string(out)) != ""
 }
 
-// findArchivedAgentLogSourceByIssue scans the archive tree for a drained engineer
+// findArchivedAgentLogSourceByIssue scans the archive tree for a drained readable agent
 // run whose meta.json matches the given issue.
 func findArchivedAgentLogSourceByIssue(ref agentIssueRef, tail int, follow bool, baseDir, consoleName, label string) (agentLogSource, error) {
 	entries, err := os.ReadDir(baseDir)
@@ -436,7 +466,7 @@ func findArchivedAgentLogSourceByIssue(ref agentIssueRef, tail int, follow bool,
 		name := entry.Name()
 		metaPath := filepath.Join(baseDir, name, drainMetaFile)
 		meta, ok := readRunMeta(metaPath)
-		if !ok || meta.Repo != ref.repoSlug() || meta.Issue != strconv.Itoa(ref.Number) || !strings.HasPrefix(name, roleEngineer+"-") {
+		if !ok || meta.Repo != ref.repoSlug() || meta.Issue != strconv.Itoa(ref.Number) || !archivedAgentLogNameHasReadableRole(name) {
 			continue
 		}
 		candidates = append(candidates, filepath.Join(baseDir, name))
@@ -449,7 +479,7 @@ func findArchivedAgentLogSourceByIssue(ref agentIssueRef, tail int, follow bool,
 		return agentLogSource{Kind: agentLogSourceFile, Label: label, Path: filepath.Join(candidates[0], consoleName), ArchiveMeta: meta, Tail: tail, Follow: follow}, nil
 	default:
 		sort.Strings(candidates)
-		return agentLogSource{}, fmt.Errorf("dispatch broker: %q matches %d drained engineer log directories (%s) - refusing to guess; read one by its container name",
+		return agentLogSource{}, fmt.Errorf("dispatch broker: %q matches %d drained agent log directories (%s) - refusing to guess; read one by its container name",
 			ref.String(), len(candidates), strings.Join(candidates, ", "))
 	}
 }
@@ -492,9 +522,13 @@ func findArchivedAgentLogSource(target, baseDir, consoleName, label string, tail
 		return agentLogSource{Kind: agentLogSourceFile, Label: label, Path: filepath.Join(candidates[0], consoleName), ArchiveMeta: meta, Tail: tail, Follow: follow}, nil
 	default:
 		sort.Strings(candidates)
-		return agentLogSource{}, fmt.Errorf("dispatch broker: %q matches %d drained engineer log directories (%s) - refusing to guess; read one by its container name",
+		return agentLogSource{}, fmt.Errorf("dispatch broker: %q matches %d drained agent log directories (%s) - refusing to guess; read one by its container name",
 			target, len(candidates), strings.Join(candidates, ", "))
 	}
+}
+
+func archivedAgentLogNameHasReadableRole(name string) bool {
+	return strings.HasPrefix(name, roleEngineer+"-") || strings.HasPrefix(name, roleDirector+"-")
 }
 
 // readRunMeta reads the drained meta.json and parses the secret-free record.
@@ -510,17 +544,17 @@ func readRunMeta(path string) (runMeta, bool) {
 	return meta, true
 }
 
-// latestArchivedEngineerRunMetaForIssue resolves the newest drained engineer run
+// latestArchivedAgentRunMetaForIssue resolves the newest drained readable-agent run
 // for an issue so callers can tell when a reservation has already been superseded.
-func latestArchivedEngineerRunMetaForIssue(ref agentIssueRef) (runMeta, bool, error) {
-	meta, ok, err := latestArchivedEngineerRunMetaIn(agentLogsDir(), ref)
+func latestArchivedAgentRunMetaForIssue(ref agentIssueRef) (runMeta, bool, error) {
+	meta, ok, err := latestArchivedAgentRunMetaIn(agentLogsDir(), ref)
 	if err != nil || ok {
 		return meta, ok, err
 	}
-	return latestArchivedEngineerRunMetaIn(agentLogsRedactedDir(), ref)
+	return latestArchivedAgentRunMetaIn(agentLogsRedactedDir(), ref)
 }
 
-func latestArchivedEngineerRunMetaIn(root string, ref agentIssueRef) (runMeta, bool, error) {
+func latestArchivedAgentRunMetaIn(root string, ref agentIssueRef) (runMeta, bool, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -531,7 +565,7 @@ func latestArchivedEngineerRunMetaIn(root string, ref agentIssueRef) (runMeta, b
 	var best runMeta
 	var bestMod time.Time
 	for _, entry := range entries {
-		meta, mod, ok := archivedEngineerRunMetaCandidate(root, entry, ref)
+		meta, mod, ok := archivedAgentRunMetaCandidate(root, entry, ref)
 		if !ok {
 			continue
 		}
@@ -546,12 +580,12 @@ func latestArchivedEngineerRunMetaIn(root string, ref agentIssueRef) (runMeta, b
 	return best, true, nil
 }
 
-func archivedEngineerRunMetaCandidate(root string, entry os.DirEntry, ref agentIssueRef) (runMeta, time.Time, bool) {
+func archivedAgentRunMetaCandidate(root string, entry os.DirEntry, ref agentIssueRef) (runMeta, time.Time, bool) {
 	if entry == nil || !entry.IsDir() {
 		return runMeta{}, time.Time{}, false
 	}
 	name := entry.Name()
-	if !strings.HasPrefix(name, roleEngineer+"-") {
+	if !archivedAgentLogNameHasReadableRole(name) {
 		return runMeta{}, time.Time{}, false
 	}
 	metaPath := filepath.Join(root, name, drainMetaFile)

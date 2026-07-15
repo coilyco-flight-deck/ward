@@ -342,15 +342,15 @@ func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte
 		return
 	}
 	console = appendRunSummaryFooter(console, meta.Summary)
-	if werr := writeBytesAtomic(filepath.Join(dir, drainConsoleFile), console, 0o644); werr != nil {
+	if werr := writeBytesAtomic(filepath.Join(dir, drainConsoleFile), console); werr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: write console.log: %v\n", name, werr)
 	}
 	if len(transcript) > 0 {
-		if werr := writeBytesAtomic(filepath.Join(dir, drainTranscriptFile), transcript, 0o644); werr != nil {
+		if werr := writeBytesAtomic(filepath.Join(dir, drainTranscriptFile), transcript); werr != nil {
 			fmt.Fprintf(os.Stderr, "ward container: drain %s: write transcript.jsonl: %v\n", name, werr)
 		}
 	}
-	if werr := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta, 0o644); werr != nil {
+	if werr := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta); werr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: write meta.json: %v\n", name, werr)
 	}
 	fmt.Fprintf(os.Stderr, "ward container: wrote disk artifacts for %s -> %s\n", name, dir)
@@ -365,15 +365,15 @@ func (r *Runner) writeRedactedArtifacts(name string, console, transcript []byte,
 		return
 	}
 	console = appendRunSummaryFooter(console, meta.Summary)
-	if werr := writeBytesAtomic(filepath.Join(dir, drainConsoleRedactedFile), redactConsole(console), 0o644); werr != nil {
+	if werr := writeBytesAtomic(filepath.Join(dir, drainConsoleRedactedFile), redactConsole(console)); werr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: write console.redacted.log: %v\n", name, werr)
 	}
 	if red := redactedTranscript(transcript); len(red) > 0 {
-		if werr := writeBytesAtomic(filepath.Join(dir, drainTranscriptRedactedFile), red, 0o644); werr != nil {
+		if werr := writeBytesAtomic(filepath.Join(dir, drainTranscriptRedactedFile), red); werr != nil {
 			fmt.Fprintf(os.Stderr, "ward container: drain %s: write transcript.redacted.jsonl: %v\n", name, werr)
 		}
 	}
-	if werr := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta, 0o644); werr != nil {
+	if werr := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta); werr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: write redacted meta.json: %v\n", name, werr)
 	}
 	fmt.Fprintf(os.Stderr, "ward container: wrote redacted view for %s -> %s\n", name, dir)
@@ -628,16 +628,16 @@ func (r *Runner) loadRunSummarySignals(ctx context.Context, env map[string]strin
 	return signals
 }
 
-func writeJSONAtomic(path string, v any, perm os.FileMode) error {
+func writeJSONAtomic(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
 	data = append(data, '\n')
-	return writeBytesAtomic(path, data, perm)
+	return writeBytesAtomic(path, data)
 }
 
-func writeBytesAtomic(path string, data []byte, perm os.FileMode) error {
+func writeBytesAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -647,7 +647,7 @@ func writeBytesAtomic(path string, data []byte, perm os.FileMode) error {
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	if err := tmp.Chmod(perm); err != nil {
+	if err := tmp.Chmod(0o644); err != nil {
 		_ = tmp.Close()
 		return err
 	}

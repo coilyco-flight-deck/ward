@@ -163,6 +163,29 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	}
 }
 
+func TestReservationCachePrunesArchivedDirectorRun(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1301}
+	dir := filepath.Join(agentLogsDir(), "director-codex-ward-1301")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir archived director run: %v", err)
+	}
+	meta := runMeta{
+		Container: "director-codex-ward-1301",
+		Repo:      ref.repoSlug(),
+		Issue:     strconv.Itoa(ref.Number),
+		Outcome:   outcomePushedMain,
+	}
+	if err := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta); err != nil {
+		t.Fatalf("write archived director meta: %v", err)
+	}
+
+	r := &Runner{}
+	if !r.reservationCacheShouldPruneArchivedRun(ref) {
+		t.Fatal("director archive should supersede the reservation cache the same way an engineer archive does")
+	}
+}
+
 func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	now := time.Now().UTC()
@@ -437,7 +460,7 @@ func TestAgentListPrunesFailedBeforeStartRowAfterSuccessfulDrain(t *testing.T) {
 		Summary: runSummary{
 			NormalizedOutcome: "landed-main",
 		},
-	}, 0o644); err != nil {
+	}); err != nil {
 		t.Fatalf("write archive meta: %v", err)
 	}
 

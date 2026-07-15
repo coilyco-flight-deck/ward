@@ -613,14 +613,14 @@ func reservationCacheEngineerRow(ctx context.Context, r *Runner, path string, re
 }
 
 func (r *Runner) reservationCacheShouldPruneArchivedRun(ref agentIssueRef) bool {
-	meta, ok, err := latestArchivedEngineerRunMetaForIssue(ref)
+	meta, ok, err := latestArchivedAgentRunMetaForIssue(ref)
 	if err != nil || !ok {
 		return false
 	}
-	return archivedEngineerRunSupersedesReservation(meta)
+	return archivedAgentRunSupersedesReservation(meta)
 }
 
-func archivedEngineerRunSupersedesReservation(meta runMeta) bool {
+func archivedAgentRunSupersedesReservation(meta runMeta) bool {
 	if strings.EqualFold(strings.TrimSpace(meta.Outcome), outcomePushedMain) {
 		return true
 	}

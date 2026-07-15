@@ -2687,6 +2687,13 @@ func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte
 		"  printf '%s' " + shellQuote(psOut) + "\n" +
 		"  exit 0\n" +
 		"fi\n" +
+		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{index .Config.Labels \"ward.role\"}}' ]; then\n" +
+		"  case " + shellQuote(strings.TrimSpace(psOut)) + " in\n" +
+		"    director-*) printf '%s\\n' director ;;\n" +
+		"    *) printf '%s\\n' engineer ;;\n" +
+		"  esac\n" +
+		"  exit 0\n" +
+		"fi\n" +
 		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{json .Config.Env}}' ]; then\n" +
 		"  printf '%s' " + shellQuote(`["WARD_AGENT_HOME=/home/ubuntu/.ward"]`) + "\n" +
 		"  exit 0\n" +
