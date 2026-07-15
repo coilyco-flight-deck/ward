@@ -207,7 +207,10 @@ func TestForgejoReleaseAssetHelperReadsRawAssetBody(t *testing.T) {
 		t.Fatalf("asset metadata fetch count = %d, want 1", got)
 	}
 	if got := srv.count("GET /attachments/7"); got != 1 {
-		t.Fatalf("browser download body fetch count = %d, want 1", got)
+		t.Fatalf("attachment metadata fetch count = %d, want 1", got)
+	}
+	if got := srv.count("GET /attachments/8"); got != 1 {
+		t.Fatalf("raw attachment body fetch count = %d, want 1", got)
 	}
 }
 
@@ -358,7 +361,8 @@ func newReleaseAssetTestServer(t *testing.T) *releaseAssetTestServer {
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/tags/v9.9.9", s.handleReleaseByTag)
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets", s.handleReleaseAssets)
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/7", s.handleReleaseAssetMetadata)
-	mux.HandleFunc("/attachments/7", s.handleReleaseAttachmentBody)
+	mux.HandleFunc("/attachments/7", s.handleReleaseAttachmentMetadata)
+	mux.HandleFunc("/attachments/8", s.handleReleaseAttachmentBody)
 	s.Server = httptest.NewServer(mux)
 	t.Cleanup(s.Close)
 	return s
@@ -396,6 +400,11 @@ func (s *releaseAssetTestServer) handleReleaseAssets(w http.ResponseWriter, r *h
 func (s *releaseAssetTestServer) handleReleaseAssetMetadata(w http.ResponseWriter, r *http.Request) {
 	s.record(r)
 	_, _ = w.Write([]byte(`{"id":7,"name":"ward-windows-amd64.exe.sha256","browser_download_url":"http://` + r.Host + `/attachments/7","type":"attachment"}`))
+}
+
+func (s *releaseAssetTestServer) handleReleaseAttachmentMetadata(w http.ResponseWriter, r *http.Request) {
+	s.record(r)
+	_, _ = w.Write([]byte(`{"id":8,"name":"ward-windows-amd64.exe.sha256","browser_download_url":"http://` + r.Host + `/attachments/8","type":"attachment"}`))
 }
 
 func (s *releaseAssetTestServer) handleReleaseAttachmentBody(w http.ResponseWriter, r *http.Request) {
