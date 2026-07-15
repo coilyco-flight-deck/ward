@@ -926,7 +926,7 @@ func (c *forgejoClient) UnlockIssue(_ context.Context, _, _ string, _ int) error
 // listOpenIssues reads the shared Forgejo feed for open issues.
 // pull_request:null rows stay issues; PR rows are skipped.
 func (c *forgejoClient) ListOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error) {
-	raw, err := c.listOpenIssueFeed(ctx, owner, repo, limit)
+	raw, err := c.listOpenIssueFeedByType(ctx, owner, repo, limit, "issues")
 	if err != nil {
 		return nil, err
 	}
@@ -985,18 +985,6 @@ func (c *forgejoClient) ListOpenPullRequests(ctx context.Context, owner, repo st
 		prs = append(prs, pr)
 	}
 	return prs, nil
-}
-
-func (c *forgejoClient) listOpenIssueFeed(ctx context.Context, owner, repo string, limit int) ([]forgejoIssueRaw, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-	q := url.Values{"state": {"open"}, "limit": {strconv.Itoa(limit)}}
-	var raw []forgejoIssueRaw
-	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues"}, q, nil, false, &raw); err != nil {
-		return nil, fmt.Errorf("forgejo: list open issues in %s/%s: %w", owner, repo, err)
-	}
-	return raw, nil
 }
 
 // listOpenIssueFeedByType reads Forgejo's open issue feed.

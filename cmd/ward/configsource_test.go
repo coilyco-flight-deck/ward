@@ -21,8 +21,9 @@ import (
 // WARD_CONFIG_REF means the baked embed, never an error.
 func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
-	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
-	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_REPO", "")
+	t.Setenv("WARD_READONLY", "")
 	src, err := selectConfigSource()
 	if err != nil {
 		t.Fatalf("selectConfigSource with unset ref: %v", err)
@@ -41,6 +42,7 @@ func TestSelectConfigSourceRejectsCoilycoTargetWithoutCheckout(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
 	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
+	t.Setenv("WARD_READONLY", "")
 	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
 	if _, err := selectConfigSource(); err == nil {
 		t.Fatal("coilyco target without a checkout selected the baked config source; want a loud diagnostic")
@@ -68,6 +70,7 @@ func TestSelectConfigSourceReconstructsCoilycoTargetFromCheckout(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
 	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
+	t.Setenv("WARD_READONLY", "")
 	t.Setenv("COILY_INVOKE_CWD", work)
 
 	got, err := selectedConfigRef()
@@ -86,6 +89,7 @@ func TestOpsCommandReportsMissingCheckoutForCoilycoTarget(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
 	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
+	t.Setenv("WARD_READONLY", "")
 	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
 	cmd := opsCommand()
 	forgejo := commandNamed(cmd.Commands, "forgejo")

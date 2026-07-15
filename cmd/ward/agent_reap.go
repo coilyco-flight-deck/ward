@@ -105,6 +105,39 @@ func (r *Runner) runAgentReap(ctx context.Context, c *cli.Command) error {
 	}
 }
 
+func (r *Runner) engineerLaunchVisible(ctx context.Context, name string) error {
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		visible, err := r.engineerContainerRunning(ctx, name)
+		if err != nil {
+			return err
+		}
+		if visible {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("engineer %s did not become visible before the capacity lock released", name)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func (r *Runner) engineerContainerRunning(ctx context.Context, name string) (bool, error) {
+	if strings.TrimSpace(name) == "" {
+		return false, fmt.Errorf("engineer name is empty")
+	}
+	out, err := r.captureDockerSilenced(ctx, "ps", "--format", "{{.Names}}", "--filter", "label=ward=true", "--filter", "label=ward.role=engineer", "--filter", "name=^"+name+"$")
+	if err != nil {
+		return false, fmt.Errorf("check engineer container %s visibility: %w", name, err)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // agentReapSweep is one full pass: list running engineers, stop those the verdict
 // marks. Best-effort per container - a failed probe or stop is logged and skipped.
 func (r *Runner) agentReapSweep(ctx context.Context, threshold time.Duration, maxCPU float64, dryRun, readOnly bool, w io.Writer) error {

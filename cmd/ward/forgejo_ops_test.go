@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -295,7 +294,7 @@ func TestListOpenIssuesAndPullRequestsClassifyPullRequestNull(t *testing.T) {
 				t.Fatalf("state query = %q, want open", got)
 			}
 			switch got := r.URL.Query().Get("type"); got {
-			case "":
+			case "issues":
 				issueFeedCalls++
 				_ = json.NewEncoder(w).Encode([]map[string]any{
 					{
@@ -319,7 +318,7 @@ func TestListOpenIssuesAndPullRequestsClassifyPullRequestNull(t *testing.T) {
 					},
 				})
 			default:
-				t.Fatalf("type query = %q, want empty generic issue feed or pulls", got)
+				t.Fatalf("type query = %q, want issues or pulls", got)
 			}
 		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/983":
 			if got := r.Header.Get("Authorization"); got != "token secret" {
@@ -356,26 +355,12 @@ func TestListOpenIssuesAndPullRequestsClassifyPullRequestNull(t *testing.T) {
 }
 
 func TestListOpenPullRequestsKeepsTypedPaginationWhenGenericIssuesFillFirstPage(t *testing.T) {
-	var genericIssueFeedCalls int
 	var typedPullFeedCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/repos/coilyco-flight-deck/ward/issues":
 			if got := r.URL.Query().Get("state"); got != "open" {
 				t.Fatalf("state query = %q, want open", got)
-			}
-			if got := r.URL.Query().Get("type"); got == "" {
-				genericIssueFeedCalls++
-				rows := make([]map[string]any, 0, 50)
-				for i := 0; i < 50; i++ {
-					rows = append(rows, map[string]any{
-						"number": 1000 + i, "title": "normal issue", "body": "body", "state": "open",
-						"html_url": fmt.Sprintf("https://f/issues/%d", 1000+i), "labels": []map[string]any{},
-						"pull_request": nil,
-					})
-				}
-				_ = json.NewEncoder(w).Encode(rows)
-				return
 			}
 			if got := r.URL.Query().Get("type"); got != "pulls" {
 				t.Fatalf("type query = %q, want pulls", got)
@@ -403,9 +388,6 @@ func TestListOpenPullRequestsKeepsTypedPaginationWhenGenericIssuesFillFirstPage(
 	}
 	if len(prs) != 1 || prs[0].Number != 1983 || !prs[0].Mergeable || !prs[0].MergeableKnown {
 		t.Fatalf("prs = %+v, want the typed PR beyond the generic issue page", prs)
-	}
-	if genericIssueFeedCalls != 0 {
-		t.Fatalf("generic issue feed calls = %d, want 0", genericIssueFeedCalls)
 	}
 	if typedPullFeedCalls != 1 {
 		t.Fatalf("typed pull feed calls = %d, want 1", typedPullFeedCalls)

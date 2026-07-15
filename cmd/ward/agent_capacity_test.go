@@ -72,6 +72,78 @@ func engineerRepoAndGlobalCountDockerStub(t *testing.T, repo string, repoCount, 
 	return stub
 }
 
+func engineerCapacityDelayedVisibilityDockerStub(t *testing.T, running []string) (stub string, statePath string, pendingPath string, visiblePath string) {
+	t.Helper()
+	dir := t.TempDir()
+	statePath = filepath.Join(dir, "running.txt")
+	pendingPath = filepath.Join(dir, "pending.txt")
+	visiblePath = filepath.Join(dir, "visible.txt")
+	if err := os.WriteFile(statePath, []byte(strings.Join(running, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("seed running state: %v", err)
+	}
+	stub = filepath.Join(dir, "docker")
+	script := "#!/bin/sh\n" +
+		"state=" + shellQuote(statePath) + "\n" +
+		"pending=" + shellQuote(pendingPath) + "\n" +
+		"visible=" + shellQuote(visiblePath) + "\n" +
+		"cmd=$1\n" +
+		"shift\n" +
+		"case \"$cmd\" in\n" +
+		"  run)\n" +
+		"    name=\n" +
+		"    while [ $# -gt 0 ]; do\n" +
+		"      case \"$1\" in\n" +
+		"        --name)\n" +
+		"          name=$2\n" +
+		"          shift 2\n" +
+		"          ;;\n" +
+		"        --name=*)\n" +
+		"          name=${1#--name=}\n" +
+		"          shift\n" +
+		"          ;;\n" +
+		"        *)\n" +
+		"          shift\n" +
+		"          ;;\n" +
+		"      esac\n" +
+		"    done\n" +
+		"    if [ -n \"$name\" ] && ! grep -Fxq \"$name\" \"$state\" 2>/dev/null && ! grep -Fxq \"$name\" \"$pending\" 2>/dev/null; then\n" +
+		"      printf '%s\\n' \"$name\" >> \"$pending\"\n" +
+		"    fi\n" +
+		"    printf '%s\\n' deadbeefcontainerid\n" +
+		"    ;;\n" +
+		"  ps)\n" +
+		"    if [ \"$1\" = --format ] && [ \"$2\" = '{{.Names}}' ]; then\n" +
+		"      if [ \"$3\" = --filter ] && [ \"$4\" = label=ward=true ] && [ \"$5\" = --filter ] && [ \"$6\" = label=ward.role=engineer ]; then\n" +
+		"        if [ \"$7\" = --filter ] && [ \"${8#name=^}\" != \"$8\" ]; then\n" +
+		"          target=$(printf '%s' \"$8\" | sed 's/^name=\\^//; s/\\$$//')\n" +
+		"          if grep -Fxq \"$target\" \"$state\" 2>/dev/null; then\n" +
+		"            printf '%s\\n' \"$target\"\n" +
+		"          elif [ -f \"$visible\" ] && grep -Fxq \"$target\" \"$pending\" 2>/dev/null; then\n" +
+		"            printf '%s\\n' \"$target\"\n" +
+		"          fi\n" +
+		"          exit 0\n" +
+		"        fi\n" +
+		"        if [ -f \"$visible\" ]; then\n" +
+		"          cat \"$state\" \"$pending\" 2>/dev/null\n" +
+		"        else\n" +
+		"          cat \"$state\" 2>/dev/null\n" +
+		"        fi\n" +
+		"        exit 0\n" +
+		"      fi\n" +
+		"    fi\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"  *)\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("write delayed-visibility docker stub: %v", err)
+	}
+	t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return stub, statePath, pendingPath, visiblePath
+}
+
 func stubCommandInPath(t *testing.T, name string) string {
 	t.Helper()
 	stub := filepath.Join(t.TempDir(), name)
@@ -130,7 +202,11 @@ func issueThreadAuthorityServer(t *testing.T, rows []issueThreadAuthorityRow) *h
 }
 
 func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
-	limit := engineerContainerLimitDefault()
+	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_REPO", "")
+	t.Setenv("WARD_READONLY", "")
+	limit := bakedSmartDefaults().engineerContainerLimit
 	t.Run("below limit", func(t *testing.T) {
 		r, _, _ := bufRunner(engineerCountDockerStub(t, limit-1))
 		if err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", false); err != nil {
@@ -167,7 +243,11 @@ func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
 // TestEngineerContainerLimitOverrideCapacity covers ward#1045: --override-capacity
 // grants one loud launch past the OOM ceiling and never stacks past limit+1.
 func TestEngineerContainerLimitOverrideCapacity(t *testing.T) {
-	limit := engineerContainerLimitDefault()
+	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_REPO", "")
+	t.Setenv("WARD_READONLY", "")
+	limit := bakedSmartDefaults().engineerContainerLimit
 
 	t.Run("at limit with override launches loudly", func(t *testing.T) {
 		r, _, _ := bufRunner(engineerCountDockerStub(t, limit))
@@ -220,6 +300,76 @@ func TestEngineerContainerLimitOverrideCapacity(t *testing.T) {
 			t.Errorf("below-limit override should not warn: %q", stderr)
 		}
 	})
+}
+
+func TestEngineerCapacityLockWaitsForVisibleContainerBeforeRelease(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_REPO", "")
+	t.Setenv("WARD_READONLY", "")
+	limit := bakedSmartDefaults().engineerContainerLimit
+	if limit < 2 {
+		t.Fatalf("engineer limit = %d, want at least 2 for the race fixture", limit)
+	}
+
+	running := make([]string, 0, limit-1)
+	for i := 0; i < limit-1; i++ {
+		running = append(running, fmt.Sprintf("engineer-%02d", i+1))
+	}
+	stub, _, pendingPath, visiblePath := engineerCapacityDelayedVisibilityDockerStub(t, running)
+	r, _, _ := bufRunner(stub)
+
+	plan := sampleUpPlan()
+	plan.Interactive = false
+	plan.Name = fmt.Sprintf("engineer-claude-ward-%d", limit)
+	plan.Repo = targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
+	plan.Issue = 1016
+	plan.Branch = "issue-1016"
+
+	firstStarted := make(chan struct{})
+	firstDone := make(chan error, 1)
+	go func() {
+		if err := os.WriteFile(pendingPath, []byte(plan.Name+"\n"), 0o644); err != nil {
+			firstDone <- err
+			return
+		}
+		close(firstStarted)
+		firstDone <- r.engineerLaunchVisible(t.Context(), plan.Name)
+	}()
+
+	select {
+	case <-firstStarted:
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatalf("first launch failed before waiting for visibility: %v", err)
+		}
+		t.Fatal("first launch returned before reaching the visibility wait")
+	case <-time.After(2 * time.Second):
+		t.Fatal("first launch did not reach the visibility wait")
+	}
+
+	if err := r.enforceEngineerContainerLimit(t.Context(), "ward agent engineer", false); err != nil {
+		t.Fatalf("capacity check while launch is still invisible: %v", err)
+	}
+
+	if err := os.WriteFile(visiblePath, []byte("1"), 0o644); err != nil {
+		t.Fatalf("mark container visible: %v", err)
+	}
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first launch visibility wait: %v", err)
+	}
+	err := r.enforceEngineerContainerLimit(t.Context(), "ward agent engineer", false)
+	if err == nil {
+		t.Fatal("capacity check after visibility: want error, got nil")
+	}
+	var capErr *engineerCapacityError
+	if !errors.As(err, &capErr) {
+		t.Fatalf("capacity check after visibility returned %T, want *engineerCapacityError", err)
+	}
+	if !isEngineerCapacityError(err) {
+		t.Fatal("capacity check after visibility should classify as engineer capacity backpressure")
+	}
 }
 
 func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {

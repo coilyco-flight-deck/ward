@@ -210,12 +210,12 @@ func sendDispatchBrokerListRequest(ctx context.Context, addr string, req dispatc
 
 // renderAgentList renders the active engineer runs in either human or JSON form.
 func (r *Runner) renderAgentList(ctx context.Context, jsonOut bool) (string, error) {
-	rows, err := r.agentListRows(ctx)
+	rows, count, err := r.agentListRowsAndCount(ctx)
 	if err != nil {
 		return "", err
 	}
 	if jsonOut {
-		payload := agentListJSONFromRows(rows)
+		payload := agentListJSONFromRows(rows, count)
 		payload.GeneratedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		buf, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
@@ -223,15 +223,20 @@ func (r *Runner) renderAgentList(ctx context.Context, jsonOut bool) (string, err
 		}
 		return string(buf) + "\n", nil
 	}
-	return renderAgentListHuman(rows), nil
+	return renderAgentListHuman(rows, count), nil
 }
 
 // agentListRows gathers the live engineer list and reservation-backed launches.
 // Cleanup-needed and failed-before-start records stay visible but do not count.
 func (r *Runner) agentListRows(ctx context.Context) ([]agentRunningEngineer, error) {
+	rows, _, err := r.agentListRowsAndCount(ctx)
+	return rows, err
+}
+
+func (r *Runner) agentListRowsAndCount(ctx context.Context) ([]agentRunningEngineer, int, error) {
 	names, err := r.runningEngineerContainers(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list running engineer containers: %w", err)
+		return nil, 0, fmt.Errorf("list running engineer containers: %w", err)
 	}
 	now := time.Now().UTC()
 	rows := make([]agentRunningEngineer, 0, len(names))
@@ -250,11 +255,11 @@ func (r *Runner) agentListRows(ctx context.Context) ([]agentRunningEngineer, err
 	}
 	pending, err := r.reservedEngineerRows(ctx, now, seen)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	rows = append(rows, pending...)
 	rows = r.annotatePartialLaunchRows(ctx, now, rows)
-	return rows, nil
+	return rows, len(names), nil
 }
 
 type agentRunningEngineer struct {
@@ -288,8 +293,8 @@ type agentLaunchInventory struct {
 	CapacityUnknown bool
 }
 
-func agentListJSONFromRows(rows []agentRunningEngineer) agentListJSON {
-	inv := agentLaunchInventoryFromRows(rows)
+func agentListJSONFromRows(rows []agentRunningEngineer, count ...int) agentListJSON {
+	inv := agentLaunchInventoryFromRowsWithCount(rows, count...)
 	payload := agentListJSON{
 		SchemaVersion: agentListSchemaVersion,
 		Count:         inv.Count,
@@ -355,6 +360,34 @@ func agentListCapacityForCount(count int) agentListCapacity {
 	atCapacity := count >= limit
 	capacity.AtCapacity = &atCapacity
 	return capacity
+}
+
+func agentLaunchInventoryFromRowsWithCount(rows []agentRunningEngineer, count ...int) agentLaunchInventory {
+	if len(count) == 0 {
+		return agentLaunchInventoryFromRows(rows)
+	}
+	inv := agentLaunchInventory{Count: count[0]}
+	for _, row := range rows {
+		switch agentLaunchRowClass(row) {
+		case agentLaunchRowRunning:
+			inv.Running++
+			if strings.EqualFold(strings.TrimSpace(row.Status), agentLaunchStatusPartial) {
+				inv.PartialLaunch++
+			}
+		case agentLaunchRowActiveIntent:
+			inv.LaunchIntents++
+		case agentLaunchRowCleanupNeeded:
+			inv.CleanupNeeded++
+		case agentLaunchRowFailedBefore:
+			inv.FailedBefore++
+		}
+	}
+	capacity := agentListCapacityForCount(inv.Count)
+	inv.Limit = capacity.Limit
+	inv.Remaining = capacity.Remaining
+	inv.AtCapacity = capacity.AtCapacity
+	inv.CapacityUnknown = capacity.Unavailable
+	return inv
 }
 
 type agentLaunchRowKind string
@@ -814,11 +847,14 @@ func formatDuration(d time.Duration) string {
 	return d.Round(time.Second).String()
 }
 
-func renderAgentListHuman(rows []agentRunningEngineer) string {
-	inv := agentLaunchInventoryFromRows(rows)
+func renderAgentListHuman(rows []agentRunningEngineer, count ...int) string {
+	inv := agentLaunchInventoryFromRowsWithCount(rows, count...)
 	var b strings.Builder
 	appendAgentListHeader(&b, inv)
 	b.WriteString("\n")
+	if inv.Count > len(rows) {
+		fmt.Fprintf(&b, "\n  note: %d running container(s) were counted but not fully inspected.\n", inv.Count-len(rows))
+	}
 	if len(rows) == 0 {
 		b.WriteString("\n  no active engineer launches.\n")
 		return b.String()

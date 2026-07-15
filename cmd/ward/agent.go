@@ -2141,6 +2141,11 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if err := r.createAgentContainer(ctx, plan, envFile); err != nil {
 		return err
 	}
+	if !plan.Interactive {
+		if err := r.engineerLaunchVisible(ctx, plan.Name); err != nil {
+			return err
+		}
+	}
 	// The container is up: disarm the reservation rollback so it now lives for the
 	// container's lifetime (ward#570).
 	launched = true

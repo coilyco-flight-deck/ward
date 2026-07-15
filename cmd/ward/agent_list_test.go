@@ -15,6 +15,7 @@ import (
 
 func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv(wardConfigRefEnv, "")
 
 	now := time.Date(2026, 7, 9, 22, 45, 0, 0, time.UTC)
 	ref := agentIssueRef{Owner: "coilyco-gaming", Repo: "factory-game-v3", Number: 18}
@@ -101,7 +102,7 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 		t.Fatalf("json output missing container: %s", buf)
 	}
 
-	payload := agentListJSONFromRows([]agentRunningEngineer{row})
+	payload := agentListJSONFromRows([]agentRunningEngineer{row}, bakedSmartDefaults().engineerContainerLimit-11)
 	if payload.Count != 1 {
 		t.Fatalf("count = %d, want 1", payload.Count)
 	}
@@ -144,7 +145,7 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 		}
 	}
 
-	human := renderAgentListHuman([]agentRunningEngineer{row})
+	human := renderAgentListHuman([]agentRunningEngineer{row}, bakedSmartDefaults().engineerContainerLimit-11)
 	for _, want := range []string{
 		"ward agent: active engineer launches (1/12, 11 slots free)",
 		"coilyco-gaming/factory-game-v3#18",

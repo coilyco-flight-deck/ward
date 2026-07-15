@@ -11,8 +11,9 @@ import (
 
 func TestSmartDefaultsBaked(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "")
-	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
-	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_REPO", "")
+	t.Setenv("WARD_READONLY", "")
 	defs, err := currentSmartDefaultsWithError()
 	if err != nil {
 		t.Fatalf("currentSmartDefaultsWithError(baked): %v", err)
