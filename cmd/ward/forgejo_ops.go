@@ -856,6 +856,7 @@ func (c *forgejoClient) GetPullRequestContext(ctx context.Context, owner, repo s
 		Title:        strings.TrimSpace(pr.Title),
 		Body:         strings.TrimSpace(pr.Body),
 		URL:          strings.TrimSpace(pr.HTMLURL),
+		UpdatedAt:    pr.UpdatedAt,
 		HeadSHA:      strings.TrimSpace(pr.Head.SHA),
 		HeadRef:      strings.TrimSpace(pr.Head.Ref),
 		BaseRef:      strings.TrimSpace(pr.Base.Ref),

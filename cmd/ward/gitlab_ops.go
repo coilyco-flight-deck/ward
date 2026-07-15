@@ -94,6 +94,7 @@ func (c *gitlabClient) GetIssue(ctx context.Context, owner, repo string, number 
 		Description string   `json:"description"`
 		State       string   `json:"state"`
 		WebURL      string   `json:"web_url"`
+		UpdatedAt   string   `json:"updated_at"`
 		Labels      []string `json:"labels"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -106,6 +107,11 @@ func (c *gitlabClient) GetIssue(ctx context.Context, owner, repo string, number 
 		State:  strings.ToLower(raw.State),
 		URL:    raw.WebURL,
 		Labels: append([]string(nil), raw.Labels...),
+	}
+	if t, err := time.Parse(time.RFC3339Nano, raw.UpdatedAt); err == nil {
+		issue.UpdatedAt = t
+	} else if t, err := time.Parse(time.RFC3339, raw.UpdatedAt); err == nil {
+		issue.UpdatedAt = t
 	}
 	return issue, nil
 }
@@ -198,6 +204,7 @@ func (c *gitlabClient) GetPullRequestContext(ctx context.Context, owner, repo st
 		DetailedMergeStatus string `json:"detailed_merge_status"`
 		WorkInProgress      bool   `json:"work_in_progress"`
 		Draft               bool   `json:"draft"`
+		UpdatedAt           string `json:"updated_at"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("gitlab: parse merge request %s/%s!%d: %w", owner, repo, number, err)
@@ -217,6 +224,7 @@ func (c *gitlabClient) GetPullRequestContext(ctx context.Context, owner, repo st
 		Title:        strings.TrimSpace(raw.Title),
 		Body:         strings.TrimSpace(raw.Description),
 		URL:          strings.TrimSpace(raw.WebURL),
+		UpdatedAt:    parseAnyRFC3339(raw.UpdatedAt),
 		HeadRef:      strings.TrimSpace(raw.SourceBranch),
 		BaseRef:      strings.TrimSpace(raw.TargetBranch),
 		Mergeability: mergeability,

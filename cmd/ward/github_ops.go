@@ -53,12 +53,13 @@ func (c *githubClient) GetIssue(ctx context.Context, owner, repo string, number 
 		return nil, fmt.Errorf("github: get issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	var raw struct {
-		Number  int    `json:"number"`
-		Title   string `json:"title"`
-		Body    string `json:"body"`
-		State   string `json:"state"`
-		HTMLURL string `json:"html_url"`
-		Labels  []struct {
+		Number    int    `json:"number"`
+		Title     string `json:"title"`
+		Body      string `json:"body"`
+		State     string `json:"state"`
+		HTMLURL   string `json:"html_url"`
+		UpdatedAt string `json:"updated_at"`
+		Labels    []struct {
 			Name string `json:"name"`
 		} `json:"labels"`
 	}
@@ -71,6 +72,10 @@ func (c *githubClient) GetIssue(ctx context.Context, owner, repo string, number 
 		Body:   raw.Body,
 		State:  strings.ToLower(raw.State),
 		URL:    raw.HTMLURL,
+		Labels: nil,
+	}
+	if t, err := time.Parse(time.RFC3339, raw.UpdatedAt); err == nil {
+		issue.UpdatedAt = t
 	}
 	// Populate the label names so the automation-mode ceiling gate can
 	// read them (agentic-os#246); GitHub labels are objects, not strings.
@@ -136,6 +141,7 @@ func (c *githubClient) GetPullRequestContext(ctx context.Context, owner, repo st
 		Body      string `json:"body"`
 		State     string `json:"state"`
 		HTMLURL   string `json:"html_url"`
+		UpdatedAt string `json:"updated_at"`
 		Draft     bool   `json:"draft"`
 		Mergeable any    `json:"mergeable"`
 		Head      struct {
@@ -169,11 +175,26 @@ func (c *githubClient) GetPullRequestContext(ctx context.Context, owner, repo st
 		Title:        strings.TrimSpace(raw.Title),
 		Body:         strings.TrimSpace(raw.Body),
 		URL:          strings.TrimSpace(raw.HTMLURL),
+		UpdatedAt:    parseAnyRFC3339(raw.UpdatedAt),
 		HeadSHA:      strings.TrimSpace(raw.Head.SHA),
 		HeadRef:      strings.TrimSpace(raw.Head.Ref),
 		BaseRef:      strings.TrimSpace(raw.Base.Ref),
 		Mergeability: mergeability,
 	}, nil
+}
+
+func parseAnyRFC3339(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return t
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t
+	}
+	return time.Time{}
 }
 
 func (c *githubClient) ListPullRequestComments(ctx context.Context, owner, repo string, number int) ([]issueComment, error) {
