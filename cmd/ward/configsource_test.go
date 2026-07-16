@@ -350,6 +350,32 @@ func TestBuildForgejoOpsFromWardBrandedBundle(t *testing.T) {
 	}
 }
 
+func TestBuildForgejoOpsIgnoresAgentOnlyForgejoBundle(t *testing.T) {
+	dir := writeBundleFixture(t)
+	writeBundleFixtureFile(t, dir, "role-only.kdl", `
+wrap aos-agent ops forgejo {
+    spec forgejo.swagger.v1.json
+    base-url "git.example.com/api/v1"
+    auth header-token {
+        header Authorization
+        prefix "token "
+        value ssm "/example/forgejo/api-token"
+    }
+    can merge pr {
+        op repoMergePullRequest
+    }
+}
+`)
+
+	forgejo, err := buildForgejoOpsFrom(bundleConfigSource(dir))
+	if err != nil {
+		t.Fatalf("buildForgejoOpsFrom(bundle with role-only forgejo): %v", err)
+	}
+	if commandNamed(forgejo.Commands, "issue") == nil {
+		t.Fatalf("public forgejo bundle lost the issue surface; got %v", commandNames(forgejo.Commands))
+	}
+}
+
 func TestBundleLoadersAcceptAggregateBundle(t *testing.T) {
 	dir := writeAggregateBundleFixture(t)
 	if _, err := loadRawFleetConfigFrom(bundleConfigSource(dir)); err != nil {

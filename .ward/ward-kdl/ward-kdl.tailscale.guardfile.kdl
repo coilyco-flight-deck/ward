@@ -1,4 +1,12 @@
-// Tailscale guardfile placeholder for the tracked ward-kdl bundle.
+// Tailscale guardfile placeholder for the tracked ward-kdl bundle. It stays
+// neutral, but must still be parseable because kdl-specs merges every guardfile
+// sharing the ward-kdl source group before it emits the generated ward binary.
 wrap ward-kdl ops tailscale {
     spec tailscale.openapi.yaml
+    base-url "api.tailscale.com/api/v2"
+    auth header-token {
+        header Authorization
+        prefix "Bearer "
+        value ssm "/example/tailscale/api-key"
+    }
 }

@@ -15,7 +15,7 @@ commands:
     description: Run the unit test suite.
   install:
     run: make install
-    description: Install the ward + ward-kdl binaries into GOBIN (the Go-CLI install verb).
+    description: Install the ward binary into GOBIN (the Go-CLI install verb).
   vet:
     run: make vet
     description: go vet across the tree.
@@ -39,7 +39,7 @@ commands:
     description: "Lint the Forgejo<->GitHub Actions mirror (ward#214): the test pair stays identical except runs-on. `make lint-workflows ARGS=--fix` regenerates the Forgejo mirror."
   build-ward-kdl:
     run: make build-ward-kdl
-    description: build or rebuild the ward-kdl binary, one shot for ease of use in development.
+    description: build or rebuild the generated ward binary from the ward-kdl source group, one shot for ease of use in development.
 
 security:
   protected_binaries:

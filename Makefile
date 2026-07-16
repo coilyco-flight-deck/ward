@@ -2,7 +2,7 @@
 
 KDL_SPECS := forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cmd/kdl-specs
 
-REF ?= v0.72.0
+REF ?= v0.103.0
 
 # DRIVER is the kdl-specs invocation `make build-ward-kdl` runs. By default it
 # pins the published cli-guard module version (`$(KDL_SPECS)@$(REF)`) - the
@@ -48,7 +48,7 @@ workspace: ## Write a gitignored go.work resolving cli-guard from a sibling ../c
 	@echo "cli-guard now resolves from the local working tree: no tag, no 'go get', no REF bump."
 	@echo "go.work + go.work.sum are gitignored; delete go.work to return to the pinned module version ($(REF))."
 
-build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of use in development.
+build-ward-kdl: ## build or rebuild ward from the ward-kdl source group, one shot for ease of use in development.
 	rm -rf bin
 	@mkdir -p bin
 	# The build reads its spec bundle straight from the tracked .ward/ward-kdl/
@@ -58,12 +58,12 @@ build-ward-kdl: ## build or rebuild the ward-kdl binary, one shot for ease of us
 	# and overlaying them at release time (so ward's tree can go neutral) is the
 	# cross-repo follow-up tracked in ward#503 / aos#315, not this local build.
 	# The driver discovers every ward-kdl.*.guardfile.kdl beside this one that
-	# shares the `wrap ward-kdl` binary name and merges them into one binary,
+	# shares the `wrap ward-kdl` source group and emits the generated ward binary,
 	# keeping each API's spec lock separate. The per-area Markdown reference
 	# output is generated material, not committed release-era docs. Adding a new
 	# ward-kdl.<api>.guardfile.kdl is the only step to grow the surface.
 	go run $(DRIVER) lock  --guardfile ./.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl
-	go run $(DRIVER) build --guardfile ./.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl --out bin --set-version $(KDL_VERSION)
+	go run $(DRIVER) build --guardfile ./.ward/ward-kdl/ward-kdl.forgejo.guardfile.kdl --binary ward --out bin --set-version $(KDL_VERSION)
 	$(MAKE) build-ward-kdl-tiers
 	$(MAKE) sync-ops-assets
 	$(MAKE) sync-exec-assets
@@ -177,7 +177,7 @@ demo-image: ## Build the public demo image that runs simple workspace + substrat
 test: sync-defaults-assets ## Run the unit test suite.
 	go test ./...
 
-install: sync-defaults-assets ## Install the ward + ward-kdl binaries into GOBIN (the Go-CLI install verb).
+install: sync-defaults-assets ## Install the ward binary into GOBIN (the Go-CLI install verb).
 	go install ./...
 
 vet: sync-defaults-assets ## go vet across the tree.

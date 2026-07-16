@@ -250,3 +250,22 @@ func wrapNodeMatchesPath(n *kdl.Node, want ...string) bool {
 	}
 	return true
 }
+
+func wrapNodeTargetsWard(n *kdl.Node, want ...string) bool {
+	if n.Name() != "wrap" {
+		return false
+	}
+	args := n.Arguments()
+	if len(args) == len(want) {
+		return true
+	}
+	if len(args) != len(want)+1 || args[0].Kind() != kdl.String {
+		return false
+	}
+	return isWardSourceBinary(args[0].String())
+}
+
+func isWardSourceBinary(name string) bool {
+	normalized := normalizeWrapBinaryName(name)
+	return normalized == "ward" || strings.HasSuffix(normalized, "-ward")
+}

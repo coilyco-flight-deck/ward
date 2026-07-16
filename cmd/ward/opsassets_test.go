@@ -137,13 +137,18 @@ func commandNamed(cmds []*cli.Command, name string) *cli.Command {
 	return nil
 }
 
-// TestRerootGroupToWard asserts the helper swaps the ward-kdl brand for ward,
+// TestRerootGroupToWard asserts the helper swaps source-binary brands for ward,
 // and is a no-op otherwise (ward#270).
 func TestRerootGroupToWard(t *testing.T) {
 	g := []string{"ward-kdl", "ops", "forgejo"}
 	rerootGroupToWard(g)
 	if g[0] != "ward" {
 		t.Errorf("group[0] = %q, want %q", g[0], "ward")
+	}
+	external := []string{"aos-ward", "ops", "forgejo"}
+	rerootGroupToWard(external)
+	if external[0] != "ward" {
+		t.Errorf("external group[0] = %q, want %q", external[0], "ward")
 	}
 	already := []string{"ward", "ops", "forgejo"}
 	rerootGroupToWard(already)

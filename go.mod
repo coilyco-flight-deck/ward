@@ -8,7 +8,7 @@ require (
 )
 
 require (
-	forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.94.0
+	forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.103.0
 	github.com/calico32/kdl-go v0.14.1
 	github.com/getsentry/sentry-go v0.47.0
 )

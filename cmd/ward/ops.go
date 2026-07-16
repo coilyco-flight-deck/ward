@@ -166,7 +166,10 @@ func loadForgejoGuardfileNodeFrom(src configSource) (*bundleKDLFile, *kdl.Node, 
 		return nil, nil, err
 	}
 	file, node, err := findMergedBundleNode(files, "top-level `wrap ops forgejo` block", func(n *kdl.Node) bool {
-		return wrapNodeMatchesPath(n, "ops", "forgejo") && n.GetChild("inherit") == nil && n.GetChild("exec") == nil
+		return wrapNodeMatchesPath(n, "ops", "forgejo") &&
+			wrapNodeTargetsWard(n, "ops", "forgejo") &&
+			n.GetChild("inherit") == nil &&
+			n.GetChild("exec") == nil
 	})
 	if err != nil {
 		return nil, nil, err
@@ -477,10 +480,10 @@ func (r *Runner) runForgejoActionsGenerateRunnerToken(ctx context.Context, cmd *
 	return r.Runner.Exec(ctx, "kubectl", argv...)
 }
 
-// rerootGroupToWard rewrites a parsed guardfile's leading group token from the
-// ward-kdl generator brand to `ward` (ward#270). A no-op if already `ward`.
+// rerootGroupToWard rewrites a parsed guardfile's leading source-binary token to
+// `ward` (ward#270), keeping runtime audit paths under the public command.
 func rerootGroupToWard(group []string) {
-	if len(group) > 0 && group[0] == "ward-kdl" {
+	if len(group) > 0 {
 		group[0] = "ward"
 	}
 }
