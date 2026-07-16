@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ward container entrypoint. Bind-mounted into the dev-base image at
-# /opt/ward/ward-shell-entrypoint.sh by `ward agent` at container
+# /opt/ward-shell-entrypoint.sh by `ward agent` at container
 # bring-up (it is embedded in the ward binary, not baked into the image). The
 # shell now stays as a thin POSIX shim: it links to the ward binary the host
 # already staged into the assets dir, verifies it, then hands startup off to

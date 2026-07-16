@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"embed"
@@ -12,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -773,38 +775,100 @@ func waitForBootstrapRetry(ctx context.Context) bool {
 const bootstrapDownloadBackoff = 2 * time.Second
 
 func downloadWardBootstrapBinaryOnce(ctx context.Context, tag, assetName, asset, path string) (bool, error) {
+	return downloadWardBootstrapBinaryURLOnce(ctx, tag, assetName, asset, path, true)
+}
+
+func downloadWardBootstrapBinaryURLOnce(ctx context.Context, tag, assetName, asset, path string, allowMetadata bool) (bool, error) {
+	resp, retryable, err := requestWardBootstrapBinary(ctx, tag, assetName, asset)
+	if err != nil {
+		return retryable, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return stageWardBootstrapResponse(ctx, tag, assetName, path, allowMetadata, resp.Body)
+}
+
+func requestWardBootstrapBinary(ctx context.Context, tag, assetName, asset string) (*http.Response, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset, nil)
 	if err != nil {
-		return false, fmt.Errorf("ward container: prepare bootstrap download %s: %w", asset, err)
+		return nil, false, fmt.Errorf("ward container: prepare bootstrap download: %w", err)
 	}
 	if token := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); token != "" {
 		req.Header.Set("Authorization", "token "+token)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return true, fmt.Errorf("ward container: download Go bootstrap binary %s: %w", asset, err)
+		return nil, true, fmt.Errorf("ward container: download Go bootstrap binary: %w", err)
+	}
+	if resp.StatusCode == http.StatusOK {
+		return resp, false, nil
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		if resp.StatusCode == http.StatusNotFound {
-			return false, newReleaseAssetsNotReadyError(tag, assetName, strings.TrimSpace(string(body)))
-		}
-		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
-		return retryable, fmt.Errorf("ward container: download Go bootstrap binary %s: unexpected status %s: %s", asset, resp.Status, strings.TrimSpace(string(body)))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, false, newReleaseAssetsNotReadyError(tag, assetName, strings.TrimSpace(string(body)))
 	}
+	retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+	return nil, retryable, fmt.Errorf("ward container: download Go bootstrap binary: unexpected status %s: %s", resp.Status, strings.TrimSpace(string(body)))
+}
+
+func stageWardBootstrapResponse(ctx context.Context, tag, assetName, path string, allowMetadata bool, src io.Reader) (bool, error) {
+	prefix := make([]byte, 4)
+	if _, err := io.ReadFull(src, prefix); err != nil {
+		return false, fmt.Errorf("ward container: bootstrap download is not an ELF binary: read header: %w", err)
+	}
+	body := io.MultiReader(bytes.NewReader(prefix), src)
+	if bytes.Equal(prefix, []byte{0x7f, 'E', 'L', 'F'}) {
+		return false, writeWardBootstrapBinary(path, body)
+	}
+	if !allowMetadata || prefix[0] != '{' {
+		return false, errors.New("ward container: bootstrap download is not an ELF binary")
+	}
+	metadata, err := io.ReadAll(io.LimitReader(body, 64*1024))
+	if err != nil {
+		return false, fmt.Errorf("ward container: read bootstrap asset metadata: %w", err)
+	}
+	var resolved forgejoReleaseAsset
+	if err := json.Unmarshal(metadata, &resolved); err != nil {
+		return false, fmt.Errorf("ward container: decode bootstrap asset metadata: %w", err)
+	}
+	if strings.TrimSpace(resolved.Name) != assetName {
+		return false, fmt.Errorf("ward container: bootstrap asset metadata names %q, want %q", resolved.Name, assetName)
+	}
+	resolvedURL, err := sameOriginWardBootstrapURL(resolved.BrowserDownloadURL)
+	if err != nil {
+		return false, err
+	}
+	return downloadWardBootstrapBinaryURLOnce(ctx, tag, assetName, resolvedURL, path, false)
+}
+
+func writeWardBootstrapBinary(path string, src io.Reader) error {
 	f, err := os.Create(path)
 	if err != nil {
-		return false, fmt.Errorf("ward container: create bootstrap binary %s: %w", path, err)
+		return fmt.Errorf("ward container: create bootstrap binary %s: %w", path, err)
 	}
-	defer f.Close()
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		return false, fmt.Errorf("ward container: write bootstrap binary %s: %w", path, err)
+	defer func() { _ = f.Close() }()
+	if _, err := io.Copy(f, src); err != nil {
+		return fmt.Errorf("ward container: write bootstrap binary %s: %w", path, err)
 	}
 	if err := f.Chmod(0o755); err != nil {
-		return false, fmt.Errorf("ward container: chmod bootstrap binary %s: %w", path, err)
+		return fmt.Errorf("ward container: chmod bootstrap binary %s: %w", path, err)
 	}
-	return false, nil
+	return nil
+}
+
+func sameOriginWardBootstrapURL(raw string) (string, error) {
+	base, err := url.Parse(forgejoBaseURL)
+	if err != nil {
+		return "", fmt.Errorf("ward container: parse Forgejo bootstrap origin: %w", err)
+	}
+	resolved, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", fmt.Errorf("ward container: parse resolved bootstrap download URL: %w", err)
+	}
+	if resolved.Scheme != base.Scheme || resolved.Host != base.Host || resolved.User != nil {
+		return "", errors.New("ward container: resolved bootstrap download URL must stay on the Forgejo origin")
+	}
+	return resolved.String(), nil
 }
 
 func resolveWardBootstrapTag(ctx context.Context, wardVersion, assetName string) (string, error) {
@@ -816,7 +880,8 @@ func resolveWardBootstrapTag(ctx context.Context, wardVersion, assetName string)
 }
 
 type forgejoReleaseAsset struct {
-	Name string `json:"name"`
+	Name               string `json:"name"`
+	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
 type forgejoRelease struct {

@@ -394,6 +394,9 @@ func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
 	if !slices.Equal(hostBinds, wantBinds) {
 		t.Errorf("default host binds = %v, want exactly %v (cwd + assets + entrypoint, no target repo)", hostBinds, wantBinds)
 	}
+	if strings.HasPrefix(containerEntrypointPath, containerWardAssets+"/") {
+		t.Errorf("entrypoint target %q must stay outside the read-only assets mount %q", containerEntrypointPath, containerWardAssets)
+	}
 }
 
 func TestLeastAccessMountsOptIns(t *testing.T) {
@@ -787,7 +790,8 @@ func TestDownloadWardBootstrapBinarySelectsLatestAssetBearingRelease(t *testing.
 	var listHits, assetHits map[string]int
 	listHits = map[string]int{}
 	assetHits = map[string]int{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/releases"):
 			w.Header().Set("Content-Type", "application/json")
@@ -810,8 +814,13 @@ func TestDownloadWardBootstrapBinarySelectsLatestAssetBearingRelease(t *testing.
 				t.Fatalf("unexpected releases page %q", r.URL.Query().Get("page"))
 			}
 		case strings.Contains(r.URL.Path, "/releases/download/v0.578.0/"+assetName):
-			assetHits["v0.578.0"]++
-			_, _ = w.Write([]byte("bootstrapped ward"))
+			assetHits["metadata"]++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"name":%q,"browser_download_url":%q}`, assetName, srv.URL+"/attachments/bootstrap")
+		case r.URL.Path == "/attachments/bootstrap":
+			assetHits["binary"]++
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write(append([]byte{0x7f, 'E', 'L', 'F'}, []byte("bootstrapped ward")...))
 		case strings.Contains(r.URL.Path, "/releases/download/v0.580.0/") || strings.Contains(r.URL.Path, "/releases/download/v0.579.0/"):
 			t.Fatalf("bootstrap selection should skip assetless releases, hit %q", r.URL.Path)
 		default:
@@ -829,11 +838,12 @@ func TestDownloadWardBootstrapBinarySelectsLatestAssetBearingRelease(t *testing.
 	if err != nil {
 		t.Fatalf("read staged binary: %v", err)
 	}
-	if got := string(data); got != "bootstrapped ward" {
-		t.Fatalf("staged binary = %q, want %q", got, "bootstrapped ward")
+	wantBinary := append([]byte{0x7f, 'E', 'L', 'F'}, []byte("bootstrapped ward")...)
+	if got := string(data); got != string(wantBinary) {
+		t.Fatalf("staged binary = %q, want %q", got, wantBinary)
 	}
-	if got := assetHits["v0.578.0"]; got != 1 {
-		t.Fatalf("selected release asset hits = %d, want 1", got)
+	if assetHits["metadata"] != 1 || assetHits["binary"] != 1 {
+		t.Fatalf("selected release asset hits = %v, want one metadata resolution and one binary download", assetHits)
 	}
 	if got := len(listHits); got != 2 {
 		t.Fatalf("releases list pages = %v, want two pages scanned", listHits)
@@ -870,6 +880,26 @@ func TestDownloadWardBootstrapBinaryReportsReleaseAssetsNotReady(t *testing.T) {
 	for _, want := range []string{"v0.544.0", assetName, "release-assets-not-ready"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("missing %q in error %v", want, err)
+		}
+	}
+}
+
+func TestSameOriginWardBootstrapURL(t *testing.T) {
+	origBase := forgejoBaseURL
+	forgejoBaseURL = "https://forgejo.example"
+	t.Cleanup(func() { forgejoBaseURL = origBase })
+
+	const good = "https://forgejo.example/attachments/bootstrap"
+	if got, err := sameOriginWardBootstrapURL(good); err != nil || got != good {
+		t.Fatalf("same-origin bootstrap URL = %q, %v; want %q, nil", got, err, good)
+	}
+	for _, bad := range []string{
+		"https://other.example/attachments/bootstrap",
+		"http://forgejo.example/attachments/bootstrap",
+		"https://user@forgejo.example/attachments/bootstrap",
+	} {
+		if _, err := sameOriginWardBootstrapURL(bad); err == nil {
+			t.Errorf("sameOriginWardBootstrapURL(%q) = nil error, want refusal", bad)
 		}
 	}
 }
