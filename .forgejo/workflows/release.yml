@@ -439,7 +439,7 @@ jobs:
             asset="$1"
             url="${artifact_root}/${asset}"
             tmp="$(mktemp)"
-            code="$(curl -fsSL -w '%{http_code}' -o "$tmp" "$url" || true)"
+            code="$(curl -fsSL -H 'Accept: application/octet-stream' -w '%{http_code}' -o "$tmp" "$url" || true)"
             if [ "$code" != "200" ]; then
               echo "::error::could not fetch ${asset} from ${url} (http ${code:-curl-failed}); draft assets may not have been promoted yet" >&2
               rm -f "$tmp"
@@ -482,17 +482,21 @@ jobs:
               "",
               "  on_macos do",
               "    if Hardware::CPU.arm?",
-              `      url \"${process.env.ARTIFACT_ROOT}/ward-darwin-arm64\"`,
+              `      url \"${process.env.ARTIFACT_ROOT}/ward-darwin-arm64\",`,
+              "          headers: [\"Accept: application/octet-stream\"]",
               `      sha256 \"${process.env.DARWIN_ARM64}\"`,
               "      resource \"ward-linux\" do",
-              `        url \"${process.env.ARTIFACT_ROOT}/ward-linux-arm64\"`,
+              `        url \"${process.env.ARTIFACT_ROOT}/ward-linux-arm64\",`,
+              "            headers: [\"Accept: application/octet-stream\"]",
               `        sha256 \"${process.env.LINUX_ARM64}\"`,
               "      end",
               "    else",
-              `      url \"${process.env.ARTIFACT_ROOT}/ward-darwin-amd64\"`,
+              `      url \"${process.env.ARTIFACT_ROOT}/ward-darwin-amd64\",`,
+              "          headers: [\"Accept: application/octet-stream\"]",
               `      sha256 \"${process.env.DARWIN_AMD64}\"`,
               "      resource \"ward-linux\" do",
-              `        url \"${process.env.ARTIFACT_ROOT}/ward-linux-amd64\"`,
+              `        url \"${process.env.ARTIFACT_ROOT}/ward-linux-amd64\",`,
+              "            headers: [\"Accept: application/octet-stream\"]",
               `        sha256 \"${process.env.LINUX_AMD64}\"`,
               "      end",
               "    end",
@@ -500,10 +504,12 @@ jobs:
               "",
               "  on_linux do",
               "    if Hardware::CPU.arm?",
-              `      url \"${process.env.ARTIFACT_ROOT}/ward-linux-arm64\"`,
+              `      url \"${process.env.ARTIFACT_ROOT}/ward-linux-arm64\",`,
+              "          headers: [\"Accept: application/octet-stream\"]",
               `      sha256 \"${process.env.LINUX_ARM64}\"`,
               "    else",
-              `      url \"${process.env.ARTIFACT_ROOT}/ward-linux-amd64\"`,
+              `      url \"${process.env.ARTIFACT_ROOT}/ward-linux-amd64\",`,
+              "          headers: [\"Accept: application/octet-stream\"]",
               `      sha256 \"${process.env.LINUX_AMD64}\"`,
               "    end",
               "  end",

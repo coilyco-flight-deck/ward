@@ -118,12 +118,16 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
+		"curl -fsSL -H 'Accept: application/octet-stream'",
 		"resource(\\\"ward-linux\\\").stage do",
 		"libexec.install sidecar",
 	} {
 		if !strings.Contains(release, want) {
 			t.Fatalf("Homebrew formula generator should mention %q:\n%s", want, release)
 		}
+	}
+	if got := strings.Count(release, "headers: [\\\"Accept: application/octet-stream\\\"]"); got != 6 {
+		t.Fatalf("Homebrew formula generator should emit six asset-body headers, got %d:\n%s", got, release)
 	}
 
 	for _, ban := range []string{"go build -trimpath", "go mod download", "make sync-defaults-assets"} {
