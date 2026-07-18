@@ -1,6 +1,8 @@
 # homebrew build
 
 Ward's Homebrew formula installs the shipped binary and its `warded` symlink.
+On macOS it also keeps the matching Linux binary under `libexec` for container
+bootstrap. The sidecar is not exposed on `PATH`.
 
 - The tap is Forgejo-hosted.
 - The formula does not install the build-time authoring binary.

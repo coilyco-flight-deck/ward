@@ -484,9 +484,17 @@ jobs:
               "    if Hardware::CPU.arm?",
               `      url \"${process.env.ARTIFACT_ROOT}/ward-darwin-arm64\"`,
               `      sha256 \"${process.env.DARWIN_ARM64}\"`,
+              "      resource \"ward-linux\" do",
+              `        url \"${process.env.ARTIFACT_ROOT}/ward-linux-arm64\"`,
+              `        sha256 \"${process.env.LINUX_ARM64}\"`,
+              "      end",
               "    else",
               `      url \"${process.env.ARTIFACT_ROOT}/ward-darwin-amd64\"`,
               `      sha256 \"${process.env.DARWIN_AMD64}\"`,
+              "      resource \"ward-linux\" do",
+              `        url \"${process.env.ARTIFACT_ROOT}/ward-linux-amd64\"`,
+              `        sha256 \"${process.env.LINUX_AMD64}\"`,
+              "      end",
               "    end",
               "  end",
               "",
@@ -510,6 +518,14 @@ jobs:
               "",
               "    chmod 0555, asset",
               "    bin.install asset => \"ward\"",
+              "",
+              "    if OS.mac?",
+              "      resource(\"ward-linux\").stage do",
+              "        sidecar = Hardware::CPU.arm? ? \"ward-linux-arm64\" : \"ward-linux-amd64\"",
+              "        chmod 0555, sidecar",
+              "        libexec.install sidecar",
+              "      end",
+              "    end",
               "",
               "    bin.install_symlink \"ward\" => \"warded\"",
               "",
@@ -679,7 +695,12 @@ jobs:
           arm64_hash=$(RELEASE_TAG="$TAG" ASSET_NAME=ward-windows-arm64.exe.sha256 \
             FORGEJO_API="$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}" \
             bash scripts/forgejo-release-asset.sh | tr -d '[:space:]')
-          for h in "$amd64_hash" "$arm64_hash"; do
+          checksums=$(RELEASE_TAG="$TAG" ASSET_NAME=SHA256SUMS \
+            FORGEJO_API="$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}" \
+            bash scripts/forgejo-release-asset.sh)
+          linux_amd64_hash=$(printf '%s\n' "$checksums" | awk '$2 == "ward-linux-amd64" {print $1}')
+          linux_arm64_hash=$(printf '%s\n' "$checksums" | awk '$2 == "ward-linux-arm64" {print $1}')
+          for h in "$amd64_hash" "$arm64_hash" "$linux_amd64_hash" "$linux_arm64_hash"; do
             if ! printf '%s' "$h" | grep -Eq '^[0-9a-f]{64}$'; then
               echo "::error::sidecar digest '${h}' is not a 64-hex sha256; refusing to write manifest" >&2
               exit 1
@@ -698,6 +719,7 @@ jobs:
           # Generate with node (present on the docker runner, used elsewhere in this
           # pipeline) so the JSON is always well-formed - no hand-quoting of hashes.
           VER="$VER" AMD64_HASH="$amd64_hash" ARM64_HASH="$arm64_hash" \
+          LINUX_AMD64_HASH="$linux_amd64_hash" LINUX_ARM64_HASH="$linux_arm64_hash" \
           WARD_REPO="$WARD_REPO" FORGEJO_BASE_URL="$FORGEJO_BASE_URL" \
           MANIFEST_PATH="$MANIFEST_PATH" \
           node -e '
@@ -710,20 +732,38 @@ jobs:
               license: "MIT",
               architecture: {
                 "64bit": {
-                  url: rel + "/v" + process.env.VER + "/ward-windows-amd64.exe#/ward.exe",
-                  hash: process.env.AMD64_HASH,
+                  url: [
+                    rel + "/v" + process.env.VER + "/ward-windows-amd64.exe#/ward.exe",
+                    rel + "/v" + process.env.VER + "/ward-linux-amd64#/ward-linux-amd64",
+                  ],
+                  hash: [process.env.AMD64_HASH, process.env.LINUX_AMD64_HASH],
                 },
                 arm64: {
-                  url: rel + "/v" + process.env.VER + "/ward-windows-arm64.exe#/ward.exe",
-                  hash: process.env.ARM64_HASH,
+                  url: [
+                    rel + "/v" + process.env.VER + "/ward-windows-arm64.exe#/ward.exe",
+                    rel + "/v" + process.env.VER + "/ward-linux-arm64#/ward-linux-arm64",
+                  ],
+                  hash: [process.env.ARM64_HASH, process.env.LINUX_ARM64_HASH],
                 },
               },
               bin: "ward.exe",
               checkver: { url: b + "/releases.atom", regex: "releases/tag/v([\\d.]+)" },
               autoupdate: {
                 architecture: {
-                  "64bit": { url: rel + "/v$version/ward-windows-amd64.exe#/ward.exe", hash: { url: "$url.sha256" } },
-                  arm64: { url: rel + "/v$version/ward-windows-arm64.exe#/ward.exe", hash: { url: "$url.sha256" } },
+                  "64bit": {
+                    url: [
+                      rel + "/v$version/ward-windows-amd64.exe#/ward.exe",
+                      rel + "/v$version/ward-linux-amd64#/ward-linux-amd64",
+                    ],
+                    hash: { url: "$url.sha256" },
+                  },
+                  arm64: {
+                    url: [
+                      rel + "/v$version/ward-windows-arm64.exe#/ward.exe",
+                      rel + "/v$version/ward-linux-arm64#/ward-linux-arm64",
+                    ],
+                    hash: { url: "$url.sha256" },
+                  },
                 },
               },
             };

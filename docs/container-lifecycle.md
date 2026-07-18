@@ -19,7 +19,10 @@ The container exists to carry one feature from start to merge.
 
 ## Launch details
 
-- the entrypoint stages the ward binary into the image.
+- the host stages the package's matching Linux ward binary for the entrypoint.
+  Linux hosts copy the running executable. macOS and Windows packages carry a
+  same-version Linux sidecar. Explicit version pins still use release assets,
+  and older packages without a sidecar fall back to that download path.
 - the target repo is cloned into the workspace inside the box.
 - the selected workflow decides whether the run ends at a patch, a PR, or a
   merge.

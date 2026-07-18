@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -776,6 +777,101 @@ func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 	}
 	if info.Mode()&0o111 == 0 {
 		t.Fatalf("staged ward binary must be executable, mode %o", info.Mode())
+	}
+}
+
+func TestPackagedWardBootstrapCandidates(t *testing.T) {
+	t.Run("linux copies itself", func(t *testing.T) {
+		exe := filepath.Join(t.TempDir(), "bin", "ward")
+		got := packagedWardBootstrapCandidates(exe, "linux", "amd64")
+		if len(got) != 1 || got[0] != exe {
+			t.Fatalf("linux candidates = %v, want current executable %q", got, exe)
+		}
+	})
+
+	t.Run("scoop sibling", func(t *testing.T) {
+		exe := filepath.Join(t.TempDir(), "ward.exe")
+		want := filepath.Join(filepath.Dir(exe), "ward-linux-amd64")
+		if got := packagedWardBootstrapCandidates(exe, "windows", "amd64"); !slices.Contains(got, want) {
+			t.Fatalf("windows candidates = %v, want Scoop sibling %q", got, want)
+		}
+	})
+
+	t.Run("homebrew libexec", func(t *testing.T) {
+		prefix := t.TempDir()
+		exe := filepath.Join(prefix, "bin", "ward")
+		want := filepath.Join(prefix, "libexec", "ward-linux-arm64")
+		if got := packagedWardBootstrapCandidates(exe, "darwin", "arm64"); !slices.Contains(got, want) {
+			t.Fatalf("darwin candidates = %v, want Homebrew sidecar %q", got, want)
+		}
+	})
+}
+
+func TestCopyWardBootstrapBinaryRequiresELF(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "ward-linux-amd64")
+	dest := filepath.Join(t.TempDir(), "ward")
+	want := append([]byte{0x7f, 'E', 'L', 'F'}, []byte("packaged ward")...)
+	if err := os.WriteFile(source, want, 0o555); err != nil {
+		t.Fatalf("write packaged ward: %v", err)
+	}
+	if err := copyWardBootstrapBinary(source, dest); err != nil {
+		t.Fatalf("copyWardBootstrapBinary: %v", err)
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("read staged ward: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("staged ward = %q, want %q", got, want)
+	}
+	if info, err := os.Stat(dest); err != nil {
+		t.Fatalf("stat staged ward: %v", err)
+	} else if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
+		t.Fatalf("staged ward must be executable, mode %o", info.Mode())
+	}
+
+	badSource := filepath.Join(t.TempDir(), "ward-linux-amd64")
+	if err := os.WriteFile(badSource, []byte("MZ not linux"), 0o555); err != nil {
+		t.Fatalf("write non-ELF ward: %v", err)
+	}
+	if err := copyWardBootstrapBinary(badSource, filepath.Join(t.TempDir(), "ward")); err == nil {
+		t.Fatal("copyWardBootstrapBinary should reject a non-ELF sidecar")
+	}
+}
+
+func TestRealStageWardBootstrapBinaryPrefersPackagedCopy(t *testing.T) {
+	originalExecutablePath := wardExecutablePath
+	t.Cleanup(func() { wardExecutablePath = originalExecutablePath })
+
+	binDir := t.TempDir()
+	host := filepath.Join(binDir, "ward")
+	if runtime.GOOS == "windows" {
+		host += ".exe"
+	}
+	source := host
+	if runtime.GOOS != "linux" {
+		arch, err := bootstrapGOARCH()
+		if err != nil {
+			t.Fatalf("bootstrapGOARCH: %v", err)
+		}
+		source = filepath.Join(binDir, bootstrapWardBinaryAssetName(arch))
+	}
+	want := append([]byte{0x7f, 'E', 'L', 'F'}, []byte("same-version ward")...)
+	if err := os.WriteFile(source, want, 0o555); err != nil {
+		t.Fatalf("write packaged ward: %v", err)
+	}
+	wardExecutablePath = func() (string, error) { return host, nil }
+
+	destDir := t.TempDir()
+	if err := realStageWardBootstrapBinary(context.Background(), destDir, "", ""); err != nil {
+		t.Fatalf("realStageWardBootstrapBinary: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(destDir, "ward"))
+	if err != nil {
+		t.Fatalf("read staged ward: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("staged ward = %q, want packaged bytes %q", got, want)
 	}
 }
 

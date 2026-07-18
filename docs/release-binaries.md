@@ -29,6 +29,9 @@ Each release publishes a tagged binary matrix plus checksums.
 - the binaries are named by platform and architecture.
 - the tags match the release tag on Forgejo.
 - the mirror copies the same release payload, not a different build.
+- Homebrew on macOS and Scoop on Windows install the matching Linux binary as
+  an unexposed sidecar. `ward agent` copies that same-version binary into each
+  Linux container instead of depending on its own published release at launch.
 
 ## See also
 

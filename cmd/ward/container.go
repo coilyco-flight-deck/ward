@@ -100,6 +100,7 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []ag
 
 var directorSurfaceSessionSuffix = dictatableID
 var stageWardBootstrapBinary = realStageWardBootstrapBinary
+var wardExecutablePath = os.Executable
 
 // dictatableID returns the short agent-id shape: two lowercase letters from
 // the dictatable alphabet, then two digits.
@@ -123,7 +124,7 @@ func dictatableID() string {
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
 func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountSurfaceExtras bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
-	// The container downloads this host's ward version by default; --ward-version
+	// The container stages this host's ward version by default; --ward-version
 	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
 	wardVersion := strings.TrimSpace(c.String("ward-version"))
 	if wardVersion == "" {
@@ -699,7 +700,109 @@ func realStageWardBootstrapBinary(ctx context.Context, dir, wardSource, wardVers
 	if strings.TrimSpace(wardSource) != "" {
 		return buildWardBootstrapBinary(ctx, wardSource, path)
 	}
-	return downloadWardBootstrapBinary(ctx, wardVersion, path)
+	pin := strings.TrimSpace(wardVersion)
+	if pin != "" && pin != Version {
+		return downloadWardBootstrapBinary(ctx, pin, path)
+	}
+	staged, err := stagePackagedWardBootstrapBinary(path)
+	if err != nil {
+		return err
+	}
+	if staged {
+		return nil
+	}
+	if pin == "" {
+		pin = Version
+	}
+	return downloadWardBootstrapBinary(ctx, pin, path)
+}
+
+// stagePackagedWardBootstrapBinary copies the release-matched Linux binary.
+// Older packages without one fall back to the release download.
+func stagePackagedWardBootstrapBinary(path string) (bool, error) {
+	exe, err := wardExecutablePath()
+	if err != nil {
+		return false, fmt.Errorf("ward container: resolve host ward executable: %w", err)
+	}
+	arch, err := bootstrapGOARCH()
+	if err != nil {
+		return false, err
+	}
+	for _, candidate := range packagedWardBootstrapCandidates(exe, runtime.GOOS, arch) {
+		info, statErr := os.Stat(candidate)
+		if errors.Is(statErr, os.ErrNotExist) {
+			continue
+		}
+		if statErr != nil {
+			return false, fmt.Errorf("ward container: inspect packaged bootstrap binary %s: %w", candidate, statErr)
+		}
+		if !info.Mode().IsRegular() {
+			return false, fmt.Errorf("ward container: packaged bootstrap binary %s is not a regular file", candidate)
+		}
+		if err := copyWardBootstrapBinary(candidate, path); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func packagedWardBootstrapCandidates(exe, goos, arch string) []string {
+	paths := []string{exe}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		paths = append(paths, resolved)
+	}
+	if goos == "linux" {
+		return uniquePaths(paths)
+	}
+
+	asset := bootstrapWardBinaryAssetName(arch)
+	var candidates []string
+	for _, executable := range paths {
+		binDir := filepath.Dir(executable)
+		candidates = append(candidates,
+			filepath.Join(binDir, asset),
+			filepath.Join(filepath.Dir(binDir), "libexec", asset),
+		)
+	}
+	return uniquePaths(candidates)
+}
+
+func uniquePaths(paths []string) []string {
+	seen := make(map[string]struct{}, len(paths))
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		clean := filepath.Clean(path)
+		key := clean
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(clean)
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, clean)
+	}
+	return out
+}
+
+func copyWardBootstrapBinary(source, path string) error {
+	f, err := os.Open(source)
+	if err != nil {
+		return fmt.Errorf("ward container: open packaged bootstrap binary %s: %w", source, err)
+	}
+	defer func() { _ = f.Close() }()
+	prefix := make([]byte, 4)
+	if _, err := io.ReadFull(f, prefix); err != nil {
+		return fmt.Errorf("ward container: packaged bootstrap binary %s is not an ELF binary: read header: %w", source, err)
+	}
+	if !bytes.Equal(prefix, []byte{0x7f, 'E', 'L', 'F'}) {
+		return fmt.Errorf("ward container: packaged bootstrap binary %s is not an ELF binary", source)
+	}
+	if err := writeWardBootstrapBinary(path, io.MultiReader(bytes.NewReader(prefix), f)); err != nil {
+		return fmt.Errorf("ward container: copy packaged bootstrap binary %s: %w", source, err)
+	}
+	return nil
 }
 
 func buildWardBootstrapBinary(ctx context.Context, wardSource, path string) error {

@@ -120,7 +120,7 @@ jobs:
             done
           done
           ( cd dist && sha256sum ward-* > SHA256SUMS )
-          ( cd dist && for f in ward-windows-*.exe; do
+          ( cd dist && for f in ward-*; do
               sha256sum "$f" | awk '{print $1}' > "${f}.sha256"
             done )
           bash scripts/publish-draft-release.sh

@@ -56,6 +56,7 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 	}
 	for _, want := range []string{
 		"scripts/registry-copy-tag.sh",
+		"for f in ward-*",
 	} {
 		if !strings.Contains(promote, want) {
 			t.Fatalf("promote workflow should mention %q:\n%s", want, promote)
@@ -107,9 +108,21 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 	for _, want := range []string{
 		"actions/checkout@v6",
 		"scripts/forgejo-release-asset.sh",
+		"ward-linux-amd64#/ward-linux-amd64",
+		"ward-linux-arm64#/ward-linux-arm64",
+		"LINUX_AMD64_HASH",
+		"LINUX_ARM64_HASH",
 	} {
 		if !strings.Contains(scoopJob, want) {
 			t.Fatalf("bump-scoop-manifest job should mention %q:\n%s", want, scoopJob)
+		}
+	}
+	for _, want := range []string{
+		"resource(\\\"ward-linux\\\").stage do",
+		"libexec.install sidecar",
+	} {
+		if !strings.Contains(release, want) {
+			t.Fatalf("Homebrew formula generator should mention %q:\n%s", want, release)
 		}
 	}
 
@@ -147,6 +160,7 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 	for _, want := range []string{
 		"does not publish moving `release` or `latest` aliases",
 		"tagged release assets directly",
+		"matching Linux binary",
 	} {
 		if !strings.Contains(binaries, want) {
 			t.Fatalf("release binaries docs should mention %q:\n%s", want, binaries)
