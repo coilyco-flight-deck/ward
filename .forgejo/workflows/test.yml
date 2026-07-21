@@ -20,7 +20,19 @@ jobs:
     container:
       image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:lang-go-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: checkout
+        run: |
+          # Script checkout: the lang-go job image carries no node runtime,
+          # so the actions/checkout node action cannot exec here. Anonymous
+          # fetch of the public repo, full history + tags, no credential
+          # ever written to git config (the promote push builds its own
+          # PAT URL).
+          set -euo pipefail
+          git config --global --add safe.directory "$(pwd)"
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch -q --tags origin "+refs/heads/*:refs/remotes/origin/*" "+${GITHUB_REF}:refs/ci-trigger"
+          git checkout -q --detach "$GITHUB_SHA" 2>/dev/null || git checkout -q --detach refs/ci-trigger
 
       - name: go vet
         run: make vet

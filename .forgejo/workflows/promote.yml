@@ -8,12 +8,12 @@
 # promotion is idempotent and a newer gate supersedes an older one). The
 # promote push uses CI_RELEASE_TOKEN (real-user PAT): some Forgejo versions do
 # not enqueue workflows for job-token pushes, so a job-token push would
-# silently skip the release pipeline. The checkout sets persist-credentials:
-# false because checkout otherwise stores the job token as an http extraheader
-# in the local git config, and that Authorization header overrides the PAT in
-# the promote push URL - the push then lands as the internal Actions user,
-# whose pushes Forgejo deliberately never enqueues workflows for. With it off,
-# the push authenticates as the PAT user and stage 2 fires (ward#1117).
+# silently skip the release pipeline. The checkout is a plain anonymous git
+# fetch (public repo) rather than actions/checkout: the lang-go job image has
+# no node runtime for node actions, and a script checkout also never stores
+# the job token as an http extraheader in git config, so no Authorization
+# header can override the PAT in the promote push URL - the push
+# authenticates as the PAT user and stage 2 fires (ward#1117).
 # The tag helper and release creation now run from local scripts so a transient
 # shared-action fetch cannot block the pipeline setup.
 
@@ -39,10 +39,19 @@ jobs:
     container:
       image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:lang-go-latest
     steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          persist-credentials: false
+      - name: checkout
+        run: |
+          # Script checkout: the lang-go job image carries no node runtime,
+          # so the actions/checkout node action cannot exec here. Anonymous
+          # fetch of the public repo, full history + tags, no credential
+          # ever written to git config (the promote push builds its own
+          # PAT URL).
+          set -euo pipefail
+          git config --global --add safe.directory "$(pwd)"
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch -q --tags origin "+refs/heads/*:refs/remotes/origin/*" "+${GITHUB_REF}:refs/ci-trigger"
+          git checkout -q --detach "$GITHUB_SHA" 2>/dev/null || git checkout -q --detach refs/ci-trigger
 
       - name: go vet
         run: make vet
