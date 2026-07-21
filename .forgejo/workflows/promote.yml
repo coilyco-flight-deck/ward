@@ -149,7 +149,12 @@ jobs:
       - name: Publish the ward agent image alias without Docker daemon
         env:
           SOURCE_TOKEN: ${{ github.token }}
-          TARGET_TOKEN: ${{ github.token }}
+          # Registry writes 401 (reqPackageAccess) under the job token on this
+          # Forgejo even with packages: write - container pushes need a real
+          # user PAT. ci-release (user coilyco-ops, write:package) is the same
+          # credential the promote push already trusts.
+          TARGET_USER: coilyco-ops
+          TARGET_TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "${SOURCE_TOKEN:-}" ]; then
@@ -157,12 +162,13 @@ jobs:
             exit 1
           fi
           if [ -z "${TARGET_TOKEN:-}" ]; then
-            echo "::error::github.token not set; cannot publish the ward:release image alias" >&2
+            echo "::error::CI_RELEASE_TOKEN not set; cannot publish the ward:release image alias (SSM /forgejo/ci-release-token)" >&2
             exit 1
           fi
           SOURCE_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest \
           TARGET_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/ward:release \
           SOURCE_TOKEN="$SOURCE_TOKEN" \
+          TARGET_USER="$TARGET_USER" \
           TARGET_TOKEN="$TARGET_TOKEN" \
           bash scripts/registry-copy-tag.sh
 

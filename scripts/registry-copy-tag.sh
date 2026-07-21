@@ -103,22 +103,26 @@ is_index() {
 }
 
 # fetch_manifest <ref> <out-file> <ct-out-file>: GET a manifest (tag or
-# digest) from the source repo, saving body and content type.
+# digest) from the source repo, saving body and content type. The content
+# type comes from curl's own %{content_type} because header-file grepping is
+# case-fragile: HTTP/2 lowercases header names, and mawk/BSD awk silently
+# ignore gawk's IGNORECASE - that combination made every index look like a
+# plain manifest and skipped the child walk entirely.
 fetch_manifest() {
-  local ref="$1" out="$2" ct_out="$3" headers code
-  headers="${workdir}/fetch-headers"
-  code=$(curl -sS -o "$out" -D "$headers" -w '%{http_code}' \
+  local ref="$1" out="$2" ct_out="$3" code_ct code ct
+  code_ct=$(curl -sS -o "$out" -w '%{http_code}\t%{content_type}' \
     -u "${SOURCE_USER}:${SOURCE_TOKEN}" \
     -H "Accept: ${accept_header}" \
     "${base_url}/${source_repo}/manifests/${ref}")
+  code="${code_ct%%	*}"
+  ct="${code_ct#*	}"
   if [ "$code" != "200" ]; then
     fail_http "could not fetch source manifest ${source_repo}@${ref}" "$code" "$out"
   fi
-  awk 'BEGIN{IGNORECASE=1} /^Content-Type:/ {sub("\r$", "", $0); sub(/^Content-Type:[[:space:]]*/, "", $0); print; exit}' \
-    "$headers" > "$ct_out"
-  if [ ! -s "$ct_out" ]; then
-    echo 'application/vnd.docker.distribution.manifest.v2+json' > "$ct_out"
+  if [ -z "$ct" ]; then
+    ct='application/vnd.docker.distribution.manifest.v2+json'
   fi
+  printf '%s\n' "$ct" > "$ct_out"
 }
 
 # ensure_blob <digest>: make the blob exist in the target repo. Mount from
@@ -157,7 +161,7 @@ ensure_blob() {
   if [ "$code" != "202" ]; then
     fail_http "could not open blob upload for ${digest}" "$code" "$body"
   fi
-  location=$(awk 'BEGIN{IGNORECASE=1} /^Location:/ {sub("\r$", "", $0); sub(/^Location:[[:space:]]*/, "", $0); print; exit}' "$upload_headers")
+  location=$(grep -i '^location:' "$upload_headers" | head -1 | sed 's/^[^:]*:[[:space:]]*//' | tr -d '\r')
   if [ -z "$location" ]; then
     echo "::error::blob upload for ${digest} returned no Location header" >&2
     exit 1
