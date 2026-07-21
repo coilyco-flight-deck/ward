@@ -119,7 +119,9 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"curl -fsSL -H 'Accept: application/octet-stream'",
+		"browser_download_url",
+		"DARWIN_ARM64_URL",
+		"LINUX_ARM64_URL",
 		"resource(\\\"ward-linux\\\").stage do",
 		"libexec.install sidecar",
 	} {
@@ -127,8 +129,14 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 			t.Fatalf("Homebrew formula generator should mention %q:\n%s", want, release)
 		}
 	}
-	if got := strings.Count(release, "headers: [\\\"Accept: application/octet-stream\\\"]"); got != 6 {
-		t.Fatalf("Homebrew formula generator should emit six asset-body headers, got %d:\n%s", got, release)
+	// Forgejo ignores Accept on the download route (ward#1493): formulas must
+	// carry resolved attachment URLs, never header-dependent download-route
+	// URLs. Any header stanza reappearing means the stub regression is back.
+	if got := strings.Count(release, "headers: [\\\"Accept: application/octet-stream\\\"]"); got != 0 {
+		t.Fatalf("Homebrew formula generator must not emit Accept-header URL stanzas (ward#1493), got %d:\n%s", got, release)
+	}
+	if strings.Contains(release, "ARTIFACT_ROOT}/ward-darwin") {
+		t.Fatalf("Homebrew formula generator must not emit download-route URLs (ward#1493):\n%s", release)
 	}
 
 	for _, ban := range []string{"go build -trimpath", "go mod download", "make sync-defaults-assets"} {
@@ -664,6 +672,30 @@ func TestForgejoReleaseAssetHelperReadsRawAssetBody(t *testing.T) {
 	}
 }
 
+func TestForgejoReleaseAssetHelperPassesMultilineBodiesThrough(t *testing.T) {
+	// The scoop job fetches SHA256SUMS - a multi-line document, not a bare
+	// digest. The helper must pass any non-metadata body through raw instead
+	// of demanding a single 64-hex line (the gap behind the v0.782.0
+	// bump-scoop-manifest failure, ward#1493).
+	srv := newReleaseAssetTestServer(t)
+	script := filepath.Join(repoRoot(t), "scripts", "forgejo-release-asset.sh")
+	cmd := exec.Command("bash", script)
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(),
+		"RELEASE_TAG=v9.9.9",
+		"ASSET_NAME=SHA256SUMS",
+		"FORGEJO_API="+srv.URL+"/api/v1/repos/coilyco-flight-deck/ward",
+		"TOKEN=secret",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("forgejo-release-asset.sh failed: %v\noutput: %s", err, out)
+	}
+	if string(out) != testSHA256SUMSBody {
+		t.Fatalf("asset body = %q, want the raw SHA256SUMS document", out)
+	}
+}
+
 type draftReleaseTestServer struct {
 	*httptest.Server
 	mu             sync.Mutex
@@ -818,6 +850,8 @@ func newReleaseAssetTestServer(t *testing.T) *releaseAssetTestServer {
 	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/7", s.handleReleaseAssetMetadata)
 	mux.HandleFunc("/attachments/7", s.handleReleaseAttachmentMetadata)
 	mux.HandleFunc("/attachments/8", s.handleReleaseAttachmentBody)
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/9", s.handleChecksumsAssetMetadata)
+	mux.HandleFunc("/attachments/10", s.handleChecksumsAttachmentBody)
 	s.Server = httptest.NewServer(mux)
 	t.Cleanup(s.Close)
 	return s
@@ -848,8 +882,21 @@ func (s *releaseAssetTestServer) handleReleaseAssets(w http.ResponseWriter, r *h
 	s.record(r)
 	_, _ = w.Write([]byte(`[
 		{"id":7,"name":"ward-windows-amd64.exe.sha256"},
-		{"id":8,"name":"ward-windows-arm64.exe.sha256"}
+		{"id":8,"name":"ward-windows-arm64.exe.sha256"},
+		{"id":9,"name":"SHA256SUMS"}
 	]`))
+}
+
+var testSHA256SUMSBody = strings.Repeat("a", 64) + "  ward-linux-amd64\n" + strings.Repeat("b", 64) + "  ward-linux-arm64\n"
+
+func (s *releaseAssetTestServer) handleChecksumsAssetMetadata(w http.ResponseWriter, r *http.Request) {
+	s.record(r)
+	_, _ = w.Write([]byte(`{"id":9,"name":"SHA256SUMS","browser_download_url":"` + s.URL + `/attachments/10"}`))
+}
+
+func (s *releaseAssetTestServer) handleChecksumsAttachmentBody(w http.ResponseWriter, r *http.Request) {
+	s.record(r)
+	_, _ = w.Write([]byte(testSHA256SUMSBody))
 }
 
 func (s *releaseAssetTestServer) handleReleaseAssetMetadata(w http.ResponseWriter, r *http.Request) {

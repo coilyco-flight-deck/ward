@@ -434,14 +434,25 @@ jobs:
             exit 1
           fi
           version="${TAG#v}"
-          artifact_root="$FORGEJO_BASE_URL/${WARD_REPO}/releases/download/${TAG}"
-          hash_asset() {
-            asset="$1"
-            url="${artifact_root}/${asset}"
+          # Forgejo serves asset-metadata JSON on the releases/download route
+          # regardless of the Accept header (ward#1493), so the formula must
+          # point at each asset's browser_download_url and hash the bytes that
+          # URL actually serves. One release-by-tag API call carries every
+          # asset's byte URL.
+          assets_json="$(curl -fsSL "$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}/releases/tags/${TAG}")"
+          asset_url() {
+            printf '%s' "$assets_json" | ASSET="$1" python3 -c '
+import json, os, sys
+assets = json.load(sys.stdin).get("assets") or []
+match = next((a for a in assets if a.get("name") == os.environ["ASSET"]), None)
+if match:
+    sys.stdout.write(str(match.get("browser_download_url") or ""))
+'
+          }
+          hash_url() {
             tmp="$(mktemp)"
-            code="$(curl -fsSL -H 'Accept: application/octet-stream' -w '%{http_code}' -o "$tmp" "$url" || true)"
-            if [ "$code" != "200" ]; then
-              echo "::error::could not fetch ${asset} from ${url} (http ${code:-curl-failed}); draft assets may not have been promoted yet" >&2
+            if ! curl -fsSL -o "$tmp" "$1"; then
+              echo "::error::could not fetch asset bytes from $1; draft assets may not have been promoted yet" >&2
               rm -f "$tmp"
               return 1
             fi
@@ -452,13 +463,26 @@ jobs:
             fi
             rm -f "$tmp"
           }
-          darwin_amd64=$(hash_asset ward-darwin-amd64)
-          darwin_arm64=$(hash_asset ward-darwin-arm64)
-          linux_amd64=$(hash_asset ward-linux-amd64)
-          linux_arm64=$(hash_asset ward-linux-arm64)
+          darwin_amd64_url=$(asset_url ward-darwin-amd64)
+          darwin_arm64_url=$(asset_url ward-darwin-arm64)
+          linux_amd64_url=$(asset_url ward-linux-amd64)
+          linux_arm64_url=$(asset_url ward-linux-arm64)
+          for u in "$darwin_amd64_url" "$darwin_arm64_url" "$linux_amd64_url" "$linux_arm64_url"; do
+            case "$u" in
+              https://*) ;;
+              *)
+                echo "::error::release ${TAG} asset did not resolve to a browser_download_url (got '${u}'); refusing to write formula" >&2
+                exit 1
+                ;;
+            esac
+          done
+          darwin_amd64=$(hash_url "$darwin_amd64_url")
+          darwin_arm64=$(hash_url "$darwin_arm64_url")
+          linux_amd64=$(hash_url "$linux_amd64_url")
+          linux_arm64=$(hash_url "$linux_arm64_url")
           for sha in "$darwin_amd64" "$darwin_arm64" "$linux_amd64" "$linux_arm64"; do
             if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{64}$'; then
-              echo "::error::computed sha256 '${sha}' for ${artifact_root} is not a 64-hex digest; refusing to write formula" >&2
+              echo "::error::computed sha256 '${sha}' for ${TAG} is not a 64-hex digest; refusing to write formula" >&2
               exit 1
             fi
           done
@@ -467,9 +491,11 @@ jobs:
           # release-asset pins are the source of truth.
           git clone --depth 1 "$FORGEJO_BASE_URL/$TAP_REPO.git" tap
           cd tap
-          VERSION="$version" ARTIFACT_ROOT="$artifact_root" \
+          VERSION="$version" \
           DARWIN_AMD64="$darwin_amd64" DARWIN_ARM64="$darwin_arm64" \
           LINUX_AMD64="$linux_amd64" LINUX_ARM64="$linux_arm64" \
+          DARWIN_AMD64_URL="$darwin_amd64_url" DARWIN_ARM64_URL="$darwin_arm64_url" \
+          LINUX_AMD64_URL="$linux_amd64_url" LINUX_ARM64_URL="$linux_arm64_url" \
           FORMULA_PATH="$FORMULA_PATH" \
           node -e '
             const fs = require("fs");
@@ -482,21 +508,17 @@ jobs:
               "",
               "  on_macos do",
               "    if Hardware::CPU.arm?",
-              `      url \"${process.env.ARTIFACT_ROOT}/ward-darwin-arm64\",`,
-              "          headers: [\"Accept: application/octet-stream\"]",
+              `      url \"${process.env.DARWIN_ARM64_URL}\"`,
               `      sha256 \"${process.env.DARWIN_ARM64}\"`,
               "      resource \"ward-linux\" do",
-              `        url \"${process.env.ARTIFACT_ROOT}/ward-linux-arm64\",`,
-              "            headers: [\"Accept: application/octet-stream\"]",
+              `        url \"${process.env.LINUX_ARM64_URL}\"`,
               `        sha256 \"${process.env.LINUX_ARM64}\"`,
               "      end",
               "    else",
-              `      url \"${process.env.ARTIFACT_ROOT}/ward-darwin-amd64\",`,
-              "          headers: [\"Accept: application/octet-stream\"]",
+              `      url \"${process.env.DARWIN_AMD64_URL}\"`,
               `      sha256 \"${process.env.DARWIN_AMD64}\"`,
               "      resource \"ward-linux\" do",
-              `        url \"${process.env.ARTIFACT_ROOT}/ward-linux-amd64\",`,
-              "            headers: [\"Accept: application/octet-stream\"]",
+              `        url \"${process.env.LINUX_AMD64_URL}\"`,
               `        sha256 \"${process.env.LINUX_AMD64}\"`,
               "      end",
               "    end",
@@ -504,12 +526,10 @@ jobs:
               "",
               "  on_linux do",
               "    if Hardware::CPU.arm?",
-              `      url \"${process.env.ARTIFACT_ROOT}/ward-linux-arm64\",`,
-              "          headers: [\"Accept: application/octet-stream\"]",
+              `      url \"${process.env.LINUX_ARM64_URL}\"`,
               `      sha256 \"${process.env.LINUX_ARM64}\"`,
               "    else",
-              `      url \"${process.env.ARTIFACT_ROOT}/ward-linux-amd64\",`,
-              "          headers: [\"Accept: application/octet-stream\"]",
+              `      url \"${process.env.LINUX_AMD64_URL}\"`,
               `      sha256 \"${process.env.LINUX_AMD64}\"`,
               "    end",
               "  end",
@@ -587,8 +607,8 @@ jobs:
             echo "::error::tap ${TAP_REPO} main does not serve ${TAG} after push; formula bump did not land" >&2
             exit 1
           fi
-          if ! printf '%s' "$published" | grep -q "/releases/download/${TAG}/ward-darwin-amd64"; then
-            echo "::error::tap ${TAP_REPO} main does not serve the release-asset URL for ${TAG} after push" >&2
+          if ! printf '%s' "$published" | grep -qF "$darwin_amd64_url"; then
+            echo "::error::tap ${TAP_REPO} main does not serve the resolved asset URL for ${TAG} after push" >&2
             exit 1
           fi
           echo "tap ${TAP_REPO} formula bumped to ${TAG}"
@@ -706,6 +726,35 @@ jobs:
             bash scripts/forgejo-release-asset.sh)
           linux_amd64_hash=$(printf '%s\n' "$checksums" | awk '$2 == "ward-linux-amd64" {print $1}')
           linux_arm64_hash=$(printf '%s\n' "$checksums" | awk '$2 == "ward-linux-arm64" {print $1}')
+          # Concrete manifest URLs must serve bytes: Forgejo hands back
+          # asset-metadata JSON on releases/download regardless of Accept
+          # (ward#1493), so resolve each binary asset's browser_download_url.
+          # The autoupdate block keeps the download-route templates as the
+          # bucket-side poll safety net; push-not-poll rewrites this manifest
+          # with resolved URLs on every release anyway.
+          assets_json="$(curl -fsSL "$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}/releases/tags/${TAG}")"
+          asset_url() {
+            printf '%s' "$assets_json" | ASSET="$1" python3 -c '
+import json, os, sys
+assets = json.load(sys.stdin).get("assets") or []
+match = next((a for a in assets if a.get("name") == os.environ["ASSET"]), None)
+if match:
+    sys.stdout.write(str(match.get("browser_download_url") or ""))
+'
+          }
+          win_amd64_url=$(asset_url ward-windows-amd64.exe)
+          win_arm64_url=$(asset_url ward-windows-arm64.exe)
+          linux_amd64_url=$(asset_url ward-linux-amd64)
+          linux_arm64_url=$(asset_url ward-linux-arm64)
+          for u in "$win_amd64_url" "$win_arm64_url" "$linux_amd64_url" "$linux_arm64_url"; do
+            case "$u" in
+              https://*) ;;
+              *)
+                echo "::error::release ${TAG} asset did not resolve to a browser_download_url (got '${u}'); refusing to write manifest" >&2
+                exit 1
+                ;;
+            esac
+          done
           for h in "$amd64_hash" "$arm64_hash" "$linux_amd64_hash" "$linux_arm64_hash"; do
             if ! printf '%s' "$h" | grep -Eq '^[0-9a-f]{64}$'; then
               echo "::error::sidecar digest '${h}' is not a 64-hex sha256; refusing to write manifest" >&2
@@ -726,6 +775,8 @@ jobs:
           # pipeline) so the JSON is always well-formed - no hand-quoting of hashes.
           VER="$VER" AMD64_HASH="$amd64_hash" ARM64_HASH="$arm64_hash" \
           LINUX_AMD64_HASH="$linux_amd64_hash" LINUX_ARM64_HASH="$linux_arm64_hash" \
+          WIN_AMD64_URL="$win_amd64_url" WIN_ARM64_URL="$win_arm64_url" \
+          LINUX_AMD64_URL="$linux_amd64_url" LINUX_ARM64_URL="$linux_arm64_url" \
           WARD_REPO="$WARD_REPO" FORGEJO_BASE_URL="$FORGEJO_BASE_URL" \
           MANIFEST_PATH="$MANIFEST_PATH" \
           node -e '
@@ -739,15 +790,15 @@ jobs:
               architecture: {
                 "64bit": {
                   url: [
-                    rel + "/v" + process.env.VER + "/ward-windows-amd64.exe#/ward.exe",
-                    rel + "/v" + process.env.VER + "/ward-linux-amd64#/ward-linux-amd64",
+                    process.env.WIN_AMD64_URL + "#/ward.exe",
+                    process.env.LINUX_AMD64_URL + "#/ward-linux-amd64",
                   ],
                   hash: [process.env.AMD64_HASH, process.env.LINUX_AMD64_HASH],
                 },
                 arm64: {
                   url: [
-                    rel + "/v" + process.env.VER + "/ward-windows-arm64.exe#/ward.exe",
-                    rel + "/v" + process.env.VER + "/ward-linux-arm64#/ward-linux-arm64",
+                    process.env.WIN_ARM64_URL + "#/ward.exe",
+                    process.env.LINUX_ARM64_URL + "#/ward-linux-arm64",
                   ],
                   hash: [process.env.ARM64_HASH, process.env.LINUX_ARM64_HASH],
                 },

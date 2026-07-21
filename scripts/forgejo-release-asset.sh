@@ -70,11 +70,11 @@ for _ in 1 2 3 4 5; do
     "$url")
   case "$asset_code" in
     200)
-      asset_body=$(cat "$asset_json")
-      if printf '%s' "$asset_body" | grep -Eq '^[0-9a-f]{64}$'; then
-        printf '%s' "$asset_body"
-        exit 0
-      fi
+      # Follow asset-metadata JSON hops (Forgejo serves metadata with a
+      # browser_download_url on the asset routes regardless of Accept,
+      # ward#1493); anything that is not such metadata is the asset body
+      # itself and passes through raw - single digests, SHA256SUMS
+      # documents, or arbitrary files. Callers own validation.
       next_url=$(python3 -c '
 import json, sys
 try:
@@ -83,9 +83,8 @@ except Exception:
     sys.stdout.write("")
 ' < "$asset_json")
       if [ -z "${next_url:-}" ]; then
-        echo "::error::release ${RELEASE_TAG} asset ${ASSET_NAME} did not return raw body or browser_download_url" >&2
-        cat "$asset_json" >&2 || true
-        exit 1
+        cat "$asset_json"
+        exit 0
       fi
       url="$next_url"
       ;;
@@ -97,6 +96,6 @@ except Exception:
   esac
 done
 
-echo "::error::release ${RELEASE_TAG} asset ${ASSET_NAME} did not resolve to a raw digest after 5 hops" >&2
+echo "::error::release ${RELEASE_TAG} asset ${ASSET_NAME} did not resolve to a raw body after 5 hops" >&2
 cat "$asset_json" >&2 || true
 exit 1
