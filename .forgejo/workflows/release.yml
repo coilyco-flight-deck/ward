@@ -441,13 +441,16 @@ jobs:
           # asset's byte URL.
           assets_json="$(curl -fsSL "$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}/releases/tags/${TAG}")"
           asset_url() {
-            printf '%s' "$assets_json" | ASSET="$1" python3 -c '
-import json, os, sys
-assets = json.load(sys.stdin).get("assets") or []
-match = next((a for a in assets if a.get("name") == os.environ["ASSET"]), None)
-if match:
-    sys.stdout.write(str(match.get("browser_download_url") or ""))
-'
+            ASSET="$1" ASSETS_JSON="$assets_json" python3 - <<'ASSET_URL_PY'
+          import json
+          import os
+          import sys
+
+          assets = json.loads(os.environ["ASSETS_JSON"]).get("assets") or []
+          match = next((a for a in assets if a.get("name") == os.environ["ASSET"]), None)
+          if match:
+              sys.stdout.write(str(match.get("browser_download_url") or ""))
+          ASSET_URL_PY
           }
           hash_url() {
             tmp="$(mktemp)"
@@ -734,13 +737,16 @@ if match:
           # with resolved URLs on every release anyway.
           assets_json="$(curl -fsSL "$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}/releases/tags/${TAG}")"
           asset_url() {
-            printf '%s' "$assets_json" | ASSET="$1" python3 -c '
-import json, os, sys
-assets = json.load(sys.stdin).get("assets") or []
-match = next((a for a in assets if a.get("name") == os.environ["ASSET"]), None)
-if match:
-    sys.stdout.write(str(match.get("browser_download_url") or ""))
-'
+            ASSET="$1" ASSETS_JSON="$assets_json" python3 - <<'ASSET_URL_PY'
+          import json
+          import os
+          import sys
+
+          assets = json.loads(os.environ["ASSETS_JSON"]).get("assets") or []
+          match = next((a for a in assets if a.get("name") == os.environ["ASSET"]), None)
+          if match:
+              sys.stdout.write(str(match.get("browser_download_url") or ""))
+          ASSET_URL_PY
           }
           win_amd64_url=$(asset_url ward-windows-amd64.exe)
           win_arm64_url=$(asset_url ward-windows-arm64.exe)
