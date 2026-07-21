@@ -151,10 +151,13 @@ jobs:
           SOURCE_TOKEN: ${{ github.token }}
           # Registry writes 401 (reqPackageAccess) under the job token on this
           # Forgejo even with packages: write - container pushes need a real
-          # user PAT. ci-release (user coilyco-ops, write:package) is the same
-          # credential the promote push already trusts.
+          # user PAT with write:package. CI_RELEASE_TOKEN lacks that scope, so
+          # the alias push uses the org REGISTRY_TOKEN as coilyco-ops - the
+          # same pairing the agentic-os image pushes use. The July 401 hunt
+          # never actually tested this combo: the runs that carried it died
+          # pulling the job image (runner dind eviction) before this step ran.
           TARGET_USER: coilyco-ops
-          TARGET_TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
+          TARGET_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "${SOURCE_TOKEN:-}" ]; then
@@ -162,7 +165,7 @@ jobs:
             exit 1
           fi
           if [ -z "${TARGET_TOKEN:-}" ]; then
-            echo "::error::CI_RELEASE_TOKEN not set; cannot publish the ward:release image alias (SSM /forgejo/ci-release-token)" >&2
+            echo "::error::REGISTRY_TOKEN not set; cannot publish the ward:release image alias" >&2
             exit 1
           fi
           SOURCE_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest \
