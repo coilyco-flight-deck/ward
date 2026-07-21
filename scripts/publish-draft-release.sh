@@ -17,7 +17,7 @@ cleanup() {
 trap cleanup EXIT
 
 json_id() {
-  node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0, "utf8")).id || ""))'
+  python3 -c 'import json,sys; sys.stdout.write(str(json.load(sys.stdin).get("id") or ""))'
 }
 
 resolve_draft_release_id() {
@@ -43,14 +43,15 @@ resolve_draft_release_id() {
   esac
 
   if [ -z "${rel_id:-}" ]; then
-    payload=$(DRAFT_TAG="$DRAFT_TAG" RELEASE_NAME="$RELEASE_NAME" RELEASE_BODY="${RELEASE_BODY:-}" node -e '
-      process.stdout.write(JSON.stringify({
-        tag_name: process.env.DRAFT_TAG,
-        name: process.env.RELEASE_NAME,
-        draft: true,
-        body: process.env.RELEASE_BODY || "",
-      }));
-    ')
+    payload=$(DRAFT_TAG="$DRAFT_TAG" RELEASE_NAME="$RELEASE_NAME" RELEASE_BODY="${RELEASE_BODY:-}" python3 -c '
+import json, os, sys
+sys.stdout.write(json.dumps({
+    "tag_name": os.environ["DRAFT_TAG"],
+    "name": os.environ["RELEASE_NAME"],
+    "draft": True,
+    "body": os.environ.get("RELEASE_BODY", ""),
+}, separators=(",", ":")))
+')
     create_code=$(curl -sS -o "$create_json" -w '%{http_code}' \
       -X POST -H "Authorization: token ${TOKEN}" \
       -H "Content-Type: application/json" \
@@ -86,11 +87,13 @@ if [ -d "$DIST_DIR" ]; then
     "${FORGEJO_API}/releases/${rel_id}/assets?per_page=100" || echo '[]')
 
   for name in $(cd "$DIST_DIR" && ls); do
-    old=$(printf '%s' "$existing" | ASSET="$name" node -e '
-      const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
-      const m = (a || []).find(x => x.name === process.env.ASSET);
-      if (m) process.stdout.write(String(m.id));
-    ')
+    old=$(printf '%s' "$existing" | ASSET="$name" python3 -c '
+import json, os, sys
+assets = json.loads(sys.stdin.read() or "[]") or []
+match = next((x for x in assets if x.get("name") == os.environ["ASSET"]), None)
+if match:
+    sys.stdout.write(str(match["id"]))
+')
     if [ -n "$old" ]; then
       curl -fsSL -X DELETE -H "Authorization: token ${TOKEN}" \
         "${FORGEJO_API}/releases/${rel_id}/assets/${old}" || true

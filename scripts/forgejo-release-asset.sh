@@ -12,7 +12,7 @@ if [ -n "$TOKEN" ]; then
 fi
 
 json_id() {
-  node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0, "utf8")).id || ""))'
+  python3 -c 'import json,sys; sys.stdout.write(str(json.load(sys.stdin).get("id") or ""))'
 }
 
 release_json=""
@@ -44,10 +44,12 @@ fi
 assets=$(curl -fsSL \
   "${auth_args[@]}" \
   "${FORGEJO_API}/releases/${release_id}/assets?per_page=100")
-asset_id=$(printf '%s' "$assets" | ASSET_NAME="$ASSET_NAME" node -e '
-  const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
-  const m = (a || []).find(x => x.name === process.env.ASSET_NAME);
-  if (m) process.stdout.write(String(m.id));
+asset_id=$(printf '%s' "$assets" | ASSET_NAME="$ASSET_NAME" python3 -c '
+import json, os, sys
+assets = json.loads(sys.stdin.read() or "[]") or []
+match = next((x for x in assets if x.get("name") == os.environ["ASSET_NAME"]), None)
+if match:
+    sys.stdout.write(str(match["id"]))
 ')
 if [ -z "${asset_id:-}" ]; then
   echo "::error::release ${RELEASE_TAG} does not have asset ${ASSET_NAME}" >&2
@@ -73,16 +75,13 @@ for _ in 1 2 3 4 5; do
         printf '%s' "$asset_body"
         exit 0
       fi
-      next_url=$(node -e '
-        const fs = require("fs");
-        try {
-          const body = fs.readFileSync(0, "utf8");
-          const parsed = JSON.parse(body);
-          process.stdout.write(String(parsed.browser_download_url || ""));
-        } catch {
-          process.stdout.write("");
-        }
-      ' < "$asset_json")
+      next_url=$(python3 -c '
+import json, sys
+try:
+    sys.stdout.write(str(json.load(sys.stdin).get("browser_download_url") or ""))
+except Exception:
+    sys.stdout.write("")
+' < "$asset_json")
       if [ -z "${next_url:-}" ]; then
         echo "::error::release ${RELEASE_TAG} asset ${ASSET_NAME} did not return raw body or browser_download_url" >&2
         cat "$asset_json" >&2 || true

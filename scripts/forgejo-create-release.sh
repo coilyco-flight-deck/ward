@@ -9,7 +9,7 @@ set -euo pipefail
 : "${RELEASE_DRAFT:=true}"
 
 json_id() {
-  node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0, "utf8")).id || ""))'
+  python3 -c 'import json,sys; sys.stdout.write(str(json.load(sys.stdin).get("id") or ""))'
 }
 
 release_json=""
@@ -39,13 +39,14 @@ case "$release_code" in
     ;;
 esac
 
-payload=$(RELEASE_TAG="$RELEASE_TAG" RELEASE_NAME="$RELEASE_NAME" RELEASE_BODY="$RELEASE_BODY" RELEASE_DRAFT="$RELEASE_DRAFT" node -e '
-  process.stdout.write(JSON.stringify({
-    tag_name: process.env.RELEASE_TAG,
-    name: process.env.RELEASE_NAME,
-    body: process.env.RELEASE_BODY,
-    draft: process.env.RELEASE_DRAFT !== "false",
-  }));
+payload=$(RELEASE_TAG="$RELEASE_TAG" RELEASE_NAME="$RELEASE_NAME" RELEASE_BODY="$RELEASE_BODY" RELEASE_DRAFT="$RELEASE_DRAFT" python3 -c '
+import json, os, sys
+sys.stdout.write(json.dumps({
+    "tag_name": os.environ["RELEASE_TAG"],
+    "name": os.environ["RELEASE_NAME"],
+    "body": os.environ["RELEASE_BODY"],
+    "draft": os.environ["RELEASE_DRAFT"] != "false",
+}, separators=(",", ":")))
 ')
 
 if [ -z "${release_id:-}" ]; then
