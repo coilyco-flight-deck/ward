@@ -2,6 +2,8 @@ package scripts
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -119,7 +121,8 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"browser_download_url",
+		"scripts/forgejo-asset-url.sh",
+		"SHA256SUMS",
 		"DARWIN_ARM64_URL",
 		"LINUX_ARM64_URL",
 		"resource(\\\"ward-linux\\\").stage do",
@@ -912,4 +915,46 @@ func (s *releaseAssetTestServer) handleReleaseAttachmentMetadata(w http.Response
 func (s *releaseAssetTestServer) handleReleaseAttachmentBody(w http.ResponseWriter, r *http.Request) {
 	s.record(r)
 	_, _ = w.Write([]byte(strings.Repeat("a", 64)))
+}
+
+func TestForgejoAssetURLResolverFollowsMetadataHops(t *testing.T) {
+	// Models the ward#1493 Forgejo behavior: the download route serves tiny
+	// attachment-metadata JSON regardless of Accept, and only the metadata's
+	// browser_download_url (/attachments/<uuid>) serves bytes. The resolver
+	// must emit the final byte URL plus the sha256 of those bytes.
+	const body = "real ward binary bytes\n"
+	mux := http.NewServeMux()
+	var srvURL string
+	mux.HandleFunc("/owner/ward/releases/download/v9.9.9/ward-darwin-arm64", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"id":1,"name":"ward-darwin-arm64","browser_download_url":"`+srvURL+`/attachments/50"}`)
+	})
+	mux.HandleFunc("/attachments/50", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, body)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	srvURL = srv.URL
+
+	script := filepath.Join(repoRoot(t), "scripts", "forgejo-asset-url.sh")
+	cmd := exec.Command("bash", script)
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(),
+		"DOWNLOAD_BASE="+srv.URL+"/owner/ward/releases/download/v9.9.9",
+		"ASSET_NAME=ward-darwin-arm64",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("forgejo-asset-url.sh failed: %v\noutput: %s", err, out)
+	}
+	fields := strings.Fields(strings.TrimSpace(string(out)))
+	if len(fields) != 2 {
+		t.Fatalf("resolver output = %q, want \"<url> <sha>\"", out)
+	}
+	if fields[0] != srv.URL+"/attachments/50" {
+		t.Fatalf("resolved url = %q, want the attachments byte URL", fields[0])
+	}
+	sum := sha256.Sum256([]byte(body))
+	if fields[1] != hex.EncodeToString(sum[:]) {
+		t.Fatalf("resolved sha = %q, want sha of the byte body", fields[1])
+	}
 }

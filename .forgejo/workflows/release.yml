@@ -418,6 +418,8 @@ jobs:
       TAP_REPO: coilyco-flight-deck/homebrew-tap
       FORMULA_PATH: Formula/ward.rb
     steps:
+      - uses: actions/checkout@v6
+
       - name: Bump tap formula and push
         env:
           TAP_WRITE_TOKEN: ${{ secrets.TAP_WRITE_TOKEN }}
@@ -434,61 +436,37 @@ jobs:
             exit 1
           fi
           version="${TAG#v}"
-          # Forgejo serves asset-metadata JSON on the releases/download route
-          # regardless of the Accept header (ward#1493), so the formula must
-          # point at each asset's browser_download_url and hash the bytes that
-          # URL actually serves. One release-by-tag API call carries every
-          # asset's byte URL.
-          assets_json="$(curl -fsSL "$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}/releases/tags/${TAG}")"
-          asset_url() {
-            ASSET="$1" ASSETS_JSON="$assets_json" python3 - <<'ASSET_URL_PY'
-          import json
-          import os
-          import sys
-
-          assets = json.loads(os.environ["ASSETS_JSON"]).get("assets") or []
-          match = next((a for a in assets if a.get("name") == os.environ["ASSET"]), None)
-          if match:
-              sys.stdout.write(str(match.get("browser_download_url") or ""))
-          ASSET_URL_PY
+          # Resolve each asset to the URL that serves bytes and hash what it
+          # serves (scripts/forgejo-asset-url.sh follows Forgejo's
+          # attachment-metadata hops, ward#1493). The release API's own
+          # browser_download_url points back at the metadata-serving download
+          # route, so it cannot be used directly.
+          download_base="$FORGEJO_BASE_URL/${WARD_REPO}/releases/download/${TAG}"
+          resolve() {
+            DOWNLOAD_BASE="$download_base" ASSET_NAME="$1" bash scripts/forgejo-asset-url.sh
           }
-          hash_url() {
-            tmp="$(mktemp)"
-            if ! curl -fsSL -o "$tmp" "$1"; then
-              echo "::error::could not fetch asset bytes from $1; draft assets may not have been promoted yet" >&2
-              rm -f "$tmp"
-              return 1
-            fi
-            if command -v sha256sum >/dev/null 2>&1; then
-              sha256sum "$tmp" | awk '{print $1}'
-            else
-              shasum -a 256 "$tmp" | awk '{print $1}'
-            fi
-            rm -f "$tmp"
-          }
-          darwin_amd64_url=$(asset_url ward-darwin-amd64)
-          darwin_arm64_url=$(asset_url ward-darwin-arm64)
-          linux_amd64_url=$(asset_url ward-linux-amd64)
-          linux_arm64_url=$(asset_url ward-linux-arm64)
-          for u in "$darwin_amd64_url" "$darwin_arm64_url" "$linux_amd64_url" "$linux_arm64_url"; do
-            case "$u" in
-              https://*) ;;
-              *)
-                echo "::error::release ${TAG} asset did not resolve to a browser_download_url (got '${u}'); refusing to write formula" >&2
-                exit 1
-                ;;
-            esac
-          done
-          darwin_amd64=$(hash_url "$darwin_amd64_url")
-          darwin_arm64=$(hash_url "$darwin_arm64_url")
-          linux_amd64=$(hash_url "$linux_amd64_url")
-          linux_arm64=$(hash_url "$linux_arm64_url")
-          for sha in "$darwin_amd64" "$darwin_arm64" "$linux_amd64" "$linux_arm64"; do
-            if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{64}$'; then
-              echo "::error::computed sha256 '${sha}' for ${TAG} is not a 64-hex digest; refusing to write formula" >&2
+          out=$(resolve ward-darwin-amd64); darwin_amd64_url=${out% *}; darwin_amd64=${out#* }
+          out=$(resolve ward-darwin-arm64); darwin_arm64_url=${out% *}; darwin_arm64=${out#* }
+          out=$(resolve ward-linux-amd64); linux_amd64_url=${out% *}; linux_amd64=${out#* }
+          out=$(resolve ward-linux-arm64); linux_arm64_url=${out% *}; linux_arm64=${out#* }
+          # Stub guard: every fetched-bytes hash must match the release's own
+          # SHA256SUMS, computed from the real binaries at build time. A
+          # metadata body can never match, so any future Forgejo route change
+          # fails loud here instead of shipping a broken formula.
+          checksums=$(RELEASE_TAG="$TAG" ASSET_NAME=SHA256SUMS \
+            FORGEJO_API="$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}" \
+            bash scripts/forgejo-release-asset.sh)
+          check_sum() {
+            expected=$(printf '%s\n' "$checksums" | awk -v a="$1" '$2 == a {print $1}')
+            if [ -z "$expected" ] || [ "$2" != "$expected" ]; then
+              echo "::error::hash mismatch for $1: fetched bytes ${2} vs SHA256SUMS ${expected:-<missing>}; refusing to write formula (ward#1493 stub guard)" >&2
               exit 1
             fi
-          done
+          }
+          check_sum ward-darwin-amd64 "$darwin_amd64"
+          check_sum ward-darwin-arm64 "$darwin_arm64"
+          check_sum ward-linux-amd64 "$linux_amd64"
+          check_sum ward-linux-arm64 "$linux_arm64"
 
           # Clone the tap's live main and rewrite the formula in place. The
           # release-asset pins are the source of truth.
@@ -731,27 +709,19 @@ jobs:
           linux_arm64_hash=$(printf '%s\n' "$checksums" | awk '$2 == "ward-linux-arm64" {print $1}')
           # Concrete manifest URLs must serve bytes: Forgejo hands back
           # asset-metadata JSON on releases/download regardless of Accept
-          # (ward#1493), so resolve each binary asset's browser_download_url.
-          # The autoupdate block keeps the download-route templates as the
-          # bucket-side poll safety net; push-not-poll rewrites this manifest
-          # with resolved URLs on every release anyway.
-          assets_json="$(curl -fsSL "$FORGEJO_BASE_URL/api/v1/repos/${WARD_REPO}/releases/tags/${TAG}")"
-          asset_url() {
-            ASSET="$1" ASSETS_JSON="$assets_json" python3 - <<'ASSET_URL_PY'
-          import json
-          import os
-          import sys
-
-          assets = json.loads(os.environ["ASSETS_JSON"]).get("assets") or []
-          match = next((a for a in assets if a.get("name") == os.environ["ASSET"]), None)
-          if match:
-              sys.stdout.write(str(match.get("browser_download_url") or ""))
-          ASSET_URL_PY
+          # (ward#1493), so resolve each binary asset through the metadata
+          # hops to its /attachments/<uuid> URL. The autoupdate block keeps
+          # the download-route templates as the bucket-side poll safety net;
+          # push-not-poll rewrites this manifest with resolved URLs on every
+          # release anyway.
+          download_base="$FORGEJO_BASE_URL/${WARD_REPO}/releases/download/${TAG}"
+          resolve_url() {
+            DOWNLOAD_BASE="$download_base" ASSET_NAME="$1" bash scripts/forgejo-asset-url.sh | awk '{print $1}'
           }
-          win_amd64_url=$(asset_url ward-windows-amd64.exe)
-          win_arm64_url=$(asset_url ward-windows-arm64.exe)
-          linux_amd64_url=$(asset_url ward-linux-amd64)
-          linux_arm64_url=$(asset_url ward-linux-arm64)
+          win_amd64_url=$(resolve_url ward-windows-amd64.exe)
+          win_arm64_url=$(resolve_url ward-windows-arm64.exe)
+          linux_amd64_url=$(resolve_url ward-linux-amd64)
+          linux_arm64_url=$(resolve_url ward-linux-arm64)
           for u in "$win_amd64_url" "$win_arm64_url" "$linux_amd64_url" "$linux_arm64_url"; do
             case "$u" in
               https://*) ;;
