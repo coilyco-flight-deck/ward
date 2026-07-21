@@ -18,7 +18,7 @@ jobs:
     runs-on: docker
     timeout-minutes: 10
     container:
-      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:lang-go-latest
     steps:
       - uses: actions/checkout@v6
 
@@ -31,11 +31,23 @@ jobs:
       - name: golangci-lint
         timeout-minutes: 5
         env:
+          GOLANGCI_LINT_VERSION: "2.12.2"
           TMPDIR: ${{ runner.tool_cache }}/ward-tmp
           GOTMPDIR: ${{ runner.tool_cache }}/ward-go-tmp
           GOCACHE: ${{ runner.tool_cache }}/ward-go-build
           GOMODCACHE: ${{ runner.tool_cache }}/ward-go-mod
-        run: mkdir -p "$TMPDIR" "$GOTMPDIR" "$GOCACHE" "$GOMODCACHE" && make lint
+        run: |
+          # The lang-go tier ships Go but not golangci-lint (that lived in the
+          # retired full tier), so install the same pinned version the full
+          # image baked before running the lint gate.
+          if ! command -v golangci-lint >/dev/null 2>&1; then
+            arch=$(uname -m)
+            case "$arch" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; esac
+            curl -fsSL "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_LINT_VERSION}/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-${arch}.tar.gz" \
+              | tar -xz -C /usr/local/bin --strip-components=1 \
+                "golangci-lint-${GOLANGCI_LINT_VERSION}-linux-${arch}/golangci-lint"
+          fi
+          mkdir -p "$TMPDIR" "$GOTMPDIR" "$GOCACHE" "$GOMODCACHE" && make lint
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
         env:
