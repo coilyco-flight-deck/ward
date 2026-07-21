@@ -173,15 +173,26 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 }
 
 func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
+	// The mock models what Forgejo's registry actually enforces on a
+	// cross-repo copy: the target rejects a manifest whose referenced blobs
+	// and child manifests are not already present in the target repo, so the
+	// script must mount blobs (?mount=&from=) and copy child manifests by
+	// digest before the final tag PUT lands.
 	const (
-		sourceBody = `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","size":123,"platform":{"architecture":"amd64","os":"linux"}}]}`
-		targetBody = sourceBody
+		childDigest  = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+		configDigest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+		layerDigest  = "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+		sourceBody   = `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"` + childDigest + `","size":123,"platform":{"architecture":"amd64","os":"linux"}}]}`
+		childBody    = `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"` + configDigest + `","size":10},"layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip","digest":"` + layerDigest + `","size":20}]}`
+		targetBody   = sourceBody
 	)
 
 	var (
-		putSeen bool
-		gotAuth []string
-		mu      sync.Mutex
+		indexPutSeen bool
+		childPutSeen bool
+		mounted      = map[string]bool{}
+		gotAuth      []string
+		mu           sync.Mutex
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -190,7 +201,7 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 		mu.Unlock()
 		wantUser := "coilyco-ops"
 		wantPass := "target-secret"
-		if r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/agentic-os/manifests/latest" {
+		if strings.HasPrefix(r.URL.Path, "/v2/coilyco-flight-deck/agentic-os/") {
 			wantUser = "oauth2"
 			wantPass = "source-secret"
 		}
@@ -203,14 +214,49 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = io.WriteString(w, sourceBody)
+		case r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/agentic-os/manifests/"+childDigest:
+			w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, childBody)
+		case r.Method == http.MethodHead && strings.HasPrefix(r.URL.Path, "/v2/coilyco-flight-deck/ward/blobs/sha256:"):
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/coilyco-flight-deck/ward/blobs/uploads/":
+			mount := r.URL.Query().Get("mount")
+			if mount == "" || r.URL.Query().Get("from") != "coilyco-flight-deck/agentic-os" {
+				t.Fatalf("blob upload POST without mount+from: %q", r.URL.RawQuery)
+			}
+			mu.Lock()
+			mounted[mount] = true
+			mu.Unlock()
+			w.WriteHeader(http.StatusCreated)
+		case r.Method == http.MethodPut && r.URL.Path == "/v2/coilyco-flight-deck/ward/manifests/"+childDigest:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read child PUT body: %v", err)
+			}
+			mu.Lock()
+			blobsReady := mounted[configDigest] && mounted[layerDigest]
+			childPutSeen = true
+			mu.Unlock()
+			if !blobsReady {
+				t.Fatal("child manifest PUT before its blobs were mounted")
+			}
+			if string(body) != childBody {
+				t.Fatalf("child PUT body = %q, want child manifest", body)
+			}
+			w.WriteHeader(http.StatusCreated)
 		case r.Method == http.MethodPut && r.URL.Path == "/v2/coilyco-flight-deck/ward/manifests/release":
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				t.Fatalf("read PUT body: %v", err)
 			}
 			mu.Lock()
-			putSeen = true
+			childReady := childPutSeen
+			indexPutSeen = true
 			mu.Unlock()
+			if !childReady {
+				t.Fatal("index PUT before its child manifest was copied")
+			}
 			if string(body) != sourceBody {
 				t.Fatalf("PUT body = %q, want source manifest", body)
 			}
@@ -220,7 +266,7 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 		case r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/ward/manifests/release":
 			mu.Lock()
-			seen := putSeen
+			seen := indexPutSeen
 			mu.Unlock()
 			if !seen {
 				w.WriteHeader(http.StatusNotFound)
@@ -252,11 +298,19 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 		t.Fatalf("registry-copy-tag.sh failed: %v\noutput: %s", err, out)
 	}
 	mu.Lock()
-	seen := putSeen
+	seen := indexPutSeen
+	childSeen := childPutSeen
+	blobsMounted := mounted[configDigest] && mounted[layerDigest]
 	auths := append([]string(nil), gotAuth...)
 	defer mu.Unlock()
 	if !seen {
 		t.Fatal("registry-copy-tag.sh did not publish the target manifest")
+	}
+	if !childSeen {
+		t.Fatal("registry-copy-tag.sh did not copy the child manifest into the target repo")
+	}
+	if !blobsMounted {
+		t.Fatal("registry-copy-tag.sh did not mount the child manifest's blobs into the target repo")
 	}
 	if len(auths) < 3 {
 		t.Fatalf("expected auth on source, target, and verify requests; got %d requests", len(auths))
