@@ -418,7 +418,7 @@ func TestCollectFrictionEvents(t *testing.T) {
 		{
 			name:    "green pr boundary",
 			meta:    runMeta{Driver: string(modeClaude), Launched: true, TranscriptPresent: true},
-			console: "WARD-REAP: nothing to reap (workflow pull-request boundary reached: branch pushed, pull request open, and required CI checks are green)\n",
+			console: "WARD-REAP: nothing to reap (workflow pull-request boundary reached with a clean local tree. The reaper did not verify remote branch, pull request, or CI state)\n",
 		},
 		{
 			name:      "no transcript prelaunch failure",

@@ -1566,8 +1566,8 @@ func TestEntrypointClonesExtraRepos(t *testing.T) {
 	}
 }
 
-// TestEntrypointGooseHeadless locks ward#141.
-// Entrypoint runs goose run --no-session -t <seed> and mirrors doctrine into .goosehints.
+// TestEntrypointGooseHeadless locks ward#141: Goose reads its seed on stdin,
+// and the entrypoint mirrors doctrine into .goosehints.
 func TestEntrypointGooseHeadless(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
 	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)

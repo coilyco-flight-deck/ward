@@ -126,6 +126,20 @@ func TestReadReapEnvIssueAndLaunched(t *testing.T) {
 	}
 }
 
+func TestReapBoundaryReasonDoesNotInventRemoteSuccess(t *testing.T) {
+	for _, workflow := range []workflowMode{workflowPullRequest, workflowPullRequestAndMerge, workflowRemoteBranchOnly} {
+		reason := reapBoundaryReason(workflow)
+		for _, unproven := range []string{"branch pushed", "pull request open", "checks are green"} {
+			if strings.Contains(reason, unproven) {
+				t.Errorf("reapBoundaryReason(%s) claims %q without remote proof: %s", workflow, unproven, reason)
+			}
+		}
+		if !strings.Contains(reason, "did not verify") {
+			t.Errorf("reapBoundaryReason(%s) does not state its proof boundary: %s", workflow, reason)
+		}
+	}
+}
+
 // TestReadReapEnvParsesExtraRepos covers ward#291: the reaper reads WARD_EXTRA_REPOS
 // so it can verify each --repo grant landed, dropping the target and malformed entries.
 func TestReadReapEnvParsesExtraRepos(t *testing.T) {

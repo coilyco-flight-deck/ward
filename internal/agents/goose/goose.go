@@ -68,10 +68,10 @@ func (a Agent) PreflightArgv(prompt string) ([]string, bool) {
 }
 
 // LaunchArgv builds goose's in-container argv; mirrors cmd/ward's buildAgentArgv.
-// Interactive drops the seed (a goose session is not auto-fed the prompt).
+// One-shot Goose reads the seed from stdin. Interactive drops it entirely.
 func (a Agent) LaunchArgv(rc agentsapi.RunCtx) (argv []string, stream bool) {
 	if rc.Headless || rc.Ask {
-		return append([]string{"goose", "run", "--no-session", "-t"}, rc.Seed...), false
+		return []string{"goose", "run", "--no-session", "-t"}, false
 	}
 	return []string{"goose", "session"}, false
 }

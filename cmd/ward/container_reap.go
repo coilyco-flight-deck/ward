@@ -113,11 +113,11 @@ func reapBoundaryReason(w workflowMode) string {
 	case workflowDirectToMain:
 		return "tree clean, HEAD on origin/main"
 	case workflowPullRequest:
-		return "workflow pull-request boundary reached: branch pushed, pull request open, and required CI checks are green"
+		return "workflow pull-request boundary reached with a clean local tree. The reaper did not verify remote branch, pull request, or CI state"
 	case workflowPullRequestAndMerge:
-		return "workflow pull-request-and-merge boundary reached: branch pushed, pull request open, and required CI checks are green"
+		return "workflow pull-request-and-merge boundary reached with a clean local tree. The reaper did not verify remote branch, pull request, or CI state"
 	case workflowRemoteBranchOnly:
-		return "workflow remote-branch-only boundary reached: remote branch pushed"
+		return "workflow remote-branch-only boundary reached with a clean local tree. The reaper did not verify remote branch state"
 	default:
 		return "tree clean, workflow boundary reached"
 	}
@@ -170,10 +170,10 @@ func (r *Runner) runContainerReap(ctx context.Context, c *cli.Command) error {
 	fmt.Fprintf(os.Stderr, "ward container reap: work tree confirmed at %s\n", work)
 	terr := r.reapTargetTree(ctx, work, env, true)
 	unlanded := r.verifyExtraReposLanded(ctx, env)
-	r.releaseReservationIfTerminalOutcome(ctx, env)
 	if terr == nil && !unlanded {
 		r.commentLaunchedNoOutcomeIfNeeded(ctx, env)
 	}
+	r.releaseReservationIfTerminalOutcome(ctx, env)
 	return terr
 }
 

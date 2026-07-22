@@ -4,7 +4,8 @@ The `codex` role is the OpenAI harness.
 
 - It reads host auth from `~/.codex`.
 - It has no host one-shot preflight.
-- It launches headless work with `codex exec`.
+- It launches headless work with `codex exec -- <prompt>`, so a dash-prefixed
+  seed remains prompt text instead of becoming a CLI option.
 
 ## See also
 

@@ -6,7 +6,8 @@ The `goose` role is the local Ollama-backed harness.
 - It accepts the shared model override API via `--config agent.goose.model=<model>`.
 - It runs a host one-shot preflight before launch.
 - It launches headless work with `goose run --no-session -t` so the process
-  exits cleanly after the final turn.
+  exits cleanly after the final turn. Ward feeds the prompt on stdin because
+  Goose treats trailing values as CLI arguments.
 
 ## See also
 

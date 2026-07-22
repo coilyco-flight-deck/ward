@@ -72,11 +72,11 @@ func (a agentAdapter) preflightArgv(prompt string) ([]string, bool) {
 	return argv, true
 }
 
-// launchArgv returns the in-container argv for the selected posture. The prompt
-// seed is appended by the caller.
+// launchArgv returns the in-container argv for the selected posture. Harnesses
+// that read prompts from argv receive the seed here. Goose reads it from stdin.
 func (a agentAdapter) launchArgv(headless, ask bool, model string, seed []string) ([]string, bool) { //nolint:cyclop
 	if ask && len(a.Argv.Preflight) > 0 {
-		argv := a.launchSeededArgv(a.Argv.Preflight, model, seed, true)
+		argv := a.launchSeededArgv(a.Argv.Preflight, model, seed, a.Name != string(modeGoose))
 		if a.Name == string(modeGoose) {
 			argv = gooseHeadlessArgv(argv)
 		}
@@ -87,7 +87,10 @@ func (a agentAdapter) launchArgv(headless, ask bool, model string, seed []string
 		if a.Name == string(modeGoose) {
 			argv = gooseHeadlessArgv(argv)
 		}
-		return a.launchSeededArgv(argv, model, seed, true), a.Stream == "stream-json"
+		if a.Name == string(modeCodex) && len(seed) > 0 {
+			argv = append(argv, "--")
+		}
+		return a.launchSeededArgv(argv, model, seed, a.Name != string(modeGoose)), a.Stream == "stream-json"
 	}
 	argv := append([]string{}, a.Argv.Interactive...)
 	if model != "" && a.Binary == string(modeClaude) {

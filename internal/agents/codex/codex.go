@@ -72,7 +72,11 @@ func (a Agent) PreflightArgv(string) ([]string, bool) { return nil, false }
 // LaunchArgv builds codex's in-container argv; mirrors cmd/ward's buildAgentArgv.
 func (a Agent) LaunchArgv(rc agentsapi.RunCtx) (argv []string, stream bool) {
 	if rc.Headless || rc.Ask {
-		return append([]string{"codex", "exec"}, rc.Seed...), false
+		argv = []string{"codex", "exec"}
+		if len(rc.Seed) > 0 {
+			argv = append(argv, "--")
+		}
+		return append(argv, rc.Seed...), false
 	}
 	return append([]string{"codex"}, rc.Seed...), false
 }

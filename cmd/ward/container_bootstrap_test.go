@@ -111,7 +111,7 @@ func TestBuildAgentArgv(t *testing.T) {
 			name:     "goose oneshot",
 			env:      bootstrapEnv{Mode: "goose", Agent: "goose", Headless: true},
 			seed:     seed,
-			wantArgv: []string{"goose", "run", "--no-session", "-t", "work issue #5"},
+			wantArgv: []string{"goose", "run", "--no-session", "-t"},
 		},
 		{
 			name:     "goose interactive",
@@ -122,8 +122,8 @@ func TestBuildAgentArgv(t *testing.T) {
 		{
 			name:     "codex oneshot",
 			env:      bootstrapEnv{Mode: "codex", Agent: "codex", Ask: true},
-			seed:     seed,
-			wantArgv: []string{"codex", "exec", "work issue #5"},
+			seed:     []string{"----- launch pre-flight -----"},
+			wantArgv: []string{"codex", "exec", "--", "----- launch pre-flight -----"},
 		},
 		{
 			name:     "codex interactive",
@@ -176,9 +176,13 @@ func TestLaunchAgentReportsOOMKilled(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: shell.PathResolver}}
+	var launchErr error
 	stderr := captureTestStderr(t, func() {
-		r.launchAgent(context.Background(), bootstrapEnv{Container: "director-codex-vg94"}, t.TempDir(), []string{"codex"}, false)
+		launchErr = r.launchAgent(context.Background(), bootstrapEnv{Container: "director-codex-vg94"}, t.TempDir(), []string{"codex"}, false, nil)
 	})
+	if launchErr == nil {
+		t.Fatal("launchAgent swallowed the harness failure")
+	}
 	if !strings.Contains(stderr, "signal: killed") {
 		t.Fatalf("launchAgent stderr missing signal kill breadcrumb:\n%s", stderr)
 	}
@@ -229,11 +233,15 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	runGit(t, seed, "push", "-u", "origin", "main")
 
 	binDir := t.TempDir()
+	promptPath := filepath.Join(t.TempDir(), "prompt")
 	goose := filepath.Join(binDir, "goose")
 	setpriv := filepath.Join(binDir, "setpriv")
 	chown := filepath.Join(binDir, "chown")
 	aws := filepath.Join(binDir, "aws")
 	gooseBody := "#!/bin/sh\n" +
+		"test \"$#\" -eq 3 || exit 2\n" +
+		"IFS= read -r prompt\n" +
+		"printf '%s' \"$prompt\" >\"$WARD_TEST_PROMPT_PATH\"\n" +
 		"trap '' INT TERM HUP\n" +
 		"printf '%s\\n' 'Issue #0 IMPLEMENTATION COMPLETE'\n" +
 		"printf '%s\\n' 'All requirements satisfied and implementation complete'\n" +
@@ -269,6 +277,7 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	t.Setenv("WARD_SMOKE_TEST_SKIP", "1")
 	t.Setenv("WARD_SUBSTRATE_SKIP", "1")
 	t.Setenv("WARD_REAP_WORK", "1")
+	t.Setenv("WARD_TEST_PROMPT_PATH", promptPath)
 	t.Setenv("GIT_CONFIG_SYSTEM", filepath.Join(t.TempDir(), "gitconfig"))
 
 	var stdout bytes.Buffer
@@ -276,7 +285,8 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	r := &Runner{Runner: &shell.Runner{Stdout: &stdout, Stderr: &runStderr, Resolve: shell.PathResolver}}
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	cmd := parseCommandForTest(t, nil, []string{"bootstrap"})
+	const prompt = "----- launch pre-flight -----"
+	cmd := parseCommandForTest(t, nil, []string{"bootstrap", "--", prompt})
 	var runErr error
 
 	stderr := captureTestStderr(t, func() {
@@ -287,6 +297,12 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	}
 	if got := stdout.String(); !strings.Contains(got, "Issue #0 IMPLEMENTATION COMPLETE") {
 		t.Fatalf("stdout missing final Goose completion output:\n%s", got)
+	}
+	if got, err := os.ReadFile(promptPath); err != nil || string(got) != prompt {
+		t.Fatalf("Goose stdin prompt = %q, %v; want %q", got, err, prompt)
+	}
+	if os.Getenv(envAgentLaunched) != "1" {
+		t.Fatal("bootstrap did not mark the harness launch handoff")
 	}
 	for _, want := range []string{
 		"goose terminal completion output observed; requesting exit",

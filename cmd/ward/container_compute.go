@@ -1209,6 +1209,8 @@ func logAgentArgv(e bootstrapEnv, seed []string) {
 	switch {
 	case e.Ask && len(adapter.Argv.Preflight) > 0:
 		blog("one-shot: %s <prompt> (prompt on stdin; prints to this log)", strings.Join(adapter.Argv.Preflight, " "))
+	case e.oneshot() && adapter.Name == string(modeGoose):
+		blog("one-shot: %s <prompt> (prompt on stdin; prints to this log)", strings.Join(adapter.Argv.Headless, " "))
 	case e.oneshot():
 		blog("one-shot: %s <prompt> (prints to this log)", strings.Join(adapter.Argv.Headless, " "))
 	case len(seed) > 0:

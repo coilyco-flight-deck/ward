@@ -522,7 +522,12 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 
 	blog("launching %s as uid %s", e.Agent, e.AgentUID)
 	blog("bootstrap launch handoff: %s", e.Agent)
-	r.launchAgent(ctx, e, work, argv, stream)
+	_ = os.Setenv(envAgentLaunched, "1")
+	if lerr := r.launchAgent(ctx, e, work, argv, stream, agentArgs); lerr != nil {
+		blog("launch failed: %v", lerr)
+		writeGateFailure("harness-cli", lerr.Error())
+		return fmt.Errorf("%s launch failed: %w", e.Agent, lerr)
+	}
 	blog("bootstrap launch returned: agent process exited, deferred reaper runs next")
 	return nil
 }
@@ -1455,7 +1460,13 @@ func (r *Runner) reap(ctx context.Context, work string) {
 		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before the container is removed")
 		return
 	}
-	if rerr := r.reapWorkTree(ctx, work, env); rerr != nil {
+	rerr := r.reapTargetTree(ctx, work, env, true)
+	unlanded := r.verifyExtraReposLanded(ctx, env)
+	if rerr == nil && !unlanded {
+		r.commentLaunchedNoOutcomeIfNeeded(ctx, env)
+	}
+	r.releaseReservationIfTerminalOutcome(ctx, env)
+	if rerr != nil {
 		blog("reaper returned non-zero; check this log for an UNPRESERVED PATCH block before the container is removed")
 	}
 }
@@ -1474,40 +1485,30 @@ func (r *Runner) launchStderr() io.Writer {
 	return os.Stderr
 }
 
-// reapWorkTree reaps the target tree then verifies every --repo grant landed too
-// (ward#291); the entrypoint defer never releases the reservation (agent launched).
-func (r *Runner) reapWorkTree(ctx context.Context, work string, env reapEnv) error {
-	terr := r.reapTargetTree(ctx, work, env, false)
-	r.verifyExtraReposLanded(ctx, env)
-	return terr
-}
-
 // --- launch ------------------------------------------------------------------
 
-// launchAgent ports the tail of main(): drop to the agent user via setpriv and
-// run the agent (stream-json piped through streamProgress). Non-zero exit just logs.
-func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, argv []string, stream bool) {
+// launchAgent runs the agent as its non-root user. It returns any harness failure
+// so bootstrap cannot convert a CLI usage error into container success.
+func (r *Runner) launchAgent(ctx context.Context, e bootstrapEnv, work string, argv []string, stream bool, seed []string) error {
 	launch := append(setprivPrefix(e), argv...)
 	blog("launch start: stream=%t oneshot=%t work=%s", stream, e.oneshot(), work)
+	var runErr error
 	switch {
 	case stream:
-		if rerr := r.runStreaming(ctx, work, launch); rerr != nil {
-			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
-		}
+		runErr = r.runStreaming(ctx, work, launch)
 	case e.oneshot() && containerMode(e.Mode) == modeGoose:
-		if rerr := r.runGooseCompletionWatch(ctx, work, launch); rerr != nil {
-			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
-		}
+		runErr = r.runGooseCompletionWatch(ctx, work, launch, strings.Join(seed, "\n"))
 	case e.oneshot():
-		if rerr := r.runWithStdin(ctx, work, launch, os.DevNull); rerr != nil {
-			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
-		}
+		runErr = r.runWithStdin(ctx, work, launch, os.DevNull)
 	default:
-		if rerr := r.runWithStdin(ctx, work, launch, ""); rerr != nil {
-			blog(r.agentDeathLogLine(ctx, e.Container, rerr))
-		}
+		runErr = r.runWithStdin(ctx, work, launch, "")
+	}
+	if runErr != nil {
+		blog(r.agentDeathLogLine(ctx, e.Container, runErr))
+		return runErr
 	}
 	blog("bootstrap launch returned: agent process exited, deferred reaper runs next")
+	return nil
 }
 
 // agentDeathLogLine names an OOM kill explicitly when Docker state still knows it.
@@ -1644,16 +1645,12 @@ func finishGooseCompletionWatch(cmd *exec.Cmd, watch gooseCompletionWatch) error
 }
 
 // runGooseCompletionWatch runs a headless Goose under a completion watchdog.
-// Once stdout shows the terminal answer, Ward exits the process if needed.
-func (r *Runner) runGooseCompletionWatch(ctx context.Context, work string, launch []string) error {
+// The prompt rides stdin because `goose run -t` treats trailing argv as options.
+func (r *Runner) runGooseCompletionWatch(ctx context.Context, work string, launch []string, prompt string) error {
 	cmd := exec.CommandContext(ctx, launch[0], launch[1:]...) // #nosec G204 -- fixed setpriv/agent argv
 	cmd.Dir = work
 	cmd.Stderr = r.launchStderr()
-	devnull, _ := os.Open(os.DevNull)
-	if devnull != nil {
-		defer func() { _ = devnull.Close() }()
-	}
-	cmd.Stdin = devnull
+	cmd.Stdin = strings.NewReader(prompt)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
