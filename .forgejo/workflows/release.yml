@@ -416,6 +416,7 @@ jobs:
       FORGEJO_BASE_URL: https://forgejo.coilysiren.me
       WARD_REPO: coilyco-flight-deck/ward
       TAP_REPO: coilyco-flight-deck/homebrew-tap
+      TAP_WRITE_USER: coilyco-ops
       FORMULA_PATH: Formula/ward.rb
     steps:
       - uses: actions/checkout@v6
@@ -556,7 +557,7 @@ jobs:
           git config user.name "forgejo-tap-writer"
           git config user.email "coilyco-ops@coilysiren.me"
           git commit -aqm "chore(formula): bump ward to ${TAG} [skip ci]"
-          push_url="https://coilysiren:${TAP_WRITE_TOKEN}@forgejo.coilysiren.me/${TAP_REPO}.git"
+          push_url="https://${TAP_WRITE_USER}:${TAP_WRITE_TOKEN}@forgejo.coilysiren.me/${TAP_REPO}.git"
           remote_formula_version() {
             remote_formula=$(curl -fsSL "$FORGEJO_BASE_URL/$TAP_REPO/raw/branch/main/$FORMULA_PATH" || true)
             printf '%s' "$remote_formula" | sed -n 's/^  version "\([^"]*\)"/\1/p' | head -1
