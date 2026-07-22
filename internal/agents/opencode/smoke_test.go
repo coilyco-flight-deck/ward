@@ -34,11 +34,17 @@ func TestPreLaunchCheckReachable(t *testing.T) {
 }
 
 func TestPreLaunchCheckModelConfig(t *testing.T) {
+	nativeTagsRequested := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/tags" {
+		switch r.URL.Path {
+		case "/v1/models":
+			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"qwen3-coder:30b","object":"model"}]}`))
+		case "/api/tags":
+			nativeTagsRequested = true
+			http.NotFound(w, r)
+		default:
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"models":[{"name":"qwen3-coder:30b"}]}`))
 	}))
 	defer srv.Close()
 
@@ -51,5 +57,8 @@ func TestPreLaunchCheckModelConfig(t *testing.T) {
 	}
 	if err := (Agent{}).PreLaunchCheck(rc); err != nil {
 		t.Fatalf("PreLaunchCheck against a live model should pass, got %v", err)
+	}
+	if nativeTagsRequested {
+		t.Fatal("Opencode model check used native Ollama /api/tags instead of /v1/models")
 	}
 }

@@ -3,6 +3,8 @@ package ollamaprobe
 import (
 	"context"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -111,6 +113,22 @@ func TestPreLaunchReachable(t *testing.T) {
 	rc := agentsapi.RunCtx{Ctx: context.Background(), Headless: true, Log: noopLog}
 	if err := PreLaunch(rc, "opencode", "http://"+ln.Addr().String()+"/v1"); err != nil {
 		t.Errorf("PreLaunch against a live listener should pass, got %v", err)
+	}
+}
+
+// TestNativeModelCheckKeepsOllamaTags pins the native API for callers that do
+// not use an OpenAI-compatible provider.
+func TestNativeModelCheckKeepsOllamaTags(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tags" {
+			t.Fatalf("native model check path = %q, want /api/tags", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"models":[{"name":"local-model:latest"}]}`))
+	}))
+	defer srv.Close()
+
+	if err := modelExists(t.Context(), srv.URL+"/v1", "local-model:latest"); err != nil {
+		t.Fatalf("native model check: %v", err)
 	}
 }
 

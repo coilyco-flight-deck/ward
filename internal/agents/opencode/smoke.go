@@ -8,5 +8,5 @@ import (
 // PreLaunchCheck probes the local Ollama endpoint before a headless opencode run
 // so an unreachable backend or stale configured model aborts cleanly.
 func (a Agent) PreLaunchCheck(rc agentsapi.RunCtx) error {
-	return ollamaprobe.PreLaunchModel(rc, "opencode", rc.OllamaURL, rc.OpencodeModel)
+	return ollamaprobe.PreLaunchOpenAIModel(rc, "opencode", rc.OllamaURL, rc.OpencodeModel)
 }
