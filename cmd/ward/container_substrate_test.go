@@ -34,27 +34,10 @@ coilyco-bridge/lore                   cache
 	}
 }
 
-// TestEmbeddedSubstrateManifest guards the committed manifest: it must parse and
-// the public/private tier invariant must hold (image=public, cache=bridge).
+// TestEmbeddedSubstrateManifest guards the product-neutral default's syntax.
 func TestEmbeddedSubstrateManifest(t *testing.T) {
-	repos, err := loadSubstrateManifest()
+	_, err := loadSubstrateManifest()
 	if err != nil {
 		t.Fatalf("embedded preclone-repos.txt does not parse: %v", err)
-	}
-	if len(repos) == 0 {
-		t.Fatal("embedded manifest is empty")
-	}
-	publicOrgs := map[string]bool{"coilysiren": true, "coilyco-flight-deck": true}
-	for _, r := range repos {
-		switch r.Tier {
-		case "image":
-			if !publicOrgs[r.Owner] {
-				t.Errorf("%s is image-tier but %q is not a public org - private content must not be baked into the shareable image", r.slug(), r.Owner)
-			}
-		case "cache":
-			if r.Owner != "coilyco-bridge" {
-				t.Errorf("%s is cache-tier from %q; cache tier is for leak-tolerant bridge repos", r.slug(), r.Owner)
-			}
-		}
 	}
 }

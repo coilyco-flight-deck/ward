@@ -1,34 +1,5 @@
-# Substrate repos pre-seeded for ward container runs - cross-cutting references
-# every agent needs regardless of the target repo it was spun against.
+# Ward's bundled substrate manifest is intentionally empty. Deployments own
+# their repo roster instead of compiling one user's repositories into Ward.
 #
-# Format: `owner/name  tier`, one per line, '#' comments and blanks ignored.
-# Forgejo-canonical owner/name.
-#
-# EVERY repo here lives in the host-side warm gitcache as a bare --mirror clone
-# and is refreshed by a TTL-gated fetch on container init (fetch only if the
-# mirror's FETCH_HEAD is older than the TTL. An flock serialises concurrent
-# inits against the same mirror). The working copy is a cheap local clone out
-# of the mirror into the container-local fs.
-#
-# The `tier` column only controls the SEED SOURCE, split on a public/private
-# boundary so the image stays shareable:
-#   image  - public (coilysiren + coilyco-flight-deck). A bare-mirror seed is
-#            ALSO baked into the dev-base image at build time, so a cold host
-#            starts with these already warm and needs no network for them on
-#            first run. Still TTL-refreshed in the gitcache like everything else.
-#   cache  - coilyco-bridge (leak-tolerant/private). Never baked into the image.
-#            Cold-cloned into the gitcache on first use, then TTL-refreshed.
-#
-# This is the runtime substrate manifest for ward containers. The image-tier
-# rows are denormalized from the canonical
-# docker/dev-base/substrate-image-repos.txt, which owns the baked dev-base seed.
-# The ansible local-sync (infrastructure/scripts/clone-substrate-repos.sh)
-# syncs this same list into ~/projects. The two stay denormalized copies, not a
-# single source of truth.
-
-coilyco-flight-deck/ward              image
-coilyco-flight-deck/cli-guard         image
-coilyco-flight-deck/infrastructure    image
-coilysiren/coilysiren                 image
-coilyco-bridge/deploy                 cache
-coilyco-bridge/lore                   cache
+# Deployment-provided rows use this whitespace-delimited format:
+#   owner/name  image|cache
