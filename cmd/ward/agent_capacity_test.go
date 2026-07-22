@@ -684,6 +684,43 @@ func TestActiveEngineerLaunchCountIgnoresTerminalGhostRowsAndCacheClears(t *test
 	}
 }
 
+func TestActiveEngineerLaunchCountIgnoresLocalCleanupNeededReservation(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	oldBase := forgejoBaseURL
+	defer func() { forgejoBaseURL = oldBase }()
+	now := time.Now().UTC()
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1502}
+	rows := []issueThreadAuthorityRow{
+		{
+			Number:   ref.Number,
+			Title:    "failed local launch",
+			Body:     "body",
+			Labels:   []string{"P0", "headless"},
+			Comments: []issueComment{reservationIssueComment(reservationCommentBody(modeCodex, "engineer-codex-ward-1502", "test-host", now.Add(-time.Minute), "", nil), now.Add(-time.Minute))},
+		},
+	}
+	srv := issueThreadAuthorityServer(t, rows)
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+	repoReservation(t, ref, "engineer-codex-ward-1502", now.Add(-time.Minute))
+
+	r, _, _ := bufRunner(engineerRepoAndGlobalCountDockerStub(t, ref.repoSlug(), 0, 0))
+	count, err := r.activeEngineerLaunchCountForRepo(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("activeEngineerLaunchCountForRepo cleanup-needed row: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("activeEngineerLaunchCountForRepo cleanup-needed row = %d, want 0", count)
+	}
+	listRows, err := r.agentListRows(context.Background())
+	if err != nil {
+		t.Fatalf("agentListRows cleanup-needed row: %v", err)
+	}
+	if len(listRows) != 1 || agentLaunchRowClass(listRows[0]) != agentLaunchRowCleanupNeeded {
+		t.Fatalf("agentListRows cleanup-needed row = %+v, want one cleanup-needed row", listRows)
+	}
+}
+
 func TestActiveEngineerLaunchCountFallsBackSafelyForNonForgejoTrackers(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	oldBase := forgejoBaseURL

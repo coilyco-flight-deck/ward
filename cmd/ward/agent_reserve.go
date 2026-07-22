@@ -565,10 +565,10 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 
 // releaseRemoteReservation retracts this run's forge road-block on a launch that dies
 // before the container is up: a release-marker comment plus a best-effort unlock (#570).
-func (r *Runner) releaseRemoteReservation(ctx context.Context, cl Tracker, label string, mode containerMode, ref agentIssueRef, container string) {
+func (r *Runner) releaseRemoteReservation(ctx context.Context, cl Tracker, label string, mode containerMode, ref agentIssueRef, container string) bool {
 	if err := cl.CommentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container, nil)); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --override-reservation until the %s TTL lapses (ward#570)\n", label, ref, err, conciseDuration(agentReservationTTL()))
-		return
+		return false
 	}
 	// Retract the reservation's conversation lock (ward#494) so a retry lands on an open
 	// thread; silent on the no-lock-leaf forge (Forgejo today).
@@ -577,6 +577,7 @@ func (r *Runner) releaseRemoteReservation(ctx context.Context, cl Tracker, label
 	}
 	deleteTransientWorkflowComments(ctx, cl, ref, time.Now().UTC())
 	fmt.Fprintf(os.Stderr, "%s: released remote reservation on %s (launch failed before the container came up, ward#570)\n", label, ref)
+	return true
 }
 
 // lockReservedIssue seals the reserved issue best-effort, logging the outcome (locked

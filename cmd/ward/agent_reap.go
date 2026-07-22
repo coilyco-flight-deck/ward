@@ -271,13 +271,18 @@ func (s stalePrelaunchReservation) Reason(now time.Time) string {
 	return fmt.Sprintf("launch-confirmation TTL %s elapsed (reserved %s ago)", conciseDuration(agentLaunchConfirmationTTL()), formatDuration(now.Sub(s.Reservation.At)))
 }
 
-func clearStalePrelaunchReservation(ctx context.Context, cl Tracker, label string, hold stalePrelaunchReservation) {
-	(&Runner{}).releaseRemoteReservation(ctx, cl, label, hold.Mode(), hold.Ref(), hold.Container())
+func clearStalePrelaunchReservation(ctx context.Context, cl Tracker, label string, hold stalePrelaunchReservation) bool {
+	if !(&Runner{}).releaseRemoteReservation(ctx, cl, label, hold.Mode(), hold.Ref(), hold.Container()) {
+		return false
+	}
 	if released, err := removeAgentReservationIfOwned(hold.Path, hold.Reservation); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: warning: could not remove stale reservation on %s (%v)\n", label, hold.Ref(), err)
+		return false
 	} else if !released {
 		fmt.Fprintf(os.Stderr, "%s: warning: stale reservation on %s was already replaced before reap\n", label, hold.Ref())
+		return false
 	}
+	return true
 }
 
 func (r *Runner) stalePrelaunchReservations(ctx context.Context, now time.Time, scope map[string]bool) ([]stalePrelaunchReservation, error) {

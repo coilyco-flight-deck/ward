@@ -431,10 +431,11 @@ func TestSalvageIssueBodyStampsAuthCauseAndAge(t *testing.T) {
 }
 
 type fakeNoOutcomeTracker struct {
-	comments  []issueComment
-	commented []string
-	deleted   []int
-	unlocked  int
+	comments   []issueComment
+	commented  []string
+	deleted    []int
+	unlocked   int
+	commentErr error
 }
 
 func (f *fakeNoOutcomeTracker) GetIssue(context.Context, string, string, int) (*Issue, error) {
@@ -451,7 +452,7 @@ func (f *fakeNoOutcomeTracker) CreateIssue(context.Context, string, string, stri
 
 func (f *fakeNoOutcomeTracker) CommentIssue(_ context.Context, _, _ string, _ int, body string) error {
 	f.commented = append(f.commented, body)
-	return nil
+	return f.commentErr
 }
 
 func (f *fakeNoOutcomeTracker) DeleteIssueComment(_ context.Context, _, _ string, commentID int) error {

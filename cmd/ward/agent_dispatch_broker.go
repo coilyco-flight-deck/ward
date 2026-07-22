@@ -113,8 +113,8 @@ const (
 	// dispatchActionLaunch is the default action: launch a sibling engineer/QA
 	// run. An empty Action normalizes to it, keeping older launch requests byte-compatible.
 	dispatchActionLaunch = "launch"
-	// dispatchActionStop is the targeted control action (ward#627): docker-stop one
-	// running engineer named by Target - stop-only, engineer-only, no launch argv.
+	// dispatchActionStop stops one engineer or clears one confirmed stale issue-ref
+	// launch record. The action accepts no launch argv (ward#627, ward#1502).
 	dispatchActionStop = "stop"
 	// dispatchActionList is the read-only control action: list running engineers.
 	dispatchActionList = "list"
@@ -138,6 +138,16 @@ const (
 	// dispatchActionCIRerun reruns one Actions run natively (ward#1067).
 	dispatchActionCIRerun = "ci-rerun"
 )
+
+const staleLaunchCleanupResultPrefix = "stale-launch-cleared:"
+
+type staleEngineerLaunchError struct {
+	hold stalePrelaunchReservation
+}
+
+func (e *staleEngineerLaunchError) Error() string {
+	return fmt.Sprintf("dispatch broker: %q is a cleanup-needed launch record: no running container exists and the launch-confirmation TTL elapsed", e.hold.Ref())
+}
 
 // prWorkflowDispatchActions is the ward#1067 action set: PR-workflow verbs the
 // broker serves natively, host-side, on ward's compiled Forgejo client.
@@ -859,7 +869,18 @@ func withBrokerForwardingDisabled(fn func() error) error {
 func (r *Runner) runDispatchBrokerStop(ctx context.Context, req dispatchBrokerRequest) (string, error) {
 	name, err := r.resolveEngineerStopTarget(ctx, strings.TrimSpace(req.Target))
 	if err != nil {
-		return "", err
+		var stale *staleEngineerLaunchError
+		if !errors.As(err, &stale) {
+			return "", err
+		}
+		cl, cerr := r.hostTrackerClient(ctx, stale.hold.Ref().trackerOrDefault(), stale.hold.Mode())
+		if cerr != nil {
+			return "", fmt.Errorf("dispatch broker: build tracker client to clear stale launch %s: %w", stale.hold.Ref(), cerr)
+		}
+		if !clearStalePrelaunchReservation(ctx, cl, "ward agent stop", stale.hold) {
+			return "", fmt.Errorf("dispatch broker: stale launch %s could not be cleared; the reservation cache remains for diagnosis", stale.hold.Ref())
+		}
+		return staleLaunchCleanupResultPrefix + stale.hold.Ref().String(), nil
 	}
 	// Graceful stop, the exact verb reap uses (agent_reap.go): no rm, no kill, no exec.
 	if serr := r.dockerExec(ctx, "stop", name); serr != nil {
@@ -871,7 +892,15 @@ func (r *Runner) runDispatchBrokerStop(ctx context.Context, req dispatchBrokerRe
 // runDispatchBrokerStopPreview resolves the stop target but leaves the container
 // running. It uses the same stoppability criteria as a real stop.
 func (r *Runner) runDispatchBrokerStopPreview(ctx context.Context, req dispatchBrokerRequest) (string, error) {
-	return r.resolveEngineerStopTarget(ctx, strings.TrimSpace(req.Target))
+	name, err := r.resolveEngineerStopTarget(ctx, strings.TrimSpace(req.Target))
+	if err == nil {
+		return name, nil
+	}
+	var stale *staleEngineerLaunchError
+	if errors.As(err, &stale) {
+		return staleLaunchCleanupResultPrefix + stale.hold.Ref().String(), nil
+	}
+	return "", err
 }
 
 // resolveEngineerStopTarget maps a stop target to one running engineer, fail-closed
@@ -880,17 +909,7 @@ func (r *Runner) resolveEngineerStopTarget(ctx context.Context, target string) (
 	// owner/repo#N: match by the engineer identity labels (ward#364). The role filter
 	// is engineer-only, and selectSingleStopTarget refuses zero / more-than-one.
 	if ref, err := parseAgentIssueRef(target); err == nil && ref.Owner != "" && ref.Repo != "" {
-		running := r.runningEngineersForIssue(ctx, ref)
-		name, serr := selectSingleStopTarget(target, running)
-		if serr == nil {
-			return r.guardEngineerStop(ctx, name)
-		}
-		if len(running) == 0 {
-			if _, ok, herr := r.reservedEngineerHold(ref); herr == nil && ok {
-				return "", fmt.Errorf("dispatch broker: %q is a ghost launch record, not stoppable through ward agent stop: no running container exists; use `ward agent reap`, the stale reservation cleanup path, or a future stale-prelaunch override instead", ref)
-			}
-		}
-		return "", serr
+		return r.resolveEngineerStopRef(ctx, target, ref)
 	}
 	// Otherwise a container name: it must be a running container, and its role is
 	// re-checked fail-closed below (never a director/session).
@@ -898,6 +917,29 @@ func (r *Runner) resolveEngineerStopTarget(ctx context.Context, target string) (
 		return "", fmt.Errorf("dispatch broker: no running container named %q to stop", target)
 	}
 	return r.guardEngineerStop(ctx, target)
+}
+
+func (r *Runner) resolveEngineerStopRef(ctx context.Context, target string, ref agentIssueRef) (string, error) {
+	running := r.runningEngineersForIssue(ctx, ref)
+	name, err := selectSingleStopTarget(target, running)
+	if err == nil {
+		return r.guardEngineerStop(ctx, name)
+	}
+	if len(running) != 0 {
+		return "", err
+	}
+	res, ok, holdErr := r.reservedEngineerHold(ref)
+	if holdErr != nil || !ok {
+		return "", err
+	}
+	if reservationFresh(res.At, time.Now().UTC(), agentLaunchConfirmationTTL()) {
+		return "", fmt.Errorf("dispatch broker: %q is a fresh launch intent with no visible container yet; wait for the %s launch-confirmation window before cleanup", ref, conciseDuration(agentLaunchConfirmationTTL()))
+	}
+	path, pathErr := agentReservationPath(ref)
+	if pathErr != nil {
+		return "", fmt.Errorf("dispatch broker: resolve stale launch cache for %s: %w", ref, pathErr)
+	}
+	return "", &staleEngineerLaunchError{hold: stalePrelaunchReservation{Path: path, Reservation: *res}}
 }
 
 // reservedEngineerHold reports whether a ref still has a local launch-intent

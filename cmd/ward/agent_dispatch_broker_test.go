@@ -221,7 +221,7 @@ func TestStopTargetGuardEngineerOnly(t *testing.T) {
 }
 
 func TestResolveEngineerStopTargetStopsVisibleEngineer(t *testing.T) {
-	r := fakeStopDockRunner(t, "engineer-codex-ward-625", roleEngineer)
+	r := fakeStopDockRunner(t, "engineer-codex-ward-625")
 	got, err := r.resolveEngineerStopTarget(t.Context(), "coilyco-flight-deck/ward#625")
 	if err != nil {
 		t.Fatalf("resolve visible engineer: %v", err)
@@ -231,7 +231,7 @@ func TestResolveEngineerStopTargetStopsVisibleEngineer(t *testing.T) {
 	}
 }
 
-func TestResolveEngineerStopTargetRejectsGhostReservation(t *testing.T) {
+func TestResolveEngineerStopTargetClassifiesStaleReservationForCleanup(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1200}
@@ -249,26 +249,50 @@ func TestResolveEngineerStopTargetRejectsGhostReservation(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("write reservation: %v", err)
 	}
-	r := fakeStopDockRunner(t, "", roleEngineer)
+	r := fakeStopDockRunner(t, "")
 	_, err = r.resolveEngineerStopTarget(t.Context(), ref.String())
 	if err == nil {
-		t.Fatal("ghost reservation was accepted as stoppable")
+		t.Fatal("stale reservation was accepted as a running container")
 	}
-	for _, want := range []string{
-		"ghost launch record",
-		"not stoppable through ward agent stop",
-		"no running container exists",
-		"ward agent reap",
-	} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("ghost refusal %q missing %q", err, want)
-		}
+	var stale *staleEngineerLaunchError
+	if !errors.As(err, &stale) {
+		t.Fatalf("stale reservation error = %T %v, want *staleEngineerLaunchError", err, err)
+	}
+	if stale.hold.Ref() != ref {
+		t.Fatalf("stale reservation ref = %s, want %s", stale.hold.Ref(), ref)
+	}
+	got, err := r.runDispatchBrokerStopPreview(t.Context(), dispatchBrokerRequest{Action: dispatchActionStop, Target: ref.String(), Preview: true})
+	if err != nil {
+		t.Fatalf("preview stale cleanup: %v", err)
+	}
+	if want := staleLaunchCleanupResultPrefix + ref.String(); got != want {
+		t.Fatalf("preview stale cleanup = %q, want %q", got, want)
+	}
+}
+
+func TestResolveEngineerStopTargetRefusesFreshLaunchIntent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1201}
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("reservation path: %v", err)
+	}
+	if err := writeAgentReservation(path, agentReservation{
+		Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number,
+		Mode: string(modeCodex), Container: "engineer-codex-ward-1201", At: time.Now(),
+	}); err != nil {
+		t.Fatalf("write reservation: %v", err)
+	}
+	r := fakeStopDockRunner(t, "")
+	_, err = r.resolveEngineerStopTarget(t.Context(), ref.String())
+	if err == nil || !strings.Contains(err.Error(), "fresh launch intent") {
+		t.Fatalf("fresh launch intent error = %v, want confirmation-window refusal", err)
 	}
 }
 
 func TestResolveEngineerStopTargetUnknownRef(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	r := fakeStopDockRunner(t, "", roleEngineer)
+	r := fakeStopDockRunner(t, "")
 	_, err := r.resolveEngineerStopTarget(t.Context(), "coilyco-flight-deck/ward#9999")
 	if err == nil {
 		t.Fatal("unknown ref was accepted as stoppable")
@@ -2553,7 +2577,7 @@ func fakeEngineerVisibilityDockerRunner(t *testing.T, visibleName string, visibl
 	}}
 }
 
-func fakeStopDockRunner(t *testing.T, visibleName, visibleRole string) *Runner {
+func fakeStopDockRunner(t *testing.T, visibleName string) *Runner {
 	t.Helper()
 	dir := t.TempDir()
 	script := filepath.Join(dir, "docker")
@@ -2567,7 +2591,7 @@ func fakeStopDockRunner(t *testing.T, visibleName, visibleRole string) *Runner {
 		"    ;;\n" +
 		"  inspect)\n" +
 		"    if [ -n " + shellQuote(visibleName) + " ]; then\n" +
-		"      printf '%s\\n' " + shellQuote(visibleRole) + "\n" +
+		"      printf '%s\\n' " + shellQuote(roleEngineer) + "\n" +
 		"    fi\n" +
 		"    exit 0\n" +
 		"    ;;\n" +

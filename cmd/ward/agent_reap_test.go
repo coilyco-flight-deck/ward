@@ -186,7 +186,9 @@ func TestClearStalePrelaunchReservationReleasesIssueAndSentinel(t *testing.T) {
 	}
 	hold := stalePrelaunchReservation{Path: path, Reservation: res}
 	fake := &fakeNoOutcomeTracker{}
-	clearStalePrelaunchReservation(context.Background(), fake, "ward agent reap", hold)
+	if !clearStalePrelaunchReservation(context.Background(), fake, "ward agent reap", hold) {
+		t.Fatal("clearStalePrelaunchReservation = false, want successful cleanup")
+	}
 	if len(fake.commented) != 1 {
 		t.Fatalf("commented %d times, want 1", len(fake.commented))
 	}
@@ -195,6 +197,29 @@ func TestClearStalePrelaunchReservationReleasesIssueAndSentinel(t *testing.T) {
 	}
 	if _, ok, _ := readAgentReservation(path); ok {
 		t.Fatal("stale prelaunch reservation should be removed")
+	}
+}
+
+func TestClearStalePrelaunchReservationKeepsCacheWhenRemoteReleaseFails(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1502}
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("agentReservationPath: %v", err)
+	}
+	res := agentReservation{
+		Owner: ref.Owner, Repo: ref.Repo, Number: ref.Number,
+		Mode: string(modeCodex), Container: "engineer-codex-ward-1502", At: time.Now().Add(-time.Minute),
+	}
+	if err := writeAgentReservation(path, res); err != nil {
+		t.Fatalf("writeAgentReservation: %v", err)
+	}
+	fake := &fakeNoOutcomeTracker{commentErr: errors.New("forge unavailable")}
+	if clearStalePrelaunchReservation(context.Background(), fake, "ward agent stop", stalePrelaunchReservation{Path: path, Reservation: res}) {
+		t.Fatal("clearStalePrelaunchReservation = true after remote release failure")
+	}
+	if _, ok, err := readAgentReservation(path); err != nil || !ok {
+		t.Fatalf("reservation cache after remote failure = (ok=%t, err=%v), want retained", ok, err)
 	}
 }
 

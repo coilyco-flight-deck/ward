@@ -78,13 +78,48 @@ func isRepoIssueScanUnsupported(err error) bool {
 	return errors.As(err, &unsupported)
 }
 
-// activeEngineerLaunchCountForRepo counts launches with carried issue/repo authority.
-// It falls back to local Docker state only when the tracker cannot scan issues yet.
+// activeEngineerLaunchCountForRepo combines local launch state with remote holds.
+// Local cleanup/failed rows stay diagnostic-only (ward#1502, docs/agent-ops.md).
 func (r *Runner) activeEngineerLaunchCountForRepo(ctx context.Context, ref agentIssueRef) (int, error) {
 	repo := strings.TrimSpace(ref.repoSlug())
 	if repo == "" {
 		return 0, fmt.Errorf("backpressure: malformed repo %q", ref.repoSlug())
 	}
+	rows, err := r.agentListRows(ctx)
+	if err != nil {
+		return r.activeEngineerLaunchCountWithoutLocalRows(ctx, ref, repo)
+	}
+	localActive := 0
+	localRefs := map[string]bool{}
+	for _, row := range rows {
+		if strings.TrimSpace(row.Repo) != repo {
+			continue
+		}
+		if rowRef := strings.TrimSpace(row.Ref); rowRef != "" {
+			localRefs[rowRef] = true
+		}
+		switch agentLaunchRowClass(row) {
+		case agentLaunchRowRunning, agentLaunchRowActiveIntent:
+			localActive++
+		case agentLaunchRowCleanupNeeded, agentLaunchRowFailedBefore:
+			// Diagnostic rows remain visible but do not consume capacity.
+		}
+	}
+	remoteCount, remoteErr := r.activeEngineerLaunchCountFromIssueThreadExcluding(ctx, ref, localRefs)
+	if remoteErr == nil {
+		return localActive + remoteCount, nil
+	}
+	if !isRepoIssueScanUnsupported(remoteErr) {
+		return 0, remoteErr
+	}
+	running, err := r.runningEngineerContainersForRepo(ctx, repo)
+	if err != nil {
+		return 0, err
+	}
+	return len(running), nil
+}
+
+func (r *Runner) activeEngineerLaunchCountWithoutLocalRows(ctx context.Context, ref agentIssueRef, repo string) (int, error) {
 	if count, err := r.activeEngineerLaunchCountFromIssueThread(ctx, ref); err == nil {
 		return count, nil
 	} else if !isRepoIssueScanUnsupported(err) {
@@ -125,6 +160,10 @@ func (r *Runner) runningEngineerContainersForRepo(ctx context.Context, repo stri
 // activeEngineerLaunchCountFromIssueThread reads issue-thread reservations
 // through the carried ref's tracker-aware client, never by assuming Forgejo.
 func (r *Runner) activeEngineerLaunchCountFromIssueThread(ctx context.Context, ref agentIssueRef) (int, error) {
+	return r.activeEngineerLaunchCountFromIssueThreadExcluding(ctx, ref, nil)
+}
+
+func (r *Runner) activeEngineerLaunchCountFromIssueThreadExcluding(ctx context.Context, ref agentIssueRef, localRefs map[string]bool) (int, error) {
 	owner, name, ok := strings.Cut(strings.TrimSpace(ref.repoSlug()), "/")
 	if !ok || owner == "" || name == "" {
 		return 0, fmt.Errorf("backpressure: malformed repo %q", ref.repoSlug())
@@ -144,6 +183,10 @@ func (r *Runner) activeEngineerLaunchCountFromIssueThread(ctx context.Context, r
 	now := time.Now().UTC()
 	active := 0
 	for _, issue := range issues {
+		issueRef := agentIssueRef{Owner: owner, Repo: name, Number: issue.Number, Forge: ref.Forge, Tracker: ref.Tracker}
+		if localRefs[issueRef.String()] {
+			continue
+		}
 		comments, cerr := cl.ListIssueComments(ctx, owner, name, issue.Number)
 		if cerr != nil {
 			return 0, cerr

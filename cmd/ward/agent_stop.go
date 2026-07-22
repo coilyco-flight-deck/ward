@@ -11,14 +11,14 @@ import (
 )
 
 // agent_stop.go wires `ward agent stop`: a director surface halts one running engineer
-// through the dispatch broker - stop-only, engineer-only (ward#627, docs/agent-stop.md).
+// or clears one confirmed stale launch through the dispatch broker (ward#627/#1502).
 
 // agentStopCommand builds `ward agent stop <ref>`: forward a stop request through
 // the dispatch broker. A meta verb (agentMetaCommands), not a startup role.
 func agentStopCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "stop",
-		Usage:     "Stop a running engineer through the dispatch broker - director-surface, stop-only, engineer-only (ward#627).",
+		Usage:     "Stop a running engineer or clear a confirmed stale launch through the dispatch broker (ward#627, ward#1502).",
 		ArgsUsage: "<owner/repo#N | #N | container-name>",
 		Description: `stop halts one running engineer container - the deliberate counterpart to
 ` + "`ward agent reap`" + `'s idle sweep (#376). Where reap stops engineers idle past a
@@ -29,10 +29,10 @@ and hoping it notices.
 It runs only from a director read-only surface (the dispatch broker addr is set):
 the request is forwarded to host ward, which resolves the target through the same
 stoppability check the real stop path uses and ` + "`docker stop`" + `s it via the same
-graceful path reap uses. A ghost launch record with no running container is not
-stoppable through ` + "`ward agent stop`" + `, and ` + "`--print`" + ` reports that instead of
-pretending a label match is enough. Off a surface it errors, like a ref-mode
-dispatch does.
+graceful path reap uses. For an issue ref whose local launch-confirmation window has
+elapsed with no running container, stop clears the stale issue reservation and local
+cache instead. ` + "`--print`" + ` previews either action. Off a surface it errors, like a
+ref-mode dispatch does.
 
 Stop-only, engineer-only. The host broker refuses any container that is not
 ward.role=engineer (director / qa / session are never stopped), and refuses a
@@ -115,6 +115,14 @@ func (r *Runner) forwardAgentStopToHostBroker(ctx context.Context, target string
 		return err
 	}
 	// Captured as tool output by the surface agent, not written to the raw TTY.
+	if ref, ok := strings.CutPrefix(name, staleLaunchCleanupResultPrefix); ok {
+		if preview {
+			writef(os.Stderr, "ward agent stop: would clear stale launch record %s on host ward\n", ref)
+			return nil
+		}
+		writef(os.Stderr, "ward agent stop: cleared stale launch record %s on host ward\n", ref)
+		return nil
+	}
 	if preview {
 		writef(os.Stderr, "ward agent stop: would stop engineer container %s on host ward\n", name)
 		return nil
