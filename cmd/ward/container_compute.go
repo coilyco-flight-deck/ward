@@ -487,6 +487,9 @@ type upPlan struct {
 	// SkipPreflight mirrors --skip-preflight into the container launch gate so host
 	// preflight/review and in-container smoke probes share the same escape hatch.
 	SkipPreflight bool
+	// SkipSmokeTest carries the narrow --skip-smoke-test escape hatch without
+	// bypassing any host-side or review preflight work.
+	SkipSmokeTest bool
 	// ReviewClass pins the pre-landing review panel's autonomy class into the
 	// container (WARD_REVIEW_CLASS, ward#134). See docs/dispatch-review.md.
 	ReviewClass string
@@ -885,7 +888,7 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	for k, v := range p.correlationEnv() {
 		env[k] = v
 	}
-	if p.SkipPreflight {
+	if p.SkipPreflight || p.SkipSmokeTest {
 		env["WARD_SMOKE_TEST_SKIP"] = "1"
 	}
 	// The review panel's autonomy class rides in so the in-container gate reads it

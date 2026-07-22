@@ -22,6 +22,9 @@ commands:
   lint:
     run: make lint
     description: Lint with golangci-lint.
+  agent-flags:
+    run: make agent-flags
+    description: Regenerate the code-derived ward agent flag tree.
   tidy:
     run: make tidy
     description: go mod tidy.

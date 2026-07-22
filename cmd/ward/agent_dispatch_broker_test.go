@@ -684,7 +684,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		"--repo", "coilyco-flight-deck/cli-guard",
 		"--config", "agent.claude.model=sonnet",
 		"--workflow", "merge-remote-main", "--details", "repair after PR #357",
-		"--skip-preflight",
+		"--skip-preflight", "--skip-smoke-test",
 	})
 	got := brokerEngineerArgv(cmd, modeClaude, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
 	for _, want := range [][]string{
@@ -701,10 +701,21 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 			t.Errorf("forwarded argv missing %s %s: %v", want[0], want[1], got)
 		}
 	}
-	for _, want := range []string{"engineer", "coilyco-flight-deck/ward#42", "--skip-preflight"} {
+	for _, want := range []string{"engineer", "coilyco-flight-deck/ward#42", "--skip-preflight", "--skip-smoke-test"} {
 		if !containsArg(got, want) {
 			t.Errorf("forwarded argv missing %q: %v", want, got)
 		}
+	}
+}
+
+func TestBrokerEngineerArgvNormalizesSmokeSkipEnvironment(t *testing.T) {
+	t.Setenv("WARD_SMOKE_TEST_SKIP", "1")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#42", "--harness", "opencode",
+	})
+	got := brokerEngineerArgv(cmd, modeOpencode, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
+	if !containsArg(got, "--skip-smoke-test") {
+		t.Fatalf("brokered argv did not normalize WARD_SMOKE_TEST_SKIP=1: %v", got)
 	}
 }
 

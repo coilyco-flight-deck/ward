@@ -821,6 +821,7 @@ func agentSurfaceFlags() []cli.Flag {
 	// skip-preflight skips that, the launch-adjacent probes, and the review gate.
 	flags = append(flags,
 		&cli.BoolFlag{Name: "skip-preflight", Aliases: []string{"no-preflight"}, Usage: "skip the host pre-flight, reservation re-check wait, launch-adjacent network/image/update probes, and the in-container review gate, then detach immediately"},
+		&cli.BoolFlag{Name: "skip-smoke-test", Usage: "skip only the in-container harness smoke test; host pre-flight, launch probes, and the review gate still run"},
 		&cli.BoolFlag{Name: "skip-host-preflight", Hidden: true, Usage: "internal: skip only the host pre-flight; director auto-dispatch uses this so the review gate still runs"},
 	)
 	// --quiet-seed silences the seeded-prompt/issue-body stderr dump under director
@@ -833,6 +834,12 @@ func agentSurfaceFlags() []cli.Flag {
 // preflight bucket (`--skip-preflight` or its alias).
 func preflightSkipped(c *cli.Command) bool {
 	return c.Bool("skip-preflight") || c.Bool("no-preflight")
+}
+
+// smokeTestSkipped recognizes the narrow CLI bypass and its direct-launch
+// environment alias. Broker forwarding normalizes both into the visible flag.
+func smokeTestSkipped(c *cli.Command) bool {
+	return c.Bool("skip-smoke-test") || strings.TrimSpace(os.Getenv("WARD_SMOKE_TEST_SKIP")) == "1"
 }
 
 // overrideReservation reads --override-reservation. It reclaims stale prelaunch

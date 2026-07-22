@@ -372,11 +372,33 @@ func TestAgentWorkflowRejectsBadConfigRef(t *testing.T) {
 	}
 }
 
-func TestSkipPreflightPropagatesSmokeGateSkip(t *testing.T) {
+func TestSmokeTestBypassesPropagateToSmokeGate(t *testing.T) {
 	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
-	plan := upPlan{Role: roleEngineer, Mode: modeCodex, Repo: repo, Issue: 703, SkipPreflight: true}
-	if got := plan.wardEnv()["WARD_SMOKE_TEST_SKIP"]; got != "1" {
-		t.Errorf("skip-preflight plan WARD_SMOKE_TEST_SKIP = %q, want 1", got)
+	for _, plan := range []upPlan{
+		{Role: roleEngineer, Mode: modeCodex, Repo: repo, Issue: 703, SkipPreflight: true},
+		{Role: roleEngineer, Mode: modeCodex, Repo: repo, Issue: 703, SkipSmokeTest: true},
+	} {
+		if got := plan.wardEnv()["WARD_SMOKE_TEST_SKIP"]; got != "1" {
+			t.Errorf("bypass plan WARD_SMOKE_TEST_SKIP = %q, want 1", got)
+		}
+	}
+	plain := upPlan{Role: roleEngineer, Mode: modeCodex, Repo: repo, Issue: 703}
+	if _, ok := plain.wardEnv()["WARD_SMOKE_TEST_SKIP"]; ok {
+		t.Error("plain plan unexpectedly skipped the smoke test")
+	}
+}
+
+func TestSmokeTestSkippedAcceptsFlagAndEnvironment(t *testing.T) {
+	t.Setenv("WARD_SMOKE_TEST_SKIP", "")
+	flagged := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "owner/repo#1", "--skip-smoke-test"})
+	if !smokeTestSkipped(flagged) {
+		t.Fatal("--skip-smoke-test was not recognized")
+	}
+
+	t.Setenv("WARD_SMOKE_TEST_SKIP", "1")
+	plain := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "owner/repo#1"})
+	if !smokeTestSkipped(plain) {
+		t.Fatal("WARD_SMOKE_TEST_SKIP=1 was not recognized")
 	}
 }
 

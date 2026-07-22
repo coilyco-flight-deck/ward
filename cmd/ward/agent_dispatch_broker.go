@@ -1201,7 +1201,7 @@ func validateDispatchBrokerArgv(role string, tail []string) error {
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo"} {
 			valueFlags[f] = true
 		}
-		for _, f := range []string{"--no-pull", "--override-reservation", "--override-capacity", "--skip-preflight", "--no-preflight", "--skip-review", "--no-review-gate", "--pr"} {
+		for _, f := range []string{"--no-pull", "--override-reservation", "--override-capacity", "--skip-preflight", "--no-preflight", "--skip-smoke-test", "--skip-review", "--no-review-gate", "--pr"} {
 			boolFlags[f] = true
 		}
 		return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, false)
@@ -1395,6 +1395,9 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 	}
 	if c.Bool("skip-preflight") {
 		argv = append(argv, "--skip-preflight")
+	}
+	if smokeTestSkipped(c) {
+		argv = append(argv, "--skip-smoke-test")
 	}
 	if c.Bool("skip-review") || c.Bool("no-review-gate") {
 		argv = append(argv, "--skip-review")

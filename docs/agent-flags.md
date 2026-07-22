@@ -7,10 +7,10 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 
 ## `ward agent`
 
-- --harness, --agent, --workflow, --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
+- --harness, --agent, --workflow, --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, --skip-smoke-test, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
 ## `ward agent engineer`
 
-- --harness, --agent, --workflow, --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
+- --harness, --agent, --workflow, --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, --skip-smoke-test, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
 ## `ward agent director`
 
 - --harness, --agent, --engineer-harness, --repo, --org, --with-repo, --max-parallel, --burndown, --drain, --triage, --no-triage, --limit, --poll-interval, --max-cycles, --dry-run, (hidden) --image, (hidden) --tag, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, --no-pull, --override-reservation
