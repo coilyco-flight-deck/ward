@@ -85,6 +85,20 @@ agents {
 	if _, ok := fleetAgent(f, string(modeCodex)); !ok {
 		t.Fatal("effective fleet missing codex")
 	}
+	opencode, ok := fleetAgent(f, string(modeOpencode))
+	if !ok {
+		t.Fatal("effective fleet missing opencode")
+	}
+	if opencode.Model != "" || opencode.Endpoint != "" {
+		t.Fatalf("baked opencode config must not choose deployment-local values: %+v", opencode)
+	}
+	goose, ok := fleetAgent(f, string(modeGoose))
+	if !ok {
+		t.Fatal("effective fleet missing goose")
+	}
+	if goose.Model != "" {
+		t.Fatalf("baked goose config must not choose a deployment-local model: %+v", goose)
+	}
 }
 
 func TestLoadFleetConfigSparseFrontierOverride(t *testing.T) {

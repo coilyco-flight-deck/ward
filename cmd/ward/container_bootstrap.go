@@ -163,6 +163,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	claudeOv := roleAgentOverride(fleet, role, string(modeClaude))
 	codexOv := roleAgentOverride(fleet, role, string(modeCodex))
 	opencodeOv := roleAgentOverride(fleet, role, string(modeOpencode))
+	gooseOv := roleAgentOverride(fleet, role, string(modeGoose))
 	attribution := fleet.Defaults.Attribution
 	e := bootstrapEnv{
 		TargetOwner:  os.Getenv("WARD_TARGET_OWNER"),
@@ -178,7 +179,7 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		// Precedence WARD_* env > role overlay > flat per-agent default (ward#620): the
 		// role's opencode overlay (if any) leads the fleet manifest's opencode node.
 		OpencodeModel: envOr("WARD_OPENCODE_MODEL", firstNonEmpty(opencodeOv.Model, opencode.Model)),
-		GooseModel:    envOr("WARD_GOOSE_MODEL", goose.Model),
+		GooseModel:    envOr("WARD_GOOSE_MODEL", firstNonEmpty(gooseOv.Model, goose.Model)),
 		OllamaURL:     envOr("WARD_OLLAMA_URL", firstNonEmpty(opencodeOv.Endpoint, opencode.Endpoint)),
 		// Cheapest codex settings (ward#379): fleet manifest's codex node, role overlay
 		// ahead of it (ward#620).
@@ -220,6 +221,15 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	}
 	if e.ForgejoBase == "" {
 		return e, fmt.Errorf("missing WARD_FORGEJO_BASE")
+	}
+	if mode, err := parseMode(e.Mode); err == nil {
+		model := e.OpencodeModel
+		if mode == modeGoose {
+			model = e.GooseModel
+		}
+		if err := validateLocalHarnessConfig(mode, model, e.OllamaURL); err != nil {
+			return e, err
+		}
 	}
 	e.ForgejoHost = forgejoHostFromBase(e.ForgejoBase)
 	// The TARGET forge + clone base (ward#489); CloneBase defaults to the Forgejo base

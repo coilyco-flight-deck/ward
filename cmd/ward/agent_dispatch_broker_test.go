@@ -719,6 +719,38 @@ func TestBrokerEngineerArgvNormalizesSmokeSkipEnvironment(t *testing.T) {
 	}
 }
 
+func TestBrokerEngineerArgvNormalizesLocalHarnessEnvironment(t *testing.T) {
+	t.Setenv("WARD_OPENCODE_MODEL", "deployment-model")
+	t.Setenv("WARD_OLLAMA_URL", "http://deployment.example/v1")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#42", "--harness", "opencode",
+	})
+	got := brokerEngineerArgv(cmd, modeOpencode, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
+	for _, want := range []string{
+		"agent.opencode.model=deployment-model",
+		"agent.opencode.endpoint=http://deployment.example/v1",
+	} {
+		if !argFollowedBy(got, "--config", want) {
+			t.Errorf("brokered argv missing explicit local config %q: %v", want, got)
+		}
+	}
+}
+
+func TestBrokerEngineerArgvKeepsRequestLocalConfigPrecedence(t *testing.T) {
+	t.Setenv("WARD_GOOSE_MODEL", "inherited-model")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#42", "--harness", "goose",
+		"--config", "agent.goose.model=request-model",
+	})
+	got := brokerEngineerArgv(cmd, modeGoose, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42})
+	if !argFollowedBy(got, "--config", "agent.goose.model=request-model") {
+		t.Fatalf("brokered argv lost request-local config: %v", got)
+	}
+	if strings.Contains(strings.Join(got, " "), "inherited-model") {
+		t.Fatalf("brokered argv appended inherited config over request-local config: %v", got)
+	}
+}
+
 func TestBrokerEngineerArgvPreservesPullRequestRefs(t *testing.T) {
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
 		"engineer", "coilyco-flight-deck/ward!42",

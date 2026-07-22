@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
@@ -107,6 +108,61 @@ func TestWardEnvMergesConfigOverrides(t *testing.T) {
 	}
 	if got := env["WARD_GOOSE_MODEL"]; got != "qwen3-coder:30b" {
 		t.Errorf("wardEnv WARD_GOOSE_MODEL = %q, want %q", got, "qwen3-coder:30b")
+	}
+}
+
+func TestAddLocalHarnessConfigEnvPrecedence(t *testing.T) {
+	fleet := fleetconfig.Fleet{
+		Agents: []fleetconfig.Agent{
+			{Name: string(modeOpencode), Model: "fleet-opencode", Endpoint: "http://fleet.example/v1"},
+			{Name: string(modeGoose), Model: "fleet-goose"},
+		},
+		Roles: []fleetconfig.Role{{
+			Name: roleEngineer,
+			AgentConfig: map[string]fleetconfig.RoleAgentOverride{
+				string(modeOpencode): {Model: "role-opencode", Endpoint: "http://role.example/v1"},
+				string(modeGoose):    {Model: "role-goose"},
+			},
+		}},
+	}
+	t.Setenv("WARD_OPENCODE_MODEL", "env-opencode")
+	t.Setenv("WARD_OLLAMA_URL", "")
+	t.Setenv("WARD_GOOSE_MODEL", "")
+	env := addLocalHarnessConfigEnv(map[string]string{"WARD_GOOSE_MODEL": "explicit-goose"}, fleet, roleEngineer)
+	if got := env["WARD_OPENCODE_MODEL"]; got != "env-opencode" {
+		t.Errorf("environment model = %q, want env-opencode", got)
+	}
+	if got := env["WARD_OLLAMA_URL"]; got != "http://role.example/v1" {
+		t.Errorf("role endpoint = %q, want role endpoint", got)
+	}
+	if got := env["WARD_GOOSE_MODEL"]; got != "explicit-goose" {
+		t.Errorf("explicit Goose model = %q, want explicit-goose", got)
+	}
+}
+
+func TestValidateLocalHarnessConfig(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		mode            containerMode
+		model, endpoint string
+		wantErr         string
+	}{
+		{name: "cloud harness", mode: modeClaude},
+		{name: "goose configured", mode: modeGoose, model: "local-model"},
+		{name: "goose model missing", mode: modeGoose, wantErr: "agent.goose.model"},
+		{name: "opencode configured", mode: modeOpencode, model: "local-model", endpoint: "http://local.example/v1"},
+		{name: "opencode model missing", mode: modeOpencode, endpoint: "http://local.example/v1", wantErr: "agent.opencode.model"},
+		{name: "opencode endpoint missing", mode: modeOpencode, model: "local-model", wantErr: "agent.opencode.endpoint"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateLocalHarnessConfig(tc.mode, tc.model, tc.endpoint)
+			if tc.wantErr == "" && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("error = %v, want missing key %q", err, tc.wantErr)
+			}
+		})
 	}
 }
 

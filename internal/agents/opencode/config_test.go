@@ -78,3 +78,21 @@ func TestComposeConfigWrites(t *testing.T) {
 		t.Errorf("opencode.json missing request id:\n%s", got)
 	}
 }
+
+func TestConfigJSONRejectsMissingDeploymentConfig(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rc   agentsapi.RunCtx
+		want string
+	}{
+		{name: "model", rc: agentsapi.RunCtx{OllamaURL: "http://local.example/v1"}, want: "agent.opencode.model"},
+		{name: "endpoint", rc: agentsapi.RunCtx{OpencodeModel: "configured-model"}, want: "agent.opencode.endpoint"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := configJSON(tc.rc)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("configJSON error = %v, want missing key %q", err, tc.want)
+			}
+		})
+	}
+}

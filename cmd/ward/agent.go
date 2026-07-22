@@ -611,7 +611,7 @@ func agentHarnessFlags() []cli.Flag {
 func configFlag() cli.Flag {
 	return &cli.StringSliceFlag{
 		Name:  "config",
-		Usage: "override a resolved model-context knob (repeatable), e.g. --config agent.claude.model=sonnet --config agent.goose.model=qwen3-coder:30b. Rides in as the matching WARD_* env; unknown keys fail loud (ward#616).",
+		Usage: "override a resolved model-context knob (repeatable), e.g. --config agent.claude.model=sonnet --config agent.goose.model=local-model-name. Rides in as the matching WARD_* env; unknown keys fail loud (ward#616).",
 	}
 }
 
@@ -2611,9 +2611,6 @@ func opencodeEndpointPreview(p upPlan) string {
 	}
 	if v := strings.TrimSpace(os.Getenv("WARD_OLLAMA_URL")); v != "" {
 		return v
-	}
-	if a, ok := frontierAgentDefaults[string(modeOpencode)]; ok {
-		return a.Endpoint
 	}
 	return ""
 }

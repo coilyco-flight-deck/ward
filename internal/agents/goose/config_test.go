@@ -14,14 +14,14 @@ func noopLog(string, ...any) {}
 
 // TestConfigYAML omits OLLAMA_HOST when no host resolved, includes it otherwise.
 func TestConfigYAML(t *testing.T) {
-	noHost := configYAML("ollama", "qwen3-coder:30b", "")
+	noHost := configYAML("ollama", "configured-model", "")
 	if strings.Contains(noHost, "OLLAMA_HOST") {
 		t.Errorf("no-host config should omit OLLAMA_HOST:\n%s", noHost)
 	}
-	if !strings.Contains(noHost, "GOOSE_PROVIDER: ollama") || !strings.Contains(noHost, "GOOSE_MODEL: qwen3-coder:30b") {
+	if !strings.Contains(noHost, "GOOSE_PROVIDER: ollama") || !strings.Contains(noHost, "GOOSE_MODEL: configured-model") {
 		t.Errorf("missing provider/model:\n%s", noHost)
 	}
-	withHost := configYAML("ollama", "qwen3-coder:30b", "http://tower:11434")
+	withHost := configYAML("ollama", "configured-model", "http://tower:11434")
 	if !strings.Contains(withHost, "OLLAMA_HOST: http://tower:11434") {
 		t.Errorf("with-host config should include OLLAMA_HOST:\n%s", withHost)
 	}
@@ -32,7 +32,7 @@ func TestConfigYAML(t *testing.T) {
 func TestComposeConfigScrubsEnv(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv(ollamaHostEnvKey, base64.StdEncoding.EncodeToString([]byte("http://tower:11434")))
-	rc := agentsapi.RunCtx{AgentHome: home, Log: noopLog}
+	rc := agentsapi.RunCtx{AgentHome: home, Log: noopLog, GooseModel: "configured-model"}
 	if err := (Agent{}).ComposeConfig(rc); err != nil {
 		t.Fatalf("ComposeConfig: %v", err)
 	}
@@ -45,6 +45,15 @@ func TestComposeConfigScrubsEnv(t *testing.T) {
 	}
 	if v := os.Getenv(ollamaHostEnvKey); v != "" {
 		t.Errorf("%s should be scrubbed after seeding, got %q", ollamaHostEnvKey, v)
+	}
+}
+
+func TestComposeConfigRejectsMissingModel(t *testing.T) {
+	t.Setenv("WARD_GOOSE_MODEL", "ambient-fallback-must-not-win")
+	rc := agentsapi.RunCtx{AgentHome: t.TempDir(), Log: noopLog}
+	err := (Agent{}).ComposeConfig(rc)
+	if err == nil || !strings.Contains(err.Error(), "agent.goose.model") {
+		t.Fatalf("ComposeConfig error = %v, want missing agent.goose.model", err)
 	}
 }
 

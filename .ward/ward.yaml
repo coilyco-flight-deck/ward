@@ -25,6 +25,9 @@ commands:
   agent-flags:
     run: make agent-flags
     description: Regenerate the code-derived ward agent flag tree.
+  sync-fleet-assets:
+    run: make sync-fleet-assets
+    description: Mirror the canonical fleet KDL into the embedded generated asset.
   tidy:
     run: make tidy
     description: go mod tidy.

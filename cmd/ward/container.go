@@ -154,8 +154,15 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// not be the target repo, so the container resolves it from the fresh clone (ward#580).
 
 	// Config-source env resolution fails loud here before any container spins.
-	configEnv, err := resolveLaunchConfigEnv(c.StringSlice("config"), cwd)
+	configEnv, err := resolveLaunchConfigEnv(c.StringSlice("config"), cwd, role)
 	if err != nil {
+		return upPlan{}, err
+	}
+	localModel := configEnv["WARD_OPENCODE_MODEL"]
+	if mode == modeGoose {
+		localModel = configEnv["WARD_GOOSE_MODEL"]
+	}
+	if err := validateLocalHarnessConfig(mode, localModel, configEnv["WARD_OLLAMA_URL"]); err != nil {
 		return upPlan{}, err
 	}
 	memoryLimit, memorySwap, err := resolveContainerMemorySettings()

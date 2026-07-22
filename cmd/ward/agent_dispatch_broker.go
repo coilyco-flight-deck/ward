@@ -1374,6 +1374,7 @@ func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueR
 func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
 	argv := []string{"engineer", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
 	argv = appendBrokerContainerFlags(argv, c)
+	argv = appendBrokerLocalHarnessConfig(argv, c, mode)
 	if c.IsSet("workflow") {
 		if wf := strings.TrimSpace(c.String("workflow")); wf != "" {
 			argv = append(argv, "--workflow", wf)
@@ -1445,6 +1446,42 @@ func appendBrokerConfigFlags(argv []string, c *cli.Command) []string {
 		}
 	}
 	return argv
+}
+
+// appendBrokerLocalHarnessConfig makes inherited deployment config explicit at
+// the broker boundary. A request-local --config spelling keeps precedence.
+func appendBrokerLocalHarnessConfig(argv []string, c *cli.Command, mode containerMode) []string {
+	var pairs [][2]string
+	switch mode {
+	case modeGoose:
+		pairs = [][2]string{{"agent.goose.model", "WARD_GOOSE_MODEL"}}
+	case modeOpencode:
+		pairs = [][2]string{
+			{"agent.opencode.model", "WARD_OPENCODE_MODEL"},
+			{"agent.opencode.endpoint", "WARD_OLLAMA_URL"},
+		}
+	case modeClaude, modeCodex:
+		return argv
+	}
+	for _, pair := range pairs {
+		if configOverridePresent(c, pair[0]) {
+			continue
+		}
+		if value := strings.TrimSpace(os.Getenv(pair[1])); value != "" {
+			argv = append(argv, "--config", pair[0]+"="+value)
+		}
+	}
+	return argv
+}
+
+func configOverridePresent(c *cli.Command, path string) bool {
+	for _, raw := range c.StringSlice("config") {
+		got, _, ok := strings.Cut(strings.TrimSpace(raw), "=")
+		if ok && strings.TrimSpace(got) == path {
+			return true
+		}
+	}
+	return false
 }
 
 func appendBrokerContainerFlags(argv []string, c *cli.Command) []string {

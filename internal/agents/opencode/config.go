@@ -20,7 +20,7 @@ func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
 	body, err := configJSON(rc)
 	if err != nil {
 		rc.Log("could not render opencode config: %v", err)
-		return nil
+		return err
 	}
 	out := filepath.Join(dir, "opencode.json")
 	if werr := os.WriteFile(out, []byte(body), 0o644); werr != nil { // #nosec G306 -- config, not a secret
@@ -52,6 +52,12 @@ type opencodeProviderOptions struct {
 // configJSON renders the opencode config; the $schema key is a literal, not
 // interpolated.
 func configJSON(rc agentsapi.RunCtx) (string, error) {
+	if strings.TrimSpace(rc.OpencodeModel) == "" {
+		return "", fmt.Errorf("missing agent.opencode.model: bootstrap must resolve WARD_OPENCODE_MODEL or --config agent.opencode.model=<model>")
+	}
+	if strings.TrimSpace(rc.OllamaURL) == "" {
+		return "", fmt.Errorf("missing agent.opencode.endpoint: bootstrap must resolve WARD_OLLAMA_URL or --config agent.opencode.endpoint=<url>")
+	}
 	cfg := opencodeConfig{
 		Schema: "https://opencode.ai/config.json",
 		Model:  "ollama/" + rc.OpencodeModel,

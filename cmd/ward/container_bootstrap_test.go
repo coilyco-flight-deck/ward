@@ -376,7 +376,7 @@ func TestNamedGate(t *testing.T) {
 func TestReadBootstrapEnvDefaults(t *testing.T) {
 	for _, k := range []string{
 		"WARD_MODE", "WARD_AGENT", "WARD_CONTEXT_LEVEL", "WARD_GITCACHE", "WARD_CONTEXT_SRC",
-		"WARD_OPENCODE_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
+		"WARD_OPENCODE_MODEL", "WARD_GOOSE_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
 		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
 		"WARD_ROLE", "WARD_TS_SOCKS5",
@@ -399,6 +399,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"ContextLevel":   e.ContextLevel,
 		"GitCache":       e.GitCache,
 		"OpencodeModel":  e.OpencodeModel,
+		"GooseModel":     e.GooseModel,
 		"OllamaURL":      e.OllamaURL,
 		"CodexModel":     e.CodexModel,
 		"CodexEffort":    e.CodexEffort,
@@ -415,8 +416,9 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"Agent":          "claude",
 		"ContextLevel":   "2",
 		"GitCache":       "/gitcache",
-		"OpencodeModel":  "qwen3-coder:30b",
-		"OllamaURL":      "http://host.docker.internal:8082/v1",
+		"OpencodeModel":  "",
+		"GooseModel":     "",
+		"OllamaURL":      "",
 		"CodexModel":     "gpt-5.4",
 		"CodexEffort":    "medium",
 		"CodexVerbosity": "low",
@@ -844,6 +846,51 @@ func TestReadBootstrapEnvRequired(t *testing.T) {
 				t.Errorf("err = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestReadBootstrapEnvRequiresLocalHarnessConfig(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode, model, endpoint, want string
+	}{
+		{name: "goose model", mode: string(modeGoose), want: "agent.goose.model"},
+		{name: "opencode model", mode: string(modeOpencode), endpoint: "http://local.example/v1", want: "agent.opencode.model"},
+		{name: "opencode endpoint", mode: string(modeOpencode), model: "local-model", want: "agent.opencode.endpoint"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("WARD_TARGET_OWNER", "owner")
+			t.Setenv("WARD_TARGET_NAME", "repo")
+			t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.example")
+			t.Setenv("WARD_MODE", tc.mode)
+			t.Setenv("WARD_OPENCODE_MODEL", "")
+			t.Setenv("WARD_GOOSE_MODEL", "")
+			t.Setenv("WARD_OLLAMA_URL", tc.endpoint)
+			if tc.mode == string(modeGoose) {
+				t.Setenv("WARD_GOOSE_MODEL", tc.model)
+			} else {
+				t.Setenv("WARD_OPENCODE_MODEL", tc.model)
+			}
+			_, err := readBootstrapEnv()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want missing key %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestReadBootstrapEnvKeepsConfiguredLocalHarnessValues(t *testing.T) {
+	t.Setenv("WARD_TARGET_OWNER", "owner")
+	t.Setenv("WARD_TARGET_NAME", "repo")
+	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.example")
+	t.Setenv("WARD_MODE", string(modeOpencode))
+	t.Setenv("WARD_OPENCODE_MODEL", "deployment-model")
+	t.Setenv("WARD_OLLAMA_URL", "http://deployment.example/v1")
+	e, err := readBootstrapEnv()
+	if err != nil {
+		t.Fatalf("configured opencode bootstrap: %v", err)
+	}
+	if e.OpencodeModel != "deployment-model" || e.OllamaURL != "http://deployment.example/v1" {
+		t.Fatalf("configured values changed: model=%q endpoint=%q", e.OpencodeModel, e.OllamaURL)
 	}
 }
 

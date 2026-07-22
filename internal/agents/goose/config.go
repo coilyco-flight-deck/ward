@@ -20,9 +20,9 @@ func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
 	dir := filepath.Join(rc.AgentHome, ".config", "goose")
 	_ = os.MkdirAll(dir, 0o755)
 	provider := envOr("WARD_GOOSE_PROVIDER", "ollama")
-	model := rc.GooseModel
+	model := strings.TrimSpace(rc.GooseModel)
 	if model == "" {
-		model = envOr("WARD_GOOSE_MODEL", "qwen3-coder:30b")
+		return fmt.Errorf("missing agent.goose.model: bootstrap must resolve WARD_GOOSE_MODEL or --config agent.goose.model=<model>")
 	}
 	host := ""
 	if b64 := os.Getenv(ollamaHostEnvKey); b64 != "" {

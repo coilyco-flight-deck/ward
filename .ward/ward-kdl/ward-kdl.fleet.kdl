@@ -17,8 +17,8 @@
 // contract test (agent_adapter_test.go, TestFleetSwitchesTwoWayPin) still pins
 // fleet.generated.kdl <-> the parseMode roster.
 //
-// POST-#412 roster: `opencode` is the canonical harness key (qwen is only the
-// backing model + a deprecated --mode alias). The runtime reads this manifest
+// POST-#412 roster: `opencode` is the canonical harness key (`qwen` remains only
+// as a deprecated --mode alias). The runtime reads this manifest
 // (bootstrap defaults + the launcher-facing projection in agent_adapter.go).
 fleet {
     schema-version 2

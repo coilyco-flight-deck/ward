@@ -640,7 +640,7 @@ func parseConfigOverrides(entries []string) (map[string]string, error) {
 	return out, nil
 }
 
-func resolveLaunchConfigEnv(configEntries []string, cwd string) (map[string]string, error) {
+func resolveLaunchConfigEnv(configEntries []string, cwd, role string) (map[string]string, error) {
 	configEnv, err := parseConfigOverrides(configEntries)
 	if err != nil {
 		return nil, err
@@ -651,8 +651,9 @@ func resolveLaunchConfigEnv(configEntries []string, cwd string) (map[string]stri
 	}
 	fleet, err := provider.Fleet()
 	if err != nil {
-		return nil, fmt.Errorf("load selected fleet attribution: %w", err)
+		return nil, fmt.Errorf("load selected fleet config: %w", err)
 	}
+	configEnv = addLocalHarnessConfigEnv(configEnv, fleet, role)
 	configEnv = addFleetAttributionConfigEnv(configEnv, fleet, cwd)
 	// Validate the staged container-topology bundle once here so a malformed live
 	// bundle fails before launch, while a missing optional file still falls back.
@@ -660,6 +661,55 @@ func resolveLaunchConfigEnv(configEntries []string, cwd string) (map[string]stri
 		return nil, err
 	}
 	return configEnv, nil
+}
+
+// addLocalHarnessConfigEnv projects deployment-owned local model settings from
+// the selected source. Explicit config wins over environment, role, and fleet.
+func addLocalHarnessConfigEnv(env map[string]string, fleet fleetconfig.Fleet, role string) map[string]string {
+	if env == nil {
+		env = map[string]string{}
+	}
+	opencode := fleetAgentByName(fleet, string(modeOpencode))
+	goose := fleetAgentByName(fleet, string(modeGoose))
+	opencodeOv := roleAgentOverride(fleet, role, string(modeOpencode))
+	gooseOv := roleAgentOverride(fleet, role, string(modeGoose))
+	addConfigEnvDefault(env, "WARD_OPENCODE_MODEL", opencodeOv.Model, opencode.Model)
+	addConfigEnvDefault(env, "WARD_OLLAMA_URL", opencodeOv.Endpoint, opencode.Endpoint)
+	addConfigEnvDefault(env, "WARD_GOOSE_MODEL", gooseOv.Model, goose.Model)
+	return env
+}
+
+func addConfigEnvDefault(env map[string]string, key string, values ...string) {
+	if strings.TrimSpace(env[key]) != "" {
+		return
+	}
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		env[key] = value
+		return
+	}
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			env[key] = value
+			return
+		}
+	}
+}
+
+func validateLocalHarnessConfig(mode containerMode, model, endpoint string) error {
+	if strings.TrimSpace(model) == "" {
+		switch mode {
+		case modeGoose:
+			return fmt.Errorf("missing agent.goose.model for goose: set it in the selected config bundle, WARD_GOOSE_MODEL, or --config agent.goose.model=<model>")
+		case modeOpencode:
+			return fmt.Errorf("missing agent.opencode.model for opencode: set it in the selected config bundle, WARD_OPENCODE_MODEL, or --config agent.opencode.model=<model>")
+		case modeClaude, modeCodex:
+			return nil
+		}
+	}
+	if mode == modeOpencode && strings.TrimSpace(endpoint) == "" {
+		return fmt.Errorf("missing agent.opencode.endpoint for opencode: set it in the selected config bundle, WARD_OLLAMA_URL, or --config agent.opencode.endpoint=<url>")
+	}
+	return nil
 }
 
 // addFleetAttributionConfigEnv projects the selected fleet's commit identity into
