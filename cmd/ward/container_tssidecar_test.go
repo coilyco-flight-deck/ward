@@ -78,7 +78,7 @@ func TestProxyBoxAttached(t *testing.T) {
 		t.Error("proxyBoxAttached must be false on empty output (missing network)")
 	}
 	// A substring of the box name must not false-match.
-	if proxyBoxAttached("mac-proxy-staging ") {
+	if proxyBoxAttached("tailscale-proxy-staging ") {
 		t.Error("proxyBoxAttached must match the box name exactly, not as a substring")
 	}
 }
@@ -112,7 +112,7 @@ func TestTSSidecarWardEnv(t *testing.T) {
 	}
 	p.TSSidecar = true
 	env := p.wardEnv()
-	// socks5h://mac-proxy:1055 - the box dialed by name, socks5h so it resolves the
+	// socks5h://tailscale-proxy:1055 - the box dialed by name, socks5h so it resolves the
 	// tower's MagicDNS name tailnet-side (ward#349; the doc).
 	if got, want := env["WARD_TS_SOCKS5"], "socks5h://"+proxyBoxAddr(); got != want {
 		t.Errorf("WARD_TS_SOCKS5 = %q, want %q", got, want)
@@ -282,7 +282,7 @@ func TestTailnetTowerEnvOverride(t *testing.T) {
 	if got := proxyBoxAddr(); got != defaultTailnetProxy {
 		t.Errorf("unset WARD_TAILNET_PROXY: proxyBoxAddr() = %q, want default %q", got, defaultTailnetProxy)
 	}
-	if got, want := proxyBoxName(), "mac-proxy"; got != want {
+	if got, want := proxyBoxName(), "tailscale-proxy"; got != want {
 		t.Errorf("proxyBoxName() = %q, want the host half %q of the default proxy addr", got, want)
 	}
 	if got := towerMagicDNS(); got != defaultTowerHost {

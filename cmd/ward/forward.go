@@ -49,7 +49,7 @@ no NET_ADMIN, no /dev/net/tun, no ALL_PROXY. See docs/agent-ts-sidecar.md.`,
 			},
 			&cli.StringFlag{
 				Name:    "socks5",
-				Usage:   "SOCKS5 proxy to bridge through (default $WARD_TS_SOCKS5, e.g. socks5h://mac-proxy:1055)",
+				Usage:   "SOCKS5 proxy to bridge through (default $WARD_TS_SOCKS5, e.g. socks5h://tailscale-proxy:1055)",
 				Sources: cli.EnvVars("WARD_TS_SOCKS5"),
 			},
 			&cli.StringFlag{

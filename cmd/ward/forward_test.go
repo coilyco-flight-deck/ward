@@ -17,15 +17,15 @@ func TestParseSocks5ProxyAddr(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{"socks5h://mac-proxy:1055", "mac-proxy:1055", false},
-		{"socks5://mac-proxy:1055", "mac-proxy:1055", false},
-		{"socks5h://mac-proxy:1055/kai-tower-3026:11434", "mac-proxy:1055", false},
-		{"mac-proxy:1055", "mac-proxy:1055", false},
-		{"  socks5h://mac-proxy:1055  ", "mac-proxy:1055", false},
+		{"socks5h://tailscale-proxy:1055", "tailscale-proxy:1055", false},
+		{"socks5://tailscale-proxy:1055", "tailscale-proxy:1055", false},
+		{"socks5h://tailscale-proxy:1055/kai-tower-3026:11434", "tailscale-proxy:1055", false},
+		{"tailscale-proxy:1055", "tailscale-proxy:1055", false},
+		{"  socks5h://tailscale-proxy:1055  ", "tailscale-proxy:1055", false},
 		{"127.0.0.1:1055", "127.0.0.1:1055", false},
 		{"", "", true},
 		{"socks5h://", "", true},
-		{"socks5h://mac-proxy", "", true}, // no port
+		{"socks5h://tailscale-proxy", "", true}, // no port
 	}
 	for _, tc := range cases {
 		got, err := parseSocks5ProxyAddr(tc.raw)

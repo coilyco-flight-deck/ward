@@ -2305,7 +2305,7 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 	// Seed any external (non-Forgejo) catalog.dependsOn mirror host-side before the
 	// sealed container clones from the warm gitcache (ward#612).
 	r.seedExternalContextMirrors(ctx, plan)
-	// The ward-tailnet network ready-up (create-if-absent + standing mac-proxy box
+	// The ward-tailnet network ready-up (create-if-absent + standing tailscale-proxy box
 	// warning) already ran before the pull in each dispatch path, so nothing here.
 	if plan.Interactive {
 		return r.dockerExec(ctx, dockerCreateArgv(plan, envFile)...)
@@ -2691,9 +2691,9 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 		writef(&b, "docker pull %s\n", p.Image)
 	}
 	if p.TSSidecar {
-		// The run attaches to the standing mac-proxy box over ward-tailnet (shown in
+		// The run attaches to the standing tailscale-proxy box over ward-tailnet (shown in
 		// the run argv's --network below); ward preflights the box, never starts it (ward#349).
-		writef(&b, "# preflight: docker %s (mac-proxy must be attached)\n", strings.Join(dockerTailnetInspectArgv(), " "))
+		writef(&b, "# preflight: docker %s (tailscale-proxy must be attached)\n", strings.Join(dockerTailnetInspectArgv(), " "))
 	}
 	writef(&b, "docker %s\n", strings.Join(dockerCreateArgv(p, "<ward-forgejo-token-envfile>"), " "))
 	_, err := io.WriteString(out, b.String())

@@ -474,8 +474,8 @@ func (r *Runner) preflightTailnet(ctx context.Context, plan upPlan) error {
 	}
 	out, err := r.dockerCapture(ctx, dockerTailnetInspectArgv()...)
 	if err != nil {
-		// Network absent: create it rather than fail (ward#597); a fresh net has no box
-		// yet, so `out` stays box-less and the warning below fires until mac-proxy converges.
+		// A missing network gets created (ward#597). A fresh network has no proxy box,
+		// so the warning below fires until the tailscale-proxy role converges.
 		if cerr := r.ensureTailnetNetwork(ctx); cerr != nil {
 			return cerr
 		}

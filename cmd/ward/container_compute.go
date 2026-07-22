@@ -123,7 +123,7 @@ const (
 	// envTailnetProxy overrides the standing SOCKS5 box host:port; host half is also
 	// its container name for the attach preflight (ward#349).
 	envTailnetProxy     = "WARD_TAILNET_PROXY"
-	defaultTailnetProxy = "mac-proxy:1055"
+	defaultTailnetProxy = "tailscale-proxy:1055"
 
 	// proxySocks5Scheme is socks5h (not socks5): the proxy resolves the tower's
 	// MagicDNS name tailnet-side, so the run dials by name (ward#337; the doc).
@@ -479,7 +479,7 @@ type upPlan struct {
 	// inherits the host's tailnet route (--host-net, ward#330). docs/agent-host-net.md.
 	HostNet bool
 	// TSSidecar attaches the run to the shared ward-tailnet network so it reaches
-	// the standing mac-proxy box (--ts-sidecar, ward#349). docs/agent-ts-sidecar.md.
+	// the standing tailscale-proxy box (--ts-sidecar, ward#349). docs/agent-ts-sidecar.md.
 	TSSidecar bool
 	// Workflow is the run's landing policy (--workflow, ward#508): non-merge-remote-main
 	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
@@ -997,7 +997,7 @@ func dockerTailnetCreateArgv() []string {
 	return []string{"network", "create", tailnetNetwork()}
 }
 
-// proxyBoxMissingWarning warns (true) when the mac-proxy box is not attached to
+// proxyBoxMissingWarning warns (true) when the tailscale-proxy box is not attached to
 // ward-tailnet, so the run launches but its tower route won't resolve (ward#349, #597).
 func proxyBoxMissingWarning(attachedNames string) (string, bool) {
 	if proxyBoxAttached(attachedNames) {
@@ -1005,7 +1005,7 @@ func proxyBoxMissingWarning(attachedNames string) (string, bool) {
 	}
 	return "WARNING: the standing tailnet proxy " + proxyBoxName() + " is not attached to " + tailnetNetwork() + ".\n" +
 		"  The container still launches on the network, but the tailnet SOCKS5 route\n" +
-		"  (the ollama tower, live-observe) will not resolve until the mac-proxy infra\n" +
+		"  (the ollama tower, live-observe) will not resolve until the tailscale-proxy infra\n" +
 		"  role is converged on this host. See docs/agent-ts-sidecar.md (ward#349, ward#597).", true
 }
 

@@ -5,7 +5,8 @@ doc_goal: Keep the ts-sidecar anchor stable after the old page was collapsed.
 
 This page is the durable anchor for the tailnet sidecar path.
 
-- It covers the standing mac-proxy sidecar used by some runs.
+- It covers the standing `tailscale-proxy` sidecar used by some runs on Docker
+  Desktop for macOS and Windows.
 - It keeps the sidecar comments readable after the docs collapse.
 
 ## See also
