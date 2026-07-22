@@ -132,9 +132,8 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 			t.Fatalf("Homebrew formula generator should mention %q:\n%s", want, release)
 		}
 	}
-	// Forgejo ignores Accept on the download route (ward#1493): formulas must
-	// carry resolved attachment URLs, never header-dependent download-route
-	// URLs. Any header stanza reappearing means the stub regression is back.
+	// Forgejo ignores Accept on download routes. Formulas must carry resolved
+	// attachment URLs without header-dependent stanzas (ward#1493).
 	if got := strings.Count(release, "headers: [\\\"Accept: application/octet-stream\\\"]"); got != 0 {
 		t.Fatalf("Homebrew formula generator must not emit Accept-header URL stanzas (ward#1493), got %d:\n%s", got, release)
 	}
@@ -185,11 +184,8 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 }
 
 func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
-	// The mock models what Forgejo's registry actually enforces on a
-	// cross-repo copy: the target rejects a manifest whose referenced blobs
-	// and child manifests are not already present in the target repo, so the
-	// script must mount blobs (?mount=&from=) and copy child manifests by
-	// digest before the final tag PUT lands.
+	// The mock rejects a cross-repo manifest until its blobs and child
+	// manifests exist in the target, matching Forgejo registry behavior.
 	const (
 		childDigest  = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
 		configDigest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
@@ -676,10 +672,8 @@ func TestForgejoReleaseAssetHelperReadsRawAssetBody(t *testing.T) {
 }
 
 func TestForgejoReleaseAssetHelperPassesMultilineBodiesThrough(t *testing.T) {
-	// The scoop job fetches SHA256SUMS - a multi-line document, not a bare
-	// digest. The helper must pass any non-metadata body through raw instead
-	// of demanding a single 64-hex line (the gap behind the v0.782.0
-	// bump-scoop-manifest failure, ward#1493).
+	// SHA256SUMS is multiline, so the helper passes non-metadata bodies through
+	// raw instead of requiring one digest (ward#1493).
 	srv := newReleaseAssetTestServer(t)
 	script := filepath.Join(repoRoot(t), "scripts", "forgejo-release-asset.sh")
 	cmd := exec.Command("bash", script)
@@ -918,10 +912,8 @@ func (s *releaseAssetTestServer) handleReleaseAttachmentBody(w http.ResponseWrit
 }
 
 func TestForgejoAssetURLResolverFollowsMetadataHops(t *testing.T) {
-	// Models the ward#1493 Forgejo behavior: the download route serves tiny
-	// attachment-metadata JSON regardless of Accept, and only the metadata's
-	// browser_download_url (/attachments/<uuid>) serves bytes. The resolver
-	// must emit the final byte URL plus the sha256 of those bytes.
+	// The mock serves metadata from the download route and bytes from its
+	// browser_download_url. The resolver must emit that URL and digest.
 	const body = "real ward binary bytes\n"
 	mux := http.NewServeMux()
 	var srvURL string

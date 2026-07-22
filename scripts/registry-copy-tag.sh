@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Cross-repo registry retag without a Docker daemon. A manifest PUT alone is
-# not enough across repositories: the registry validates that every referenced
-# blob and child manifest already exists in the TARGET repo, so this script
-# mounts blobs from the source repo (POST ?mount=&from=) and copies child
-# manifests by digest before putting the final tag. Falls back to a
-# download-and-upload round trip when cross-repo mounting is refused.
+# Cross-repo retag without Docker. Copy referenced blobs and child manifests
+# before the final manifest PUT, with upload fallback when mounting is refused.
 
 : "${SOURCE_IMAGE:?missing SOURCE_IMAGE}"
 : "${TARGET_IMAGE:?missing TARGET_IMAGE}"
@@ -75,9 +71,8 @@ fail_http() {
   exit 1
 }
 
-# manifest_digests <manifest-file> <kind>: list referenced digests. kind is
-# "blobs" (config + layers of an image manifest) or "children" (entries of an
-# index / manifest list). Emits nothing when the field is absent.
+# manifest_digests <manifest-file> <kind>: list "blobs" (config + layers) or
+# "children" (index entries). Missing fields emit nothing.
 manifest_digests() {
   python3 - "$1" "$2" <<'PY'
 import json, sys
@@ -102,12 +97,8 @@ is_index() {
   esac
 }
 
-# fetch_manifest <ref> <out-file> <ct-out-file>: GET a manifest (tag or
-# digest) from the source repo, saving body and content type. The content
-# type comes from curl's own %{content_type} because header-file grepping is
-# case-fragile: HTTP/2 lowercases header names, and mawk/BSD awk silently
-# ignore gawk's IGNORECASE - that combination made every index look like a
-# plain manifest and skipped the child walk entirely.
+# fetch_manifest saves a source manifest and curl's normalized content type.
+# Curl avoids header-case differences that previously hid image indexes.
 fetch_manifest() {
   local ref="$1" out="$2" ct_out="$3" code_ct code ct
   code_ct=$(curl -sS -o "$out" -w '%{http_code}\t%{content_type}' \
@@ -200,9 +191,8 @@ put_manifest() {
   esac
 }
 
-# copy_manifest <ref> <final-ref>: copy one manifest (and everything it
-# references) from source repo to target repo, publishing it as final-ref.
-# Recurses one level per index nesting.
+# copy_manifest recursively copies a manifest and its references from source
+# to target, then publishes it as final-ref.
 copy_manifest() {
   local ref="$1" final_ref="$2" file ct_file ct digest
   file=$(mktemp "${workdir}/manifest-XXXXXX")

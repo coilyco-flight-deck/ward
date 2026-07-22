@@ -15,6 +15,8 @@ Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.c
 - `promote.yml` also refreshes the `ward:release` container image alias before
   promotion with a registry copy helper, and `release.yml` verifies that alias
   resolves before it publishes.
+- Alias copy reads with the job token and writes with the org registry token,
+  because Forgejo package writes require a user token with package scope.
 - The pipeline stages the release on `main` and promotes the prebuilt assets on
   `release`, rather than rebuilding them twice.
 - The GitHub mirror stays a front door, not the source of truth.

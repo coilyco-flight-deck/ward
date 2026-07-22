@@ -70,11 +70,8 @@ for _ in 1 2 3 4 5; do
     "$url")
   case "$asset_code" in
     200)
-      # Follow asset-metadata JSON hops (Forgejo serves metadata with a
-      # browser_download_url on the asset routes regardless of Accept,
-      # ward#1493); anything that is not such metadata is the asset body
-      # itself and passes through raw - single digests, SHA256SUMS
-      # documents, or arbitrary files. Callers own validation.
+      # Follow Forgejo metadata hops. Non-metadata bodies pass through raw,
+      # and callers validate their expected shape (ward#1493).
       next_url=$(python3 -c '
 import json, sys
 try:

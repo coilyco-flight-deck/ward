@@ -149,13 +149,6 @@ jobs:
       - name: Publish the ward agent image alias without Docker daemon
         env:
           SOURCE_TOKEN: ${{ github.token }}
-          # Registry writes 401 (reqPackageAccess) under the job token on this
-          # Forgejo even with packages: write - container pushes need a real
-          # user PAT with write:package. CI_RELEASE_TOKEN lacks that scope, so
-          # the alias push uses the org REGISTRY_TOKEN as coilyco-ops - the
-          # same pairing the agentic-os image pushes use. The July 401 hunt
-          # never actually tested this combo: the runs that carried it died
-          # pulling the job image (runner dind eviction) before this step ran.
           TARGET_USER: coilyco-ops
           TARGET_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |

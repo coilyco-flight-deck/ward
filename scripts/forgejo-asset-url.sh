@@ -1,14 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Resolve a release asset to the URL that serves its actual bytes, and print
-# "<url> <sha256>" of that body. Forgejo's releases/download route returns
-# tiny attachment-metadata JSON regardless of the Accept header, and the
-# release API's assets[].browser_download_url just points back at that route;
-# only the metadata's own browser_download_url (/attachments/<uuid>) serves
-# bytes (ward#1493). This helper follows metadata hops until the body stops
-# being attachment metadata, so it also works unchanged on any Forgejo that
-# serves bytes from the download route directly.
+# Resolve Forgejo attachment-metadata hops to the byte URL and print
+# "<url> <sha256>" for the final body (ward#1493, docs/release-binaries.md).
 
 : "${DOWNLOAD_BASE:?missing DOWNLOAD_BASE (e.g. https://host/owner/repo/releases/download/vX.Y.Z)}"
 : "${ASSET_NAME:?missing ASSET_NAME}"
