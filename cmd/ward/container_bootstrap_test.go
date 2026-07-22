@@ -272,6 +272,7 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	t.Setenv("WARD_CONTAINER_NAME", "engineer-goose-goose-test-990")
 	t.Setenv("WARD_MODE", "goose")
 	t.Setenv("WARD_AGENT", "goose")
+	t.Setenv("WARD_GOOSE_MODEL", "configured-model")
 	t.Setenv("WARD_HEADLESS", "1")
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_SMOKE_TEST_SKIP", "1")

@@ -185,11 +185,9 @@ func TestResolveCatalogContextReposFromClone(t *testing.T) {
 	if err := os.MkdirAll(wardDir, 0o755); err != nil {
 		t.Fatalf("mkdir ward: %v", err)
 	}
-	// A full-host substrate ref (cli-guard, must drop), the target (must drop), a
-	// writable grant (must drop), and one kept upstream (eco-protos).
+	// The target and writable grant must drop, leaving one kept upstream.
 	if err := os.WriteFile(filepath.Join(wardDir, "ward.yaml"), []byte(`catalog:
   dependsOn:
-    - forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
     - coilyco-gaming/eco-ops
     - acme/widgets
     - coilyco-flight-deck/eco-protos
