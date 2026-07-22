@@ -54,15 +54,42 @@ agents {
 }
 
 func TestRunDoctorWithBakedDefaultsKeepsRepoAuthorityClean(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
 	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
 	report, err := runDoctor(context.Background())
+	if err != nil {
+		t.Fatalf("runDoctor with baked defaults: %v; checks=%+v", err, report.checks)
+	}
+	if report.failed() {
+		t.Fatalf("runDoctor with baked defaults reported failure: %+v", report.checks)
+	}
 	if !strings.Contains(report.sourceSummary, "baked neutral default") {
 		t.Fatalf("source summary = %q, want the baked source note", report.sourceSummary)
 	}
 	if containsCheck(report.checks, "repo authority") {
 		t.Fatalf("runDoctor with baked config still flagged repo authority: %+v (err=%v)", report.checks, err)
+	}
+	if containsCheck(report.checks, "ops bundle") {
+		t.Fatalf("runDoctor with baked config flagged ops bundle: %+v", report.checks)
+	}
+	if !hasDoctorCheck(report.checks, "ops bundle") {
+		t.Fatalf("runDoctor with baked config omitted ops bundle validation: %+v", report.checks)
+	}
+}
+
+func TestRunDoctorReportsGlobalConfigRef(t *testing.T) {
+	dir := copyDoctorBundle(t)
+	writeWardGlobalConfig(t, "config-ref: file://"+dir+"\n")
+	t.Setenv(wardConfigRefEnv, "")
+
+	report, err := runDoctor(context.Background())
+	if err != nil {
+		t.Fatalf("runDoctor with global config ref: %v; checks=%+v", err, report.checks)
+	}
+	if !strings.Contains(report.sourceSummary, configRefOriginGlobalConfig+"=file://") {
+		t.Fatalf("source summary = %q, want global config origin", report.sourceSummary)
 	}
 }
 
@@ -300,6 +327,15 @@ func copyDoctorBundle(t *testing.T) string {
 func containsCheck(checks []doctorCheck, name string) bool {
 	for _, check := range checks {
 		if check.name == name && check.err != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDoctorCheck(checks []doctorCheck, name string) bool {
+	for _, check := range checks {
+		if check.name == name {
 			return true
 		}
 	}

@@ -15,8 +15,18 @@ import (
 	"strings"
 )
 
-// wardConfigRefEnv selects the config source. Unset means the baked default.
+// wardConfigRefEnv selects the config source ahead of operator-local config.
 const wardConfigRefEnv = "WARD_CONFIG_REF"
+
+const (
+	configRefOriginGlobalConfig = "~/.ward/config.yaml config-ref"
+	configRefOriginTarget       = "target metadata config-ref"
+)
+
+type configRefSelection struct {
+	ref    string
+	origin string
+}
 
 // bakedAssets is the baked neutral default: mirrors of .ward/ward-kdl plus the
 // smart defaults.
@@ -141,13 +151,17 @@ func bundleConfigSource(dir string) configSource {
 	}
 }
 
-// selectConfigSource resolves WARD_CONFIG_REF for edge surfaces, rereading
-// the env per call (cheap, testable; it cannot change mid-process).
+// selectConfigSource resolves the launch config for edge surfaces.
 func selectConfigSource() (configSource, error) {
-	ref, err := selectedConfigRef()
+	selection, err := selectedConfigRefDetail()
 	if err != nil {
 		return configSource{}, err
 	}
+	return selectConfigSourceForSelection(selection)
+}
+
+func selectConfigSourceForSelection(selection configRefSelection) (configSource, error) {
+	ref := selection.ref
 	if ref == "" {
 		return bakedConfigSource(), nil
 	}
@@ -155,41 +169,41 @@ func selectConfigSource() (configSource, error) {
 	// (docs/config-source.md).
 	if localPath, ok, err := resolveLocalConfigRef(ref); ok {
 		if err != nil {
-			return configSource{}, fmt.Errorf("%s: setup-generated local config path %s must exist: %w", wardConfigRefEnv, localPath, err)
+			return configSource{}, fmt.Errorf("%s: setup-generated local config path %s must exist: %w", selection.origin, localPath, err)
 		}
 		src, err := localConfigSource(localPath, ref)
 		if err != nil {
-			return configSource{}, fmt.Errorf("%s=%q: %w", wardConfigRefEnv, ref, err)
+			return configSource{}, fmt.Errorf("%s=%q: %w", selection.origin, ref, err)
 		}
 		return src, nil
 	}
-	src, err := remoteConfigSource(ref)
+	src, err := remoteConfigSource(ref, selection.origin)
 	if err != nil {
 		return configSource{}, err
 	}
 	return src, nil
 }
 
-func remoteConfigSource(ref string) (configSource, error) {
+func remoteConfigSource(ref, origin string) (configSource, error) {
 	dir, isFile := strings.CutPrefix(ref, "file://")
 	if !isFile {
 		// The git-ref grammar (ward#654): parse, then sync through the shared
 		// TTL-cached resolver into the config-bundle cache.
 		cr, err := parseConfigRef(ref)
 		if err != nil {
-			return configSource{}, fmt.Errorf("%s=%q: %w", wardConfigRefEnv, ref, err)
+			return configSource{}, fmt.Errorf("%s=%q: %w", origin, ref, err)
 		}
 		dir, err = leanRunner().resolveConfigBundle(context.Background(), cr, ref)
 		if err != nil {
-			return configSource{}, fmt.Errorf("%s=%q: %w", wardConfigRefEnv, ref, err)
+			return configSource{}, fmt.Errorf("%s=%q: %w", origin, ref, err)
 		}
 	}
 	st, err := os.Stat(dir)
 	if err != nil {
-		return configSource{}, fmt.Errorf("%s: bundle dir: %w", wardConfigRefEnv, err)
+		return configSource{}, fmt.Errorf("%s: bundle dir: %w", origin, err)
 	}
 	if !st.IsDir() {
-		return configSource{}, fmt.Errorf("%s: bundle path %s is not a directory", wardConfigRefEnv, dir)
+		return configSource{}, fmt.Errorf("%s: bundle path %s is not a directory", origin, dir)
 	}
 	src := bundleConfigSource(dir)
 	src.desc = ref
@@ -198,7 +212,7 @@ func remoteConfigSource(ref string) (configSource, error) {
 		if isFile {
 			return src, nil
 		}
-		return configSource{}, fmt.Errorf("%s=%q: %w", wardConfigRefEnv, ref, err)
+		return configSource{}, fmt.Errorf("%s=%q: %w", origin, ref, err)
 	}
 	src.auditVersion = rev
 	return src, nil
@@ -304,30 +318,47 @@ func (s configSource) sourceDesc() string {
 }
 
 func selectedConfigRef() (string, error) {
+	selection, err := selectedConfigRefDetail()
+	return selection.ref, err
+}
+
+func selectedConfigRefDetail() (configRefSelection, error) {
 	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
 	if ref != "" {
-		return ref, nil
+		return configRefSelection{ref: ref, origin: wardConfigRefEnv}, nil
+	}
+	cfg, err := loadWardGlobalConfig()
+	if err != nil {
+		return configRefSelection{}, fmt.Errorf("read %s: %w", configRefOriginGlobalConfig, err)
+	}
+	ref = strings.TrimSpace(cfg.ConfigRef)
+	if ref != "" {
+		return configRefSelection{ref: ref, origin: configRefOriginGlobalConfig}, nil
 	}
 	src := bakedConfigSource()
 	target, ok := coilycoTargetRepo()
 	if !ok {
-		return "", nil
+		return configRefSelection{}, nil
 	}
 	reconstructed, err := coilycoConfigRefFromTargetRepo(target, resolveInvokeCWD())
 	if err != nil {
-		return "", fmt.Errorf("%s: active config source is %s; expected WARD_CONFIG_REF to point at the coilyco bundle for target %s (and could not reconstruct it from target metadata: %w)", wardConfigRefEnv, configSourceSummary(ref, src), target.slug(), err)
+		return configRefSelection{}, fmt.Errorf("config source: active config source is %s; expected %s or %s to point at the coilyco bundle for target %s (and could not reconstruct it from target metadata: %w)", configSourceSummaryForSelection(configRefSelection{}, src), wardConfigRefEnv, configRefOriginGlobalConfig, target.slug(), err)
 	}
-	return reconstructed, nil
+	return configRefSelection{ref: reconstructed, origin: configRefOriginTarget}, nil
 }
 
-func configSourceSummary(rawRef string, src configSource) string {
-	if strings.TrimSpace(rawRef) == "" {
+func configSourceSummaryForSelection(selection configRefSelection, src configSource) string {
+	if strings.TrimSpace(selection.ref) == "" {
 		return "baked neutral default (no external config source active)"
 	}
-	if strings.TrimSpace(src.auditVersion) != "" {
-		return wardConfigRefEnv + "=" + rawRef + " (bundle " + src.auditVersion + ")"
+	origin := strings.TrimSpace(selection.origin)
+	if origin == "" {
+		origin = wardConfigRefEnv
 	}
-	return wardConfigRefEnv + "=" + rawRef
+	if strings.TrimSpace(src.auditVersion) != "" {
+		return origin + "=" + selection.ref + " (bundle " + src.auditVersion + ")"
+	}
+	return origin + "=" + selection.ref
 }
 
 func coilycoTargetRepo() (targetRepo, bool) {

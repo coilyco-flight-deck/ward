@@ -16,7 +16,7 @@ Inventory of what `ward` ships today.
 
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
-- `WARD_CONFIG_REF` accepts local KDL bundles.
+* Config: env or `~/.ward/config.yaml`.
 - `ward agent director queue` / `status` - read-only queue view.
 - Read-only Forgejo issue-comment guard.
 - Reservation and dispatch comments clean up after release.

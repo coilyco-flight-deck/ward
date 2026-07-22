@@ -55,7 +55,11 @@ func opsCommand() *cli.Command {
 // buildForgejoOps builds the `forgejo` group from the launch-selected config
 // source (ward#653).
 func buildForgejoOps() (*cli.Command, error) {
-	src, err := selectConfigSource()
+	selection, err := selectedConfigRefDetail()
+	if err != nil {
+		return nil, err
+	}
+	src, err := selectConfigSourceForSelection(selection)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +67,7 @@ func buildForgejoOps() (*cli.Command, error) {
 	if err != nil {
 		return nil, err
 	}
-	sourceSummary := configSourceSummary(strings.TrimSpace(os.Getenv(wardConfigRefEnv)), src)
+	sourceSummary := configSourceSummaryForSelection(selection, src)
 	forgejo.Description = sourceSummary + "\n\n" + strings.TrimSpace(forgejo.Description)
 	return forgejo, nil
 }
@@ -161,9 +165,23 @@ func loadForgejoGuardfileFrom(src configSource) (*guardfile.Guardfile, string, e
 }
 
 func loadForgejoGuardfileNodeFrom(src configSource) (*bundleKDLFile, *kdl.Node, error) {
-	files, err := loadBundleKDLFiles(src)
-	if err != nil {
-		return nil, nil, err
+	var files []bundleKDLFile
+	if src.forgejoGuardfile != "" {
+		srcBytes, err := fs.ReadFile(src.fsys, src.forgejoGuardfile)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read guardfile %s: %w", src.forgejoGuardfile, err)
+		}
+		doc, err := kdl.ParseString(string(srcBytes))
+		if err != nil {
+			return nil, nil, fmt.Errorf("parse guardfile %s: %w", src.forgejoGuardfile, err)
+		}
+		files = []bundleKDLFile{{path: src.forgejoGuardfile, src: srcBytes, doc: doc}}
+	} else {
+		var err error
+		files, err = loadBundleKDLFiles(src)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	file, node, err := findMergedBundleNode(files, "top-level `wrap ops forgejo` block", func(n *kdl.Node) bool {
 		return wrapNodeMatchesPath(n, "ops", "forgejo") &&

@@ -20,6 +20,7 @@ import (
 // TestSelectConfigSourceDefaultsBaked pins the neutral default: no
 // WARD_CONFIG_REF means the baked embed, never an error.
 func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "")
 	t.Setenv("WARD_TARGET_REPO", "")
@@ -39,6 +40,7 @@ func TestSelectConfigSourceDefaultsBaked(t *testing.T) {
 // TestSelectConfigSourceRejectsCoilycoTargetWithoutCheckout pins the fail-fast
 // path when ward can name a coilyco target but cannot reconstruct a checkout.
 func TestSelectConfigSourceRejectsCoilycoTargetWithoutCheckout(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
 	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
@@ -67,6 +69,7 @@ func TestSelectConfigSourceReconstructsCoilycoTargetFromCheckout(t *testing.T) {
 	gitFixture(t, work, "commit", "--allow-empty", "-m", "seed")
 	head := gitFixture(t, work, "rev-parse", "HEAD")
 
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
 	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
@@ -83,9 +86,61 @@ func TestSelectConfigSourceReconstructsCoilycoTargetFromCheckout(t *testing.T) {
 	}
 }
 
+func TestSelectConfigSourceReadsGlobalConfigRef(t *testing.T) {
+	dir := t.TempDir()
+	writeWardGlobalConfig(t, "config-ref: file://"+dir+"\n")
+	t.Setenv(wardConfigRefEnv, "")
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_REPO", "")
+
+	selection, err := selectedConfigRefDetail()
+	if err != nil {
+		t.Fatalf("selectedConfigRefDetail: %v", err)
+	}
+	if selection.ref != "file://"+dir {
+		t.Fatalf("selected ref = %q, want file://%s", selection.ref, dir)
+	}
+	if selection.origin != configRefOriginGlobalConfig {
+		t.Fatalf("selected origin = %q, want %q", selection.origin, configRefOriginGlobalConfig)
+	}
+	src, err := selectConfigSource()
+	if err != nil {
+		t.Fatalf("selectConfigSource from global config: %v", err)
+	}
+	if src.desc != "file://"+dir {
+		t.Fatalf("source desc = %q, want file://%s", src.desc, dir)
+	}
+}
+
+func TestSelectConfigSourceEnvironmentOverridesGlobalConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeWardGlobalConfig(t, "not: [valid\n")
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+
+	selection, err := selectedConfigRefDetail()
+	if err != nil {
+		t.Fatalf("selectedConfigRefDetail with environment override: %v", err)
+	}
+	if selection.ref != "file://"+dir || selection.origin != wardConfigRefEnv {
+		t.Fatalf("selection = %+v, want environment ref", selection)
+	}
+}
+
+func TestSelectConfigSourceRejectsMalformedGlobalConfig(t *testing.T) {
+	writeWardGlobalConfig(t, "config-ref: [\n")
+	t.Setenv(wardConfigRefEnv, "")
+
+	if _, err := selectedConfigRefDetail(); err == nil {
+		t.Fatal("malformed global config selected a source, want a loud error")
+	} else if !strings.Contains(err.Error(), configRefOriginGlobalConfig) {
+		t.Fatalf("error %q does not name %q", err, configRefOriginGlobalConfig)
+	}
+}
+
 // TestOpsCommandReportsMissingCheckoutForCoilycoTarget pins the operator
 // boundary. Missing checkout metadata must fail loud for a coilyco target.
 func TestOpsCommandReportsMissingCheckoutForCoilycoTarget(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "coilyco-flight-deck")
 	t.Setenv("WARD_TARGET_REPO", "coilyco-flight-deck/ward")
@@ -108,6 +163,19 @@ func TestOpsCommandReportsMissingCheckoutForCoilycoTarget(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}
+	}
+}
+
+func writeWardGlobalConfig(t *testing.T, body string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, ".ward", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir global config dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write global config: %v", err)
 	}
 }
 

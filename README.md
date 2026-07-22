@@ -34,7 +34,7 @@ If the orchestration itself is flaky, that is a Ward product bug, not an operato
 
 The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
 
-**Which Forgejo?** As shipped, ward defaults its guarded Forgejo surfaces to `forgejo.coilysiren.me` and `coily*`-owned orgs. The endpoint, token path, and owner gate are read from the selected config bundle for those edge surfaces ([`docs/config-source.md`](docs/config-source.md)), so `WARD_CONFIG_REF` can retarget them without a source rebuild. Rebuilding from source only changes the baked default bundle and embedded defaults. The forge-agnostic verb gate still runs against any repo.
+**Which Forgejo?** As shipped, ward defaults its guarded Forgejo surfaces to `forgejo.coilysiren.me` and `coily*`-owned orgs. The endpoint, token path, and owner gate are read from the selected config bundle for those edge surfaces ([`docs/config-source.md`](docs/config-source.md)), so `config-ref` in `~/.ward/config.yaml` can retarget them durably and `WARD_CONFIG_REF` can override that source for one launch. Rebuilding from source only changes the baked default bundle and embedded defaults. The forge-agnostic verb gate still runs against any repo.
 
 When a doc or example needs a concrete GitHub repo that should actually resolve,
 use `coilysiren/example` or `https://github.com/coilysiren/example`. It is a

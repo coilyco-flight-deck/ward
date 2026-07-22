@@ -592,10 +592,10 @@ func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string, 
 	return nil, fmt.Errorf("%s: no --repo/--org given and no director.default-scope in ~/.ward/config.yaml", label)
 }
 
-// wardGlobalConfig is the slice of ~/.ward/config.yaml ward reads today: the
-// host-owned director.default-scope and the review skip defaults.
+// wardGlobalConfig is the slice of ~/.ward/config.yaml ward reads today.
 type wardGlobalConfig struct {
-	Director struct {
+	ConfigRef string `yaml:"config-ref"`
+	Director  struct {
 		DefaultScope []string `yaml:"default-scope"`
 	} `yaml:"director"`
 	Agent struct {
@@ -612,16 +612,26 @@ type wardGlobalConfig struct {
 	} `yaml:"container"`
 }
 
+// loadWardGlobalConfig reads the operator-local ward config. A missing file is
+// valid and returns the zero value.
+func loadWardGlobalConfig() (wardGlobalConfig, error) {
+	path, err := config.GlobalConfigPath()
+	if err != nil {
+		return wardGlobalConfig{}, err
+	}
+	var cfg wardGlobalConfig
+	if err := config.OverlayFile(&cfg, path); err != nil {
+		return wardGlobalConfig{}, err
+	}
+	return cfg, nil
+}
+
 // loadDirectorDefaultScope reads director.default-scope from ~/.ward/config.yaml,
 // partitioning into org tokens and owner/name slugs; a missing file is no error.
 func loadDirectorDefaultScope() (orgs, repos []string, err error) {
-	path, err := config.GlobalConfigPath()
+	cfg, err := loadWardGlobalConfig()
 	if err != nil {
 		return nil, nil, err
-	}
-	var cfg wardGlobalConfig
-	if oerr := config.OverlayFile(&cfg, path); oerr != nil {
-		return nil, nil, oerr
 	}
 	orgs, repos = partitionScopeEntries(cfg.Director.DefaultScope)
 	return orgs, repos, nil
@@ -630,13 +640,9 @@ func loadDirectorDefaultScope() (orgs, repos []string, err error) {
 // loadReviewSkips reads agent.review.skip from ~/.ward/config.yaml.
 // It is a host-local default, so a missing file is not an error.
 func loadReviewSkips() ([]string, error) {
-	path, err := config.GlobalConfigPath()
+	cfg, err := loadWardGlobalConfig()
 	if err != nil {
 		return nil, err
-	}
-	var cfg wardGlobalConfig
-	if oerr := config.OverlayFile(&cfg, path); oerr != nil {
-		return nil, oerr
 	}
 	return cfg.Agent.Review.Skip, nil
 }

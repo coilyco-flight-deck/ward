@@ -18,6 +18,8 @@ func TestSetupCommandDescriptionMentionsLocalConfigPath(t *testing.T) {
 	desc := setupCommand().Description
 	for _, want := range []string{
 		"creates a minimal first-run ~/.ward/config.yaml",
+		"Set `config-ref` in ~/.ward/config.yaml",
+		"`WARD_CONFIG_REF` remains the per-launch override",
 		"Point `WARD_CONFIG_REF` at the local setup output directly",
 		"`/path/to/ward-config.kdl`",
 		"`file:///path/to/ward-config.kdl`",
@@ -65,6 +67,9 @@ func TestRunSetupWithUnsetRef(t *testing.T) {
 	got := string(body)
 	if !strings.Contains(got, setupPlaceholderScope) {
 		t.Errorf("generated config = %q, want placeholder scope %q", got, setupPlaceholderScope)
+	}
+	if !strings.Contains(got, "config-ref: \"\"") {
+		t.Errorf("generated config = %q, want an empty durable config-ref key", got)
 	}
 	if strings.Contains(got, "secret") || strings.Contains(got, "opaque") {
 		t.Errorf("generated config = %q, want no secrets or opaque ids", got)

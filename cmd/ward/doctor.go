@@ -63,18 +63,18 @@ func runDoctor(ctx context.Context) (doctorReport, error) {
 	_ = ctx
 	report := doctorReport{}
 
-	rawRef := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
-	allowPlaceholders := rawRef == "" || strings.TrimSpace(os.Getenv(doctorAllowPlaceholdersEnv)) != ""
-	src, err := selectConfigSource()
+	selection, err := selectedConfigRefDetail()
 	if err != nil {
 		report.add("config source", err)
 		return report, err
 	}
-	if rawRef == "" {
-		report.sourceSummary = "baked neutral default (no external config source active)"
-	} else {
-		report.sourceSummary = "WARD_CONFIG_REF=" + rawRef
+	allowPlaceholders := selection.ref == "" || strings.TrimSpace(os.Getenv(doctorAllowPlaceholdersEnv)) != ""
+	src, err := selectConfigSourceForSelection(selection)
+	if err != nil {
+		report.add("config source", err)
+		return report, err
 	}
+	report.sourceSummary = configSourceSummaryForSelection(selection, src)
 
 	defs, err := loadSmartDefaultsFrom(src)
 	if err != nil {

@@ -39,6 +39,9 @@ func setupCommand() *cli.Command {
 			"It also creates a minimal first-run ~/.ward/config.yaml with placeholder",
 			"values when the file is missing.",
 			"",
+			"Set `config-ref` in ~/.ward/config.yaml for a durable operator-local source.",
+			"`WARD_CONFIG_REF` remains the per-launch override.",
+			"",
 			"Point `WARD_CONFIG_REF` at the local setup output directly when you want a",
 			"file form, for example `/path/to/ward-config.kdl` or `file:///path/to/ward-config.kdl`.",
 			"",
@@ -71,23 +74,26 @@ func runSetup(ctx context.Context) (setupReport, error) {
 	report.localConfigPath = cfgPath
 	report.localConfigCreated = created
 
-	rawRef := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
-	src, err := selectConfigSource()
+	selection, err := selectedConfigRefDetail()
+	if err != nil {
+		return report, err
+	}
+	src, err := selectConfigSourceForSelection(selection)
 	if err != nil {
 		return report, err
 	}
 
-	if rawRef == "" {
-		report.sourceSummary = configSourceSummary(rawRef, src)
+	if selection.ref == "" {
+		report.sourceSummary = configSourceSummaryForSelection(selection, src)
 		report.resolvedSHA = "embedded"
 		report.cachePath = "embedded neutral default"
 	} else {
-		report.sourceSummary = configSourceSummary(rawRef, src)
+		report.sourceSummary = configSourceSummaryForSelection(selection, src)
 		report.resolvedSHA = strings.TrimSpace(src.auditVersion)
 		if report.resolvedSHA == "" {
 			report.resolvedSHA = "unavailable"
 		}
-		report.cachePath = setupCachePath(rawRef)
+		report.cachePath = setupCachePath(selection.ref)
 	}
 
 	if strings.TrimSpace(src.desc) != "" {
@@ -133,6 +139,9 @@ func ensureLocalSetupConfig() (string, bool, error) {
 
 func setupLocalConfigYAML() string {
 	return strings.TrimSpace(`# ward first setup config.
+# Optional durable config bundle. WARD_CONFIG_REF overrides this per launch.
+config-ref: ""
+
 # Replace the placeholder scope before using warded director without --repo.
 director:
   default-scope:
