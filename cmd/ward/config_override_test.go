@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -111,15 +113,19 @@ func TestWardEnvMergesConfigOverrides(t *testing.T) {
 	}
 }
 
-func TestAddLocalHarnessConfigEnvPrecedence(t *testing.T) {
+func TestAddHarnessConfigEnvPrecedence(t *testing.T) {
 	fleet := fleetconfig.Fleet{
 		Agents: []fleetconfig.Agent{
+			{Name: string(modeClaude), Model: "fleet-claude", ReasoningEffort: "medium"},
+			{Name: string(modeCodex), Model: "fleet-codex", ReasoningEffort: "medium", Verbosity: "low"},
 			{Name: string(modeOpencode), Model: "fleet-opencode", Endpoint: "http://fleet.example/v1"},
 			{Name: string(modeGoose), Model: "fleet-goose"},
 		},
 		Roles: []fleetconfig.Role{{
 			Name: roleEngineer,
 			AgentConfig: map[string]fleetconfig.RoleAgentOverride{
+				string(modeClaude):   {Model: "role-claude", ReasoningEffort: "high"},
+				string(modeCodex):    {Model: "role-codex", ReasoningEffort: "high", Verbosity: "medium"},
 				string(modeOpencode): {Model: "role-opencode", Endpoint: "http://role.example/v1"},
 				string(modeGoose):    {Model: "role-goose"},
 			},
@@ -128,7 +134,30 @@ func TestAddLocalHarnessConfigEnvPrecedence(t *testing.T) {
 	t.Setenv("WARD_OPENCODE_MODEL", "env-opencode")
 	t.Setenv("WARD_OLLAMA_URL", "")
 	t.Setenv("WARD_GOOSE_MODEL", "")
-	env := addLocalHarnessConfigEnv(map[string]string{"WARD_GOOSE_MODEL": "explicit-goose"}, fleet, roleEngineer)
+	t.Setenv("WARD_CLAUDE_MODEL", "")
+	t.Setenv("WARD_CLAUDE_REASONING_EFFORT", "")
+	t.Setenv("WARD_CODEX_MODEL", "env-codex")
+	t.Setenv("WARD_CODEX_REASONING_EFFORT", "")
+	t.Setenv("WARD_CODEX_VERBOSITY", "")
+	env := addHarnessConfigEnv(map[string]string{
+		"WARD_GOOSE_MODEL":            "explicit-goose",
+		"WARD_CODEX_REASONING_EFFORT": "explicit-effort",
+	}, fleet, roleEngineer)
+	if got := env["WARD_CLAUDE_MODEL"]; got != "role-claude" {
+		t.Errorf("Claude role model = %q, want role-claude", got)
+	}
+	if got := env["WARD_CLAUDE_REASONING_EFFORT"]; got != "high" {
+		t.Errorf("Claude role effort = %q, want high", got)
+	}
+	if got := env["WARD_CODEX_MODEL"]; got != "env-codex" {
+		t.Errorf("Codex environment model = %q, want env-codex", got)
+	}
+	if got := env["WARD_CODEX_REASONING_EFFORT"]; got != "explicit-effort" {
+		t.Errorf("Codex explicit effort = %q, want explicit-effort", got)
+	}
+	if got := env["WARD_CODEX_VERBOSITY"]; got != "medium" {
+		t.Errorf("Codex role verbosity = %q, want medium", got)
+	}
 	if got := env["WARD_OPENCODE_MODEL"]; got != "env-opencode" {
 		t.Errorf("environment model = %q, want env-opencode", got)
 	}
@@ -137,6 +166,51 @@ func TestAddLocalHarnessConfigEnvPrecedence(t *testing.T) {
 	}
 	if got := env["WARD_GOOSE_MODEL"]; got != "explicit-goose" {
 		t.Errorf("explicit Goose model = %q, want explicit-goose", got)
+	}
+}
+
+func TestResolveLaunchConfigEnvProjectsSelectedDirectorCodexOverlay(t *testing.T) {
+	dir := writeBundleFixture(t)
+	rolesPath := filepath.Join(dir, bundleFixtureRolesPath)
+	body, err := os.ReadFile(rolesPath)
+	if err != nil {
+		t.Fatalf("read selected roles fixture: %v", err)
+	}
+	body = []byte(strings.Replace(string(body), "model gpt-5.5\n            reasoning-effort high", "model selected-director-model\n            reasoning-effort xhigh", 1))
+	if err := os.WriteFile(rolesPath, body, 0o644); err != nil {
+		t.Fatalf("write selected roles fixture: %v", err)
+	}
+	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	t.Setenv("WARD_CODEX_MODEL", "")
+	t.Setenv("WARD_CODEX_REASONING_EFFORT", "")
+	t.Setenv("WARD_CODEX_VERBOSITY", "")
+
+	env, err := resolveLaunchConfigEnv(nil, "", roleDirector)
+	if err != nil {
+		t.Fatalf("resolveLaunchConfigEnv from selected bundle: %v", err)
+	}
+	if got := env["WARD_CODEX_MODEL"]; got != "selected-director-model" {
+		t.Fatalf("projected Codex model = %q, want selected-director-model", got)
+	}
+	if got := env["WARD_CODEX_REASONING_EFFORT"]; got != "xhigh" {
+		t.Fatalf("projected Codex effort = %q, want xhigh", got)
+	}
+
+	for key, value := range env {
+		t.Setenv(key, value)
+	}
+	t.Setenv("WARD_TARGET_OWNER", "owner")
+	t.Setenv("WARD_TARGET_NAME", "repo")
+	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.example")
+	t.Setenv("WARD_MODE", string(modeCodex))
+	t.Setenv("WARD_AGENT", string(modeCodex))
+	t.Setenv("WARD_ROLE", roleDirector)
+	bootstrap, err := readBootstrapEnv()
+	if err != nil {
+		t.Fatalf("readBootstrapEnv with projected selected bundle: %v", err)
+	}
+	if bootstrap.CodexModel != "selected-director-model" || bootstrap.CodexEffort != "xhigh" {
+		t.Fatalf("bootstrap Codex config = %q/%q, want selected-director-model/xhigh", bootstrap.CodexModel, bootstrap.CodexEffort)
 	}
 }
 

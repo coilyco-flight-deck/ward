@@ -147,8 +147,8 @@ func roleAgentOverride(f fleetconfig.Fleet, role, agent string) fleetconfig.Role
 // readBootstrapEnv reads + defaults the entrypoint env, erroring on a missing
 // required var (the bash `: "${X:?...}"` checks). Pure given the environment.
 func readBootstrapEnv() (bootstrapEnv, error) {
-	// Defaults now source from the embedded fleet config (env > manifest, ward#416);
-	// opencode is canonical.
+	// The host projects the selected bundle into WARD_* values before launch.
+	// The embedded fleet remains the direct-bootstrap fallback (ward#416).
 	fleet, ferr := loadFleetConfig()
 	if ferr != nil {
 		return bootstrapEnv{}, fmt.Errorf("load embedded fleet config for bootstrap defaults: %w", ferr)
@@ -176,8 +176,8 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		ContextLevel: envOr("WARD_CONTEXT_LEVEL", "2"),
 		GitCache:     envOr("WARD_GITCACHE", "/gitcache"),
 		ContextSrc:   envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
-		// Precedence WARD_* env > role overlay > flat per-agent default (ward#620): the
-		// role's opencode overlay (if any) leads the fleet manifest's opencode node.
+		// Precedence WARD_* env > embedded role overlay > embedded agent default.
+		// Host launches carry selected-bundle values in WARD_* (ward#1497).
 		OpencodeModel: envOr("WARD_OPENCODE_MODEL", firstNonEmpty(opencodeOv.Model, opencode.Model)),
 		GooseModel:    envOr("WARD_GOOSE_MODEL", firstNonEmpty(gooseOv.Model, goose.Model)),
 		OllamaURL:     envOr("WARD_OLLAMA_URL", firstNonEmpty(opencodeOv.Endpoint, opencode.Endpoint)),

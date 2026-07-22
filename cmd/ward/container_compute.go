@@ -653,7 +653,7 @@ func resolveLaunchConfigEnv(configEntries []string, cwd, role string) (map[strin
 	if err != nil {
 		return nil, fmt.Errorf("load selected fleet config: %w", err)
 	}
-	configEnv = addLocalHarnessConfigEnv(configEnv, fleet, role)
+	configEnv = addHarnessConfigEnv(configEnv, fleet, role)
 	configEnv = addFleetAttributionConfigEnv(configEnv, fleet, cwd)
 	// Validate the staged container-topology bundle once here so a malformed live
 	// bundle fails before launch, while a missing optional file still falls back.
@@ -663,16 +663,25 @@ func resolveLaunchConfigEnv(configEntries []string, cwd, role string) (map[strin
 	return configEnv, nil
 }
 
-// addLocalHarnessConfigEnv projects deployment-owned local model settings from
-// the selected source. Explicit config wins over environment, role, and fleet.
-func addLocalHarnessConfigEnv(env map[string]string, fleet fleetconfig.Fleet, role string) map[string]string {
+// addHarnessConfigEnv projects model settings from the selected source into the
+// container. Explicit config wins over environment, role, and fleet.
+func addHarnessConfigEnv(env map[string]string, fleet fleetconfig.Fleet, role string) map[string]string {
 	if env == nil {
 		env = map[string]string{}
 	}
+	claude := fleetAgentByName(fleet, string(modeClaude))
+	codex := fleetAgentByName(fleet, string(modeCodex))
 	opencode := fleetAgentByName(fleet, string(modeOpencode))
 	goose := fleetAgentByName(fleet, string(modeGoose))
+	claudeOv := roleAgentOverride(fleet, role, string(modeClaude))
+	codexOv := roleAgentOverride(fleet, role, string(modeCodex))
 	opencodeOv := roleAgentOverride(fleet, role, string(modeOpencode))
 	gooseOv := roleAgentOverride(fleet, role, string(modeGoose))
+	addConfigEnvDefault(env, "WARD_CLAUDE_MODEL", claudeOv.Model, claude.Model)
+	addConfigEnvDefault(env, "WARD_CLAUDE_REASONING_EFFORT", claudeOv.ReasoningEffort, claude.ReasoningEffort)
+	addConfigEnvDefault(env, "WARD_CODEX_MODEL", codexOv.Model, codex.Model)
+	addConfigEnvDefault(env, "WARD_CODEX_REASONING_EFFORT", codexOv.ReasoningEffort, codex.ReasoningEffort)
+	addConfigEnvDefault(env, "WARD_CODEX_VERBOSITY", codexOv.Verbosity, codex.Verbosity)
 	addConfigEnvDefault(env, "WARD_OPENCODE_MODEL", opencodeOv.Model, opencode.Model)
 	addConfigEnvDefault(env, "WARD_OLLAMA_URL", opencodeOv.Endpoint, opencode.Endpoint)
 	addConfigEnvDefault(env, "WARD_GOOSE_MODEL", gooseOv.Model, goose.Model)
