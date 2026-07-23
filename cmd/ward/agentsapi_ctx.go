@@ -29,17 +29,17 @@ func (r *Runner) agentHostCtx(ctx context.Context) agentsapi.HostCtx {
 // agentTrustDirs mirrors seed_claude_onboarding's trust set: target clone,
 // /workspace root, each granted extra repo, /substrate root + warmed repos (ward#168).
 func agentTrustDirs(e bootstrapEnv) []string {
-	dirs := []string{"/workspace/" + e.TargetName, "/workspace"}
+	dirs := []string{primaryWorkspaceDir(containerWorkspace, targetRepo{Owner: e.TargetOwner, Name: e.TargetName}), containerWorkspace}
 	for _, repo := range e.ExtraRepos {
 		if repo.Name != "" {
-			dirs = append(dirs, "/workspace/"+repo.Name)
+			dirs = append(dirs, grantedRepoWorkspaceDir(containerWorkspace, repo))
 		}
 	}
 	// Read-only context repos land under /workspace too (ward#573); trust them so
 	// the agent reads them without a per-dir folder-trust re-prompt.
 	for _, repo := range e.ContextRepos {
 		if repo.Name != "" {
-			dirs = append(dirs, "/workspace/"+repo.Name)
+			dirs = append(dirs, grantedRepoWorkspaceDir(containerWorkspace, repo.targetRepo))
 		}
 	}
 	if e.SubstrateDest != "" {

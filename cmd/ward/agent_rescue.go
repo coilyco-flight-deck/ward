@@ -69,12 +69,13 @@ func (r *Runner) rescueContainerRun(ctx context.Context, name string) error { //
 	if _, err := os.Stat(manifestPath); err == nil {
 		return nil
 	}
-	all := append([]targetRepo{{Owner: owner, Name: repo}}, parseExtraReposEnv(env["WARD_EXTRA_REPOS"], owner, repo)...)
+	primary := targetRepo{Owner: owner, Name: repo}
+	all := append([]targetRepo{primary}, parseExtraReposEnv(env["WARD_EXTRA_REPOS"], owner, repo)...)
 	manifest := rescueManifest{SchemaVersion: rescueSchemaVersion, ArtifactID: name, IssueRef: fmt.Sprintf("%s/%s#%d", owner, repo, issue), RunID: name, Workflow: string(workflowMode(env["WARD_WORKFLOW"]).orDefault()), TerminalClass: "forge landing unavailable", CreatedAt: time.Now().UTC().Format(time.RFC3339)}
 	for _, target := range all {
-		work := containerWorkspace + "/" + target.Name
-		if target.Owner == owner && target.Name == repo {
-			work = containerWorkspace + "/" + repo
+		work := grantedRepoWorkspaceDir(containerWorkspace, target)
+		if target.canonicalSlug() == primary.canonicalSlug() {
+			work = primaryWorkspaceDir(containerWorkspace, primary)
 		}
 		gitTar, err := r.dockerCapture(ctx, "cp", name+":"+work+"/.git", "-")
 		if err != nil || len(gitTar) == 0 {

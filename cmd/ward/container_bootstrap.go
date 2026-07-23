@@ -74,7 +74,7 @@ type bootstrapEnv struct {
 	CloneBase string
 	CloneHost string
 	// ExtraRepos are the additional writable repos this run was granted via
-	// --repo (WARD_EXTRA_REPOS); each is cloned full under /workspace (ward#230).
+	// --repo (WARD_EXTRA_REPOS); each is cloned full at /workspace/<owner>/<repo>.
 	ExtraRepos []targetRepo
 	// ContextRepos are catalog.dependsOn cloned READ-ONLY, resolved from the fresh clone
 	// (ward#580); an external (non-Forgejo) dep carries its honored clone URL (ward#612).
@@ -254,15 +254,20 @@ func parseExtraReposEnv(raw, targetOwner, targetName string) []targetRepo {
 		if !ok {
 			continue
 		}
-		if owner == targetOwner && name == targetName {
+		repo, err := normalizedTargetRepo(owner, name, ref)
+		if err != nil {
 			continue
 		}
-		slug := owner + "/" + name
+		target := targetRepo{Owner: targetOwner, Name: targetName}
+		if repo.canonicalSlug() == target.canonicalSlug() {
+			continue
+		}
+		slug := repo.canonicalSlug()
 		if seen[slug] {
 			continue
 		}
 		seen[slug] = true
-		out = append(out, targetRepo{Owner: owner, Name: name})
+		out = append(out, repo)
 	}
 	return out
 }
@@ -865,7 +870,7 @@ func writeForgejoGitCredentialHelper(path, credFile string) error {
 // --- cached fresh clone (mirror in the shared gitcache volume) ---------------
 
 // cloneTarget ports clone_target: refresh-or-create the bare mirror, then drop
-// a working clone under /workspace and return its path.
+// the primary working clone at /workspace/<repo> and return its path.
 func (r *Runner) cloneTarget(ctx context.Context, e bootstrapEnv) (string, error) {
 	mirror := filepath.Join(e.GitCache, e.MirrorName)
 	url := e.CloneBase + "/" + e.TargetOwner + "/" + e.TargetName + ".git"
@@ -881,7 +886,7 @@ func (r *Runner) cloneTarget(ctx context.Context, e bootstrapEnv) (string, error
 			return "", fmt.Errorf("ward container bootstrap: mirror clone failed: %w", cerr)
 		}
 	}
-	work := filepath.Join(workspaceRoot, e.TargetName)
+	work := primaryWorkspaceDir(workspaceRoot, targetRepo{Owner: e.TargetOwner, Name: e.TargetName})
 	_ = os.RemoveAll(work)
 	blog("clone start: working clone %s -> %s", mirror, work)
 	if cerr := r.Runner.Exec(ctx, "git", "clone", mirror, work); cerr != nil {
@@ -930,7 +935,7 @@ func (r *Runner) writeRunProvenance(ctx context.Context, work string, e bootstra
 // --- additional granted repos (ward#230): clone+operate beyond the target ----
 
 // cloneExtraRepos clones each granted extra repo as a full feature working copy
-// under /workspace; best-effort per repo. See docs/container-multi-repo.md.
+// at /workspace/<owner>/<repo>; best-effort per repo. See docs/container-multi-repo.md.
 func (r *Runner) cloneExtraRepos(ctx context.Context, e bootstrapEnv) {
 	if len(e.ExtraRepos) == 0 {
 		return
@@ -954,8 +959,8 @@ func (r *Runner) resolveCatalogContext(work string, e bootstrapEnv) []catalogCon
 	return repos
 }
 
-// cloneContextRepos clones each read-only catalog-dependency context repo under
-// /workspace as reference (ward#573). Best-effort per repo; never fatal.
+// cloneContextRepos clones each read-only catalog-dependency context repo at
+// /workspace/<owner>/<repo> as reference (ward#573). Best-effort per repo; never fatal.
 func (r *Runner) cloneContextRepos(ctx context.Context, e bootstrapEnv) {
 	if len(e.ContextRepos) == 0 {
 		return
@@ -968,7 +973,7 @@ func (r *Runner) cloneContextRepos(ctx context.Context, e bootstrapEnv) {
 	}
 }
 
-// cloneExtraRepo mirrors or seeds one granted repo under /workspace.
+// cloneExtraRepo mirrors or seeds one granted repo at /workspace/<owner>/<repo>.
 // External deps use the supplied clone URL.
 func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo targetRepo, readOnly bool, cloneURL string) { //nolint:gocognit,gocritic,gocyclo,cyclop,nestif
 	// A whole-run read-only surface makes every clone read-only; a context repo is
@@ -1021,7 +1026,7 @@ func (r *Runner) cloneExtraRepo(ctx context.Context, e bootstrapEnv, repo target
 		}
 		return
 	}
-	work := filepath.Join(workspaceRoot, repo.Name)
+	work := grantedRepoWorkspaceDir(workspaceRoot, repo)
 	_ = os.RemoveAll(work)
 	if cerr := r.Runner.Exec(ctx, "git", "clone", mirror, work); cerr != nil {
 		blog("extra-repo: working clone failed %s/%s", repo.Owner, repo.Name)
@@ -1707,14 +1712,14 @@ func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string
 	// Hand each granted extra-repo tree to the agent user too (ward#230); they
 	// were cloned as root, like the target. Skip any that failed to clone.
 	for _, repo := range e.ExtraRepos {
-		if dest := filepath.Join(workspaceRoot, repo.Name); isDir(dest) {
+		if dest := grantedRepoWorkspaceDir(workspaceRoot, repo); isDir(dest) {
 			paths = append(paths, dest)
 		}
 	}
 	// Read-only context repos are cloned as root too (ward#573); hand them over
 	// so the agent can read them, even though it may never write.
 	for _, repo := range e.ContextRepos {
-		if dest := filepath.Join(workspaceRoot, repo.Name); isDir(dest) {
+		if dest := grantedRepoWorkspaceDir(workspaceRoot, repo.targetRepo); isDir(dest) {
 			paths = append(paths, dest)
 		}
 	}

@@ -275,6 +275,32 @@ type targetRepo struct {
 
 func (t targetRepo) slug() string { return t.Owner + "/" + t.Name }
 
+// canonicalSlug is the identity key used at the grant boundary. Forge paths are
+// case-insensitive, while the original spelling remains available for display.
+func (t targetRepo) canonicalSlug() string { return strings.ToLower(t.slug()) }
+
+// primaryWorkspaceDir preserves the primary checkout's long-standing, obvious cwd.
+// Additional grants use grantedRepoWorkspaceDir so equal basenames can coexist.
+func primaryWorkspaceDir(root string, repo targetRepo) string {
+	return filepath.Join(root, repo.Name)
+}
+
+// grantedRepoWorkspaceDir gives every non-primary checkout an owner-qualified,
+// normalized location under the workspace.
+func grantedRepoWorkspaceDir(root string, repo targetRepo) string {
+	return filepath.Join(root, repo.Owner, repo.Name)
+}
+
+// workspaceMapping renders the resolved primary + extra checkout locations for
+// launch plans and seeded agent context.
+func workspaceMapping(primary targetRepo, extra []targetRepo) []string {
+	paths := []string{primary.slug() + " -> " + primaryWorkspaceDir(containerWorkspace, primary)}
+	for _, repo := range extra {
+		paths = append(paths, repo.slug()+" -> "+grantedRepoWorkspaceDir(containerWorkspace, repo))
+	}
+	return paths
+}
+
 // cloneURL is the git-over-HTTPS URL the container clones and pushes to.
 func (t targetRepo) cloneURL(base string) string {
 	return strings.TrimRight(base, "/") + "/" + t.Owner + "/" + t.Name + ".git"
@@ -299,12 +325,21 @@ func parseRepoRef(ref string) (targetRepo, error) {
 	}
 	if !strings.Contains(ref, "://") && !strings.Contains(ref, "@") && ownerNameRe.MatchString(ref) {
 		m := ownerNameRe.FindStringSubmatch(ref)
-		return targetRepo{Owner: m[1], Name: m[2]}, nil
+		return normalizedTargetRepo(m[1], m[2], ref)
 	}
 	if m := repoPathRe.FindStringSubmatch(ref); m != nil {
-		return targetRepo{Owner: m[1], Name: m[2]}, nil
+		return normalizedTargetRepo(m[1], m[2], ref)
 	}
 	return targetRepo{}, fmt.Errorf("cannot parse repo ref %q: want owner/name or a forgejo clone URL", ref)
+}
+
+// normalizedTargetRepo rejects path components which filepath.Clean would fold.
+// Repository refs are identifiers, never relative filesystem paths.
+func normalizedTargetRepo(owner, name, ref string) (targetRepo, error) {
+	if owner == "." || owner == ".." || name == "." || name == ".." {
+		return targetRepo{}, fmt.Errorf("cannot parse repo ref %q: dot segments are not allowed", ref)
+	}
+	return targetRepo{Owner: owner, Name: name}, nil
 }
 
 // targetFromRemoteURL derives the target from a git remote URL when `up` is run
@@ -545,13 +580,11 @@ type extraRepoLogLine struct {
 	Reason string
 }
 
-// parseExtraRepos resolves the --repo grant (bare owner/name or clone URL):
-// drops the target + dups, errors on a bad ref or workspace collision (ward#230).
+// parseExtraRepos resolves --repo grants, dropping target and canonical duplicates.
+// Every extra gets an owner-qualified workspace path, so basenames may overlap.
 func parseExtraRepos(refs []string, target targetRepo) ([]targetRepo, error) {
 	var out []targetRepo
 	seenSlug := map[string]bool{}
-	// workspace dir name -> claiming slug; seed with the target to catch clobbers.
-	seenName := map[string]string{target.Name: target.slug()}
 	for _, ref := range refs {
 		ref = strings.TrimSpace(ref)
 		if ref == "" {
@@ -561,17 +594,13 @@ func parseExtraRepos(refs []string, target targetRepo) ([]targetRepo, error) {
 		if err != nil {
 			return nil, fmt.Errorf("--repo %q: %w", ref, err)
 		}
-		if repo.Owner == target.Owner && repo.Name == target.Name {
+		if repo.canonicalSlug() == target.canonicalSlug() {
 			continue // the target is always cloned; naming it is a no-op
 		}
-		if seenSlug[repo.slug()] {
+		if seenSlug[repo.canonicalSlug()] {
 			continue
 		}
-		if claimed, ok := seenName[repo.Name]; ok {
-			return nil, fmt.Errorf("--repo %q collides on workspace dir /workspace/%s with %s", repo.slug(), repo.Name, claimed)
-		}
-		seenSlug[repo.slug()] = true
-		seenName[repo.Name] = repo.slug()
+		seenSlug[repo.canonicalSlug()] = true
 		out = append(out, repo)
 	}
 	return out, nil

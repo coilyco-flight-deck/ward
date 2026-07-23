@@ -110,13 +110,13 @@ func carryIssueBanner(ref agentIssueRef) string {
 func cloneAnchorLine(ref agentIssueRef) string {
 	return fmt.Sprintf(
 		"You are reading this INSIDE that container, standing in a fresh clone of %s/%s at "+
-			"/workspace/%s - your current working directory right now: the repo's whole source tree - "+
+			"%s - your current working directory right now: the repo's whole source tree - "+
 			"its real schemas, file layouts, and wiring - is on disk right here, not somewhere you have "+
-			"to go fetch. In engineer mode that /workspace/%s clone is writable. Explore it directly "+
+			"to go fetch. In engineer mode that %s clone is writable. Explore it directly "+
 			"(start with `ls` and the repo's own docs) for any convention this task needs; edit files, "+
 			"commit them, and push the result instead of answering only in logs. Never treat the codebase "+
 			"as absent or reason from assumed conventions while the actual files sit unread one command away.",
-		ref.Owner, ref.Repo, ref.Repo, ref.Repo)
+		ref.Owner, ref.Repo, primaryWorkspaceDir(containerWorkspace, targetRepo{Owner: ref.Owner, Name: ref.Repo}), primaryWorkspaceDir(containerWorkspace, targetRepo{Owner: ref.Owner, Name: ref.Repo}))
 }
 
 // parseAgentIssueRef resolves owner/repo#N, a Forgejo/GitHub issue URL, or a bare #N / N.
@@ -435,7 +435,7 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 
 // grantedRepoDoneClause widens the done-condition for a --repo grant (ward#291):
 // every granted repo must be pushed AND verified landed, not just the issue's repo.
-func grantedRepoDoneClause(extra []targetRepo) string {
+func grantedRepoDoneClause(primary targetRepo, extra []targetRepo) string {
 	if len(extra) == 0 {
 		return ""
 	}
@@ -446,7 +446,7 @@ func grantedRepoDoneClause(extra []targetRepo) string {
 	joined := strings.Join(slugs, ", ")
 	return fmt.Sprintf(
 		"\n\nThis run was GRANTED EXTRA WRITABLE REPOS via --repo: %s (full feature copies "+
-			"under /workspace beside the issue's repo). Your done-condition is NOT just the "+
+			"at these resolved workspace paths:\n- %s\n  - %s. Your done-condition is NOT just the "+
 			"issue's own repo: every granted repo you touch must be pushed AND VERIFIED to have "+
 			"landed. After pushing each one, fetch its remote and confirm your push actually "+
 			"advanced the target ref - local HEAD must match the freshly-fetched remote main - "+
@@ -457,7 +457,7 @@ func grantedRepoDoneClause(extra []targetRepo) string {
 			"And when a --repo grant exists only to push work into that second repo, prefer filing "+
 			"that work as its own native issue in that repo instead - a single-repo run sidesteps "+
 			"this cross-repo push failure mode entirely.",
-		joined)
+		joined, primary.slug()+" -> "+primaryWorkspaceDir(containerWorkspace, primary), strings.Join(workspaceMapping(primary, extra)[1:], "\n  - "))
 }
 
 // forgeDisplayName is the capitalized forge name the seed + prompts read with.
@@ -511,7 +511,7 @@ func agentSeedPromptWorkflowWithCarry(ref, carry agentIssueRef, title, body, det
 			details)
 	}
 	// A --repo grant widens "done" to every granted repo, verified landed (ward#291).
-	seed += grantedRepoDoneClause(extra)
+	seed += grantedRepoDoneClause(targetRepo{Owner: ref.Owner, Name: ref.Repo}, extra)
 	// Front-load the subsystem context this issue names (ward#236): hand the
 	// matching skill/doc paths over up front instead of trusting lazy discovery.
 	if block := subsystemSeedBlock(ref, title, body); block != "" {
@@ -801,7 +801,7 @@ func agentSurfaceFlags() []cli.Flag {
 		workflowFlag(),
 		// --branch remains a supported continuation escape hatch for existing PR work.
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>); use it to continue an existing PR branch explicitly"},
-		&cli.StringSliceFlag{Name: "repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy under /workspace alongside the issue's repo (ward#230, ward#280)."},
+		&cli.StringSliceFlag{Name: "repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy at /workspace/<owner>/<repo> (ward#1526)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
 		// --review-class tiers the pre-landing review panel and rides in as
 		// WARD_REVIEW_CLASS (ward#134). See docs/dispatch-review.md.
@@ -1490,12 +1490,12 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 		cloneScope = fmt.Sprintf("FRESH CLONES of %s/%s AND of %s", ref.Owner, ref.Repo, joined)
 		extraNote = fmt.Sprintf(
 			"\n\nThis dispatch GRANTED EXTRA REPOS via --repo: %s. Each lands as a full, "+
-				"WRITABLE working copy under /workspace beside the issue's repo, so cross-repo work "+
+				"WRITABLE working copy at the resolved mapping (%s), so cross-repo work "+
 				"spanning them - creating a package in one, moving code across the boundary, wiring "+
 				"the seams, landing a coordinated change - is squarely in scope for this run. Do NOT "+
 				"answer NO-GO or WRONG-REPO merely because the deliverable lands in one of these "+
 				"granted repos (%s) rather than %s/%s; you will have all of them in hand.",
-			joined, joined, ref.Owner, ref.Repo)
+			joined, strings.Join(workspaceMapping(targetRepo{Owner: ref.Owner, Name: ref.Repo}, extra), "; "), joined, ref.Owner, ref.Repo)
 	}
 	gate := subsystemPreflightBlock(ref, title, body)
 	return fmt.Sprintf(
@@ -2679,6 +2679,10 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	writef(&b, "branch:  %s\n", p.Branch)
 	writef(&b, "workflow: %s\n", p.Workflow.orDefault())
 	writef(&b, "name:    %s\n", p.Name)
+	writef(&b, "workspace:\n")
+	for _, mapping := range workspaceMapping(p.Repo, p.ExtraRepos) {
+		writef(&b, "  %s\n", mapping)
+	}
 	if p.Mode == modeOpencode {
 		if endpoint := opencodeEndpointPreview(p); endpoint != "" {
 			writef(&b, "agent-proxy: %s\n", endpoint)

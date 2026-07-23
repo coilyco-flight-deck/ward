@@ -146,6 +146,8 @@ func TestParseRepoRef(t *testing.T) {
 		{"https://forgejo.coilysiren.me/coilyco-gaming/eco-app.git", "coilyco-gaming", "eco-app", false},
 		{"https://forgejo.coilysiren.me/coilyco-gaming/eco-app", "coilyco-gaming", "eco-app", false},
 		{"git@github.com:coilyco-gaming/eco-app.git", "coilyco-gaming", "eco-app", false},
+		{"../eco-app", "", "", true},
+		{"org/..", "", "", true},
 		{"", "", "", true},
 		{"not-a-ref", "", "", true},
 	}
@@ -482,8 +484,8 @@ func TestParseMode(t *testing.T) {
 	}
 }
 
-// TestParseExtraRepos covers the --repo grant parsing (ward#230): refs,
-// target drop, dedupe, and the two hard errors (bad ref, workspace collision).
+// TestParseExtraRepos covers the --repo grant parsing: refs, target drop,
+// canonical dedupe, and owner-qualified workspace paths (ward#1526).
 func TestParseExtraRepos(t *testing.T) {
 	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
 
@@ -527,14 +529,29 @@ func TestParseExtraRepos(t *testing.T) {
 		t.Error("malformed --repo ref should error")
 	}
 
-	// Two grants whose names collide on /workspace/<name> is a hard error, even
-	// across different owners (they would clobber the same working dir).
-	if _, err := parseExtraRepos([]string{"orgA/shared", "orgB/shared"}, target); err == nil {
-		t.Error("workspace-dir name collision should error")
+	// Duplicate basenames across owners coexist in owner-qualified directories.
+	got, err = parseExtraRepos([]string{"coilyco-flight-deck/.github", "coilyco-bridge/.github", "coilyco-bridge/.github.git"}, target)
+	if err != nil {
+		t.Fatalf("duplicate basenames should resolve: %v", err)
 	}
-	// A grant colliding with the target's own workspace dir also errors.
-	if _, err := parseExtraRepos([]string{"otherorg/eco-app"}, target); err == nil {
-		t.Error("grant colliding with the target workspace dir should error")
+	if len(got) != 2 {
+		t.Fatalf("duplicate basenames = %+v, want two repos", got)
+	}
+	if gotPath := grantedRepoWorkspaceDir(containerWorkspace, got[0]); gotPath != "/workspace/coilyco-flight-deck/.github" {
+		t.Errorf("first grant path = %q", gotPath)
+	}
+	if gotPath := grantedRepoWorkspaceDir(containerWorkspace, got[1]); gotPath != "/workspace/coilyco-bridge/.github" {
+		t.Errorf("second grant path = %q", gotPath)
+	}
+
+	// Different spelling of the same canonical repository is still a no-op.
+	got, err = parseExtraRepos([]string{"COILYCO-GAMING/ECO-PROTOS", "coilyco-gaming/eco-protos"}, target)
+	if err != nil || len(got) != 1 {
+		t.Errorf("canonical duplicate = %+v, %v; want one grant", got, err)
+	}
+
+	if gotPath := primaryWorkspaceDir(containerWorkspace, target); gotPath != "/workspace/eco-app" {
+		t.Errorf("primary workspace path = %q, want legacy primary cwd", gotPath)
 	}
 }
 

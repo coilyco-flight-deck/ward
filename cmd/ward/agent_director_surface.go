@@ -24,7 +24,7 @@ func agentScratchFlags() []cli.Flag {
 	flags := agentHarnessFlags()
 	flags = append(flags,
 		&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
-		&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed under /workspace alongside the primary repo (ward#230)."},
+		&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed at /workspace/<owner>/<repo> (ward#1526)."},
 	)
 	flags = append(flags, agentImageFlags()...)
 	return append(flags,

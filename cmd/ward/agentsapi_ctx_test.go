@@ -116,7 +116,7 @@ func TestAgentTrustDirs(t *testing.T) {
 	for _, want := range []string{
 		"/workspace/ward",
 		"/workspace",
-		"/workspace/cli-guard",
+		"/workspace/coilyco-flight-deck/cli-guard",
 		substrate,
 		filepath.Join(substrate, "agentic-os"),
 		filepath.Join(substrate, "cli-guard"),
