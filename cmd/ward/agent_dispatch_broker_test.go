@@ -1742,9 +1742,21 @@ func TestRunHostDispatchBrokerRequestReportsLaterLaunchFailureThroughArtifact(t 
 	<-done
 	<-recoveryStarted
 	<-restored
-	summary, readErr := os.ReadFile(filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile)) // #nosec G304 -- test-owned artifact path
-	if readErr != nil {
-		t.Fatalf("read dispatch summary: %v", readErr)
+	summaryPath := filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile) // #nosec G304 -- test-owned artifact path
+	var summary []byte
+	deadline := time.After(2 * time.Second)
+	for {
+		var readErr error
+		summary, readErr = os.ReadFile(summaryPath) // #nosec G304 -- test-owned artifact path
+		if readErr == nil && strings.Contains(string(summary), "outcome: failed-before-container") {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("dispatch summary did not reach its terminal failure state:\n%s", summary)
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
 	for _, want := range []string{"outcome: failed-before-container", "already in use"} {
 		if !strings.Contains(string(summary), want) {

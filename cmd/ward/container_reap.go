@@ -310,8 +310,14 @@ func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv
 
 	// Run-owned proof: the closing ref must sit in the committed history (an empty
 	// repo has no stale history, so the origin/main provenance proof does not apply).
-	if err := r.ensureEmptyRepoClosingReference(ctx, work, env, statusSnapshot, commitState); err != nil {
+	canEstablish, err := r.ensureEmptyRepoClosingReference(ctx, work, env, statusSnapshot, commitState)
+	if err != nil {
 		return err
+	}
+	if !canEstablish {
+		// A successful salvage is a terminal outcome, not permission to fall
+		// through and establish main from the same close-less work.
+		return nil
 	}
 
 	// Junk-scan the whole tree that would land: with no base ref, diff against
@@ -354,39 +360,31 @@ func (r *Runner) repairResidualClosingReference(ctx context.Context, work string
 		}
 		return repaired, nil
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: committed work is missing closes #%d; repairing before landing on main\n", env.Issue)
-	if err := r.repairClosingReference(ctx, work, env); err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: closing reference repair failed: %v\n", err)
-		return false, fmt.Errorf("committed closing reference repair failed")
-	}
-	if !r.issueClosingReferencePresent(ctx, work, env.Issue) {
-		return false, fmt.Errorf("committed closing reference repair failed")
-	}
-	fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for #%d\n", env.Issue)
-	return true, nil
+	// Only the reaper's own residual capture may receive the carried trailer.
+	// Changing a pre-teardown commit would weaken the same-repo proof.
+	fmt.Fprintf(os.Stderr, "ward container reap: committed work is missing closes #%d; salvaging without landing\n", env.Issue)
+	return false, fmt.Errorf("commit existed but lacked close trailer")
 }
 
-func (r *Runner) ensureEmptyRepoClosingReference(ctx context.Context, work string, env reapEnv, statusSnapshot, commitState string) error {
+// ensureEmptyRepoClosingReference reports whether establish-main may continue.
+// A false, nil result means the work was successfully preserved on salvage.
+func (r *Runner) ensureEmptyRepoClosingReference(ctx context.Context, work string, env reapEnv, statusSnapshot, commitState string) (bool, error) {
 	if r.issueClosingReferenceInRange(ctx, work, env.Issue, "HEAD") {
-		return nil
+		return true, nil
 	}
 	if commitState == commitStateAgentDidNotCommit {
-		fmt.Fprintf(os.Stderr, "ward container reap: agent did not commit before teardown and missing closes #%d; salvaging instead of establishing main\n", env.Issue)
-		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-			reapDecision{Gate: "missing same-repo closing reference", ProvState: "not read (no origin/main)", CommitState: commitState})
+		fmt.Fprintf(os.Stderr, "ward container reap: agent did not commit before teardown; repairing the reaper residual commit with closes #%d\n", env.Issue)
+		if err := r.repairClosingReference(ctx, work, env); err == nil && r.issueClosingReferenceInRange(ctx, work, env.Issue, "HEAD") {
+			fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for #%d\n", env.Issue)
+			return true, nil
+		}
+		fmt.Fprintln(os.Stderr, "ward container reap: reaper residual closing reference repair failed; salvaging instead of establishing main")
+		return false, r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
+			reapDecision{Gate: "agent did not commit and residual closing reference repair failed", ProvState: "not read (no origin/main)", CommitState: commitState})
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: committed work is missing closes #%d; repairing before establishing main\n", env.Issue)
-	if err := r.repairClosingReference(ctx, work, env); err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: closing reference repair failed: %v\n", err)
-		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-			reapDecision{Gate: "missing same-repo closing reference (empty-repo repair failed)", ProvState: "not read (no origin/main)", CommitState: commitState})
-	}
-	if !r.issueClosingReferenceInRange(ctx, work, env.Issue, "HEAD") {
-		return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-			reapDecision{Gate: "missing same-repo closing reference (empty-repo repair failed)", ProvState: "not read (no origin/main)", CommitState: commitState})
-	}
-	fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for #%d\n", env.Issue)
-	return nil
+	fmt.Fprintf(os.Stderr, "ward container reap: committed work is missing closes #%d; salvaging instead of establishing main\n", env.Issue)
+	return false, r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
+		reapDecision{Gate: "commit existed but lacked close trailer", ProvState: "not read (no origin/main)", CommitState: commitState})
 }
 
 // resolveReapWork picks the clone work tree: --work, then $WARD_REAP_WORK (set
@@ -1379,17 +1377,17 @@ func shortSha(sha string) string {
 // a commit before the reaper snapshotted the tree.
 func residualCommitState(ctx context.Context, r *Runner, work string) string {
 	statusBytes, _ := r.Runner.Capture(ctx, "git", "-C", work, "status", "--porcelain")
-	if strings.TrimSpace(filterReapResidualStatus(string(statusBytes))) == "" {
-		return ""
-	}
 	if refExists(ctx, r, work) {
-		if revCount(ctx, r, work, "origin/main..HEAD") == 0 {
-			return commitStateAgentDidNotCommit
+		if revCount(ctx, r, work, "origin/main..HEAD") > 0 {
+			return commitStateCommitExistedButLackedCloseTrailer
 		}
-	} else if revCount(ctx, r, work, "HEAD") == 0 {
+	} else if revCount(ctx, r, work, "HEAD") > 0 {
+		return commitStateCommitExistedButLackedCloseTrailer
+	}
+	if strings.TrimSpace(filterReapResidualStatus(string(statusBytes))) != "" {
 		return commitStateAgentDidNotCommit
 	}
-	return commitStateCommitExistedButLackedCloseTrailer
+	return ""
 }
 
 // isAncestor reports `git merge-base --is-ancestor a b` (a is contained in b).
