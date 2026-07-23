@@ -13,6 +13,12 @@ commands:
   test:
     run: make test
     description: Run the unit test suite.
+  pre-commit:
+    run: pre-commit run --all-files
+    description: Run the repository pre-commit suite across every tracked file.
+  format:
+    run: go fmt ./...
+    description: Format every Go package.
   install:
     run: make install
     description: Install the ward binary into GOBIN (the Go-CLI install verb).

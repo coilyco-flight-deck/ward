@@ -1,5 +1,10 @@
 {
   "tui": "fullscreen",
+  "deniedMcpServers": [
+    {
+      "serverName": "claude-in-chrome"
+    }
+  ],
   "permissions": {
     "defaultMode": "bypassPermissions"
   }

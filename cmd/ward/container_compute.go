@@ -43,6 +43,8 @@ var (
 	containerWardAssets     = "/opt/ward"
 	containerEntrypointPath = mustContainerDefault("container-entrypoint-path")
 	containerEntrypointRel  = "entrypoint.sh"
+	containerMcporterRel    = "mcporter.json"
+	containerMcporterPath   = containerWardAssets + "/" + containerMcporterRel
 
 	// containerWardSrcMount is where --ward-source mounts a ward checkout, so
 	// the host stages the ward binary from it instead of downloading the release.

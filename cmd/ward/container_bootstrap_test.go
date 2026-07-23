@@ -25,6 +25,52 @@ func gitRunner() *Runner {
 	return &Runner{Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard}}
 }
 
+func TestProjectNativeMCP(t *testing.T) {
+	dir := t.TempDir()
+	inventory := filepath.Join(dir, "mcporter.json")
+	if err := os.WriteFile(inventory, []byte(`{"imports":[],"mcpServers":{}}`), 0o600); err != nil {
+		t.Fatalf("write inventory: %v", err)
+	}
+	argsPath := filepath.Join(dir, "args")
+	t.Setenv("WARD_TEST_ARGS", argsPath)
+	projector := filepath.Join(dir, "agent-compose")
+	if err := os.WriteFile(projector, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$WARD_TEST_ARGS\"\n"), 0o700); err != nil {
+		t.Fatalf("write projector fixture: %v", err)
+	}
+	r := &Runner{Runner: &shell.Runner{
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+		Resolve: func(bin string) (string, error) {
+			if bin != "agent-compose" {
+				t.Fatalf("resolved binary = %q, want agent-compose", bin)
+			}
+			return projector, nil
+		},
+	}}
+	home := filepath.Join(dir, "agent-home")
+	if err := r.projectNativeMCP(t.Context(), inventory, home); err != nil {
+		t.Fatalf("projectNativeMCP: %v", err)
+	}
+	got, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("read projector argv: %v", err)
+	}
+	want := "mcp\n--inventory\n" + inventory + "\n--home\n" + home + "\n"
+	if string(got) != want {
+		t.Fatalf("projector argv = %q, want %q", got, want)
+	}
+}
+
+func TestProjectNativeMCPSkipsMissingInventory(t *testing.T) {
+	r := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
+		t.Fatalf("unexpected binary resolution for %q", bin)
+		return "", nil
+	}}}
+	if err := r.projectNativeMCP(t.Context(), filepath.Join(t.TempDir(), "missing.json"), t.TempDir()); err != nil {
+		t.Fatalf("missing inventory must be optional: %v", err)
+	}
+}
+
 // TestStreamProgress asserts the stream-json -> concise-line port matches the
 // bash jq filter for the event kinds it handles.
 func TestStreamProgress(t *testing.T) {

@@ -87,6 +87,8 @@ func TestComposeConfigCheapDefaults(t *testing.T) {
 		"model = \"gpt-5.4-mini\"",
 		"model_reasoning_effort = \"low\"",
 		"model_verbosity = \"low\"",
+		"[mcp_servers.\"computer-use\"]",
+		"enabled = false",
 	} {
 		if !strings.Contains(string(got), want) {
 			t.Errorf("config.toml missing %q\n---\n%s", want, got)

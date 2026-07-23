@@ -32,7 +32,7 @@ Inventory of what `ward` ships today.
 - PR repair classification.
 - Ward-owned Claude tool-failure producer and local schema-v1 buffer. See [tool-failures.md](tool-failures.md).
 - Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
-- `ward agent` roles and workflows. See [agent.md](agent.md), [agent-roster.md](agent-roster.md), [agent-flags.md](agent-flags.md), [agent-roles.md](agent-roles.md), [agent-harnesses.md](agent-harnesses.md), [agent-lifecycle.md](agent-lifecycle.md), [agent-director.md](agent-director.md), [agent-ops.md](agent-ops.md), [agent-dispatch-health.md](agent-dispatch-health.md), [dispatch-review.md](dispatch-review.md), and [agent-workflow.md](agent-workflow.md).
+- `ward agent` roles and workflows. See [agent.md](agent.md).
 - Dispatch-health surfacing.
 - PR repair input mode.
 
@@ -42,6 +42,9 @@ Inventory of what `ward` ships today.
   [container-contract.md](container-contract.md),
   [container-lifecycle.md](container-lifecycle.md), and
   [container-substrate.md](container-substrate.md).
+- Native MCP convergence - Ward stages the operator's generic mcporter
+  inventory and projects it into each harness during container bootstrap.
+- Browser computer-use is disabled for both Claude Code and Codex containers.
 - Public demo image build. See [demo-image.md](demo-image.md).
 
 ## ward-kdl

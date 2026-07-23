@@ -475,6 +475,11 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// Creds write + onboarding seed + config compose, each feature-tested per mode
 	// (Phase 3, ward#418); composeAgentContainer holds the order.
 	composeAgentContainer(agent, rc)
+	if err := r.projectNativeMCP(ctx, containerMcporterPath, e.AgentHome); err != nil {
+		blog("fatal: %v", err)
+		writeGateFailure("native-mcp", err.Error())
+		return err
+	}
 	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
@@ -549,6 +554,25 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		return fmt.Errorf("%s launch failed: %w", e.Agent, lerr)
 	}
 	blog("bootstrap launch returned: agent process exited, deferred reaper runs next")
+	return nil
+}
+
+// projectNativeMCP gives every supported harness the same server inventory. The
+// host stages only the generic mcporter source, never harness-specific config.
+func (r *Runner) projectNativeMCP(ctx context.Context, inventory, agentHome string) error {
+	if _, err := os.Stat(inventory); errors.Is(err, os.ErrNotExist) {
+		blog("bootstrap native MCP projection skipped: no staged inventory")
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("bootstrap native MCP inventory: %w", err)
+	}
+	if r == nil || r.Runner == nil {
+		return errors.New("bootstrap native MCP projection: shell runner unavailable")
+	}
+	if err := r.Runner.Exec(ctx, "agent-compose", "mcp", "--inventory", inventory, "--home", agentHome); err != nil {
+		return fmt.Errorf("bootstrap native MCP projection: %w", err)
+	}
+	blog("bootstrap native MCP projection done")
 	return nil
 }
 

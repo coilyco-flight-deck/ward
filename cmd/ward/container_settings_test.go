@@ -13,8 +13,9 @@ func TestContainerSettingsPolicy(t *testing.T) {
 		t.Fatalf("read embedded settings: %v", err)
 	}
 	var s struct {
-		TUI         string `json:"tui"`
-		Permissions struct {
+		TUI              string           `json:"tui"`
+		DeniedMCPServers []map[string]any `json:"deniedMcpServers"`
+		Permissions      struct {
 			DefaultMode string   `json:"defaultMode"`
 			Deny        []string `json:"deny"`
 		} `json:"permissions"`
@@ -28,6 +29,9 @@ func TestContainerSettingsPolicy(t *testing.T) {
 	// Fresh containers default to the fullscreen flicker-free renderer (ward#317).
 	if s.TUI != "fullscreen" {
 		t.Errorf("tui = %q, want fullscreen", s.TUI)
+	}
+	if len(s.DeniedMCPServers) != 1 || s.DeniedMCPServers[0]["serverName"] != "claude-in-chrome" {
+		t.Errorf("deniedMcpServers = %v, want claude-in-chrome", s.DeniedMCPServers)
 	}
 	// The deny wall is gone: container isolation is the sole boundary (ward#375).
 	if len(s.Permissions.Deny) != 0 {
