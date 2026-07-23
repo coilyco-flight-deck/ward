@@ -701,7 +701,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 			t.Errorf("forwarded argv missing %s %s: %v", want[0], want[1], got)
 		}
 	}
-	for _, want := range []string{"engineer", "coilyco-flight-deck/ward#42", "--skip-preflight", "--skip-smoke-test"} {
+	for _, want := range []string{"engineer", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/42", "--skip-preflight", "--skip-smoke-test"} {
 		if !containsArg(got, want) {
 			t.Errorf("forwarded argv missing %q: %v", want, got)
 		}
@@ -759,7 +759,7 @@ func TestBrokerEngineerArgvPreservesPullRequestRefs(t *testing.T) {
 	})
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 42, MergeRequest: true}
 	got := brokerEngineerArgv(cmd, modeClaude, ref)
-	if !containsArg(got, "coilyco-flight-deck/ward!42") {
+	if !containsArg(got, forgejoBaseURL+"/coilyco-flight-deck/ward/pulls/42") {
 		t.Fatalf("brokered argv should preserve PR refs, got %v", got)
 	}
 	if dispatchBrokerLaunchHasContinuationBranch(got) == false {
@@ -859,7 +859,7 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	if req.Token != "nonce-123" {
 		t.Errorf("forwarded token = %q, want the per-launch nonce", req.Token)
 	}
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "claude", "--workflow", "merge-remote-main", "--details", "repair after PR #357", "--override-capacity", "--skip-preflight", "--skip-review"}
+	want := []string{"engineer", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/378", "--harness", "claude", "--workflow", "merge-remote-main", "--details", "repair after PR #357", "--override-capacity", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
 	}
@@ -979,7 +979,7 @@ func TestForwardAgentDispatchToHostBrokerInheritsSurfaceHarness(t *testing.T) {
 		t.Fatal("codex surface dispatch did not forward despite broker env")
 	}
 	req := <-gotReq
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--skip-preflight", "--skip-review"}
+	want := []string{"engineer", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/378", "--harness", "codex", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("codex surface forwarded argv = %v, want %v", req.Argv, want)
 	}
@@ -1023,7 +1023,7 @@ func TestForwardAgentDispatchToHostBrokerInheritsRunningDirectorHarness(t *testi
 		t.Fatal("codex director dispatch did not forward despite broker env")
 	}
 	req := <-gotReq
-	want := []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--ward-version", "v0.569.0", "--skip-preflight", "--skip-review"}
+	want := []string{"engineer", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/378", "--harness", "codex", "--ward-version", "v0.569.0", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("inherited-harness forwarded argv = %v, want %v", req.Argv, want)
 	}
@@ -2163,7 +2163,7 @@ workflow default=merge-remote-main {
 	if req.Role != "engineer" {
 		t.Fatalf("broker role = %q, want engineer", req.Role)
 	}
-	wantArgv := []string{"engineer", "coilyco-flight-deck/agentic-os#400", "--harness", "codex", "--skip-preflight"}
+	wantArgv := []string{"engineer", forgejoBaseURL + "/coilyco-flight-deck/agentic-os/issues/400", "--harness", "codex", "--skip-preflight"}
 	if !reflect.DeepEqual(req.Argv, wantArgv) {
 		t.Fatalf("broker argv = %v, want %v", req.Argv, wantArgv)
 	}
@@ -2332,7 +2332,7 @@ func TestForwardAgentDispatchPrintsLookupCommandWhenLaunchSucceedsWithoutLogPath
 	if !strings.Contains(got, "dispatch log path unavailable yet") {
 		t.Fatalf("stderr = %q, want a clear no-path reason", got)
 	}
-	if !strings.Contains(got, "`ward agent logs coilyco-flight-deck/ward#902`") {
+	if !strings.Contains(got, "`ward agent logs "+forgejoBaseURL+"/coilyco-flight-deck/ward/issues/902`") {
 		t.Fatalf("stderr = %q, want a deterministic lookup command", got)
 	}
 }

@@ -36,6 +36,11 @@ See [agent-check-placement.md](agent-check-placement.md) for the current broker-
 Host-side credentials are resolved before the container starts. The run then
 inherits the selected harness context level and mount set.
 
+## Split-stack repositories
+
+Tracker, checkout, and landing are independent authorities. See
+[agent-split-stack.md](agent-split-stack.md) for configuration and precedence.
+
 ## Common launch checks
 
 - issue ownership matches the configured trust list.

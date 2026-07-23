@@ -48,8 +48,13 @@ type smartDefaults struct {
 }
 
 type repoAuthorityRule struct {
-	Pattern string
-	Forge   forge
+	Pattern    string
+	Forge      forge
+	Tracker    tracker
+	TrackerSet bool
+	Landing    forge
+	LandingSet bool
+	Mirrors    []forge
 }
 
 type burndownRule struct {
@@ -243,6 +248,11 @@ func cloneSmartDefaults(in smartDefaults) smartDefaults {
 	}
 	if in.repoAuthorityRules != nil {
 		out.repoAuthorityRules = append([]repoAuthorityRule{}, in.repoAuthorityRules...)
+		for i := range out.repoAuthorityRules {
+			if in.repoAuthorityRules[i].Mirrors != nil {
+				out.repoAuthorityRules[i].Mirrors = append([]forge{}, in.repoAuthorityRules[i].Mirrors...)
+			}
+		}
 	}
 	if in.burndownRules != nil {
 		out.burndownRules = append([]burndownRule{}, in.burndownRules...)
@@ -540,16 +550,43 @@ func applyRepoAuthorityChild(defs *smartDefaults, c *kdl.Node, seenOwners, seenP
 		if seenPatterns[pattern] {
 			return fmt.Errorf("smart defaults: repo-authority > repo %q repeated (fail-closed)", pattern)
 		}
-		forge, err := smartDefaultsForgeProp(c, "forge", "repo-authority > repo forge")
+		rule, err := parseRepoAuthorityRule(c, pattern)
 		if err != nil {
 			return err
 		}
 		seenPatterns[pattern] = true
-		defs.repoAuthorityRules = append(defs.repoAuthorityRules, repoAuthorityRule{Pattern: pattern, Forge: forge})
+		defs.repoAuthorityRules = append(defs.repoAuthorityRules, rule)
 	default:
 		return unknownSmartDefaultsNode("repo-authority body", c.Name(), "trusted-owner | repo")
 	}
 	return nil
+}
+
+func parseRepoAuthorityRule(c *kdl.Node, pattern string) (repoAuthorityRule, error) {
+	forge, err := smartDefaultsForgeProp(c, "forge", "repo-authority > repo forge")
+	if err != nil {
+		return repoAuthorityRule{}, err
+	}
+	tracker, trackerSet, err := smartDefaultsTrackerProp(c, "tracker", "repo-authority > repo tracker")
+	if err != nil {
+		return repoAuthorityRule{}, err
+	}
+	landing, landingSet, err := smartDefaultsOptionalForgeProp(c, "landing", "repo-authority > repo landing")
+	if err != nil {
+		return repoAuthorityRule{}, err
+	}
+	mirrors, err := smartDefaultsMirrorsProp(c, "mirrors", "repo-authority > repo mirrors")
+	if err != nil {
+		return repoAuthorityRule{}, err
+	}
+	for prop := range c.Properties() {
+		switch prop {
+		case "forge", "tracker", "landing", "mirrors":
+		default:
+			return repoAuthorityRule{}, fmt.Errorf("smart defaults: repo-authority > repo %q unknown property %q (want forge, tracker, landing, or mirrors; fail-closed)", pattern, prop)
+		}
+	}
+	return repoAuthorityRule{Pattern: pattern, Forge: forge, Tracker: tracker, TrackerSet: trackerSet, Landing: landing, LandingSet: landingSet, Mirrors: mirrors}, nil
 }
 
 func applyRepoAuthorityDefault(defs *smartDefaults, n *kdl.Node) error {
@@ -588,6 +625,65 @@ func smartDefaultsForgeProp(n *kdl.Node, name, label string) (forge, error) {
 		return forgeForgejo, fmt.Errorf("smart defaults: %s must be forgejo or github (fail-closed)", label)
 	}
 	return parseForge(raw), nil
+}
+
+func smartDefaultsOptionalForgeProp(n *kdl.Node, name, label string) (forge, bool, error) {
+	raw, ok, err := smartDefaultsStringProp(n, name, label)
+	if err != nil || !ok {
+		return forgeForgejo, ok, err
+	}
+	if raw != "forgejo" && raw != "github" && raw != "gitlab" {
+		return forgeForgejo, true, fmt.Errorf("smart defaults: %s must be forgejo, github, or gitlab (fail-closed)", label)
+	}
+	return parseForge(raw), true, nil
+}
+
+func smartDefaultsTrackerProp(n *kdl.Node, name, label string) (tracker, bool, error) {
+	raw, ok, err := smartDefaultsStringProp(n, name, label)
+	if err != nil || !ok {
+		return trackerForgejo, ok, err
+	}
+	switch raw {
+	case "forgejo":
+		return trackerForgejo, true, nil
+	case "github":
+		return trackerGitHub, true, nil
+	case "gitlab":
+		return trackerGitLab, true, nil
+	default:
+		return trackerForgejo, true, fmt.Errorf("smart defaults: %s must be forgejo, github, or gitlab (fail-closed)", label)
+	}
+}
+
+func smartDefaultsMirrorsProp(n *kdl.Node, name, label string) ([]forge, error) {
+	raw, ok, err := smartDefaultsStringProp(n, name, label)
+	if err != nil || !ok {
+		return nil, err
+	}
+	seen := map[forge]bool{}
+	var out []forge
+	for _, part := range strings.Split(raw, ",") {
+		f, set, err := smartDefaultsOptionalForgePropValue(strings.TrimSpace(part), label)
+		if err != nil {
+			return nil, err
+		}
+		if !set || seen[f] {
+			continue
+		}
+		seen[f] = true
+		out = append(out, f)
+	}
+	return out, nil
+}
+
+func smartDefaultsOptionalForgePropValue(raw, label string) (forge, bool, error) {
+	if raw == "" {
+		return forgeForgejo, false, fmt.Errorf("smart defaults: %s must not contain an empty host (fail-closed)", label)
+	}
+	if raw != "forgejo" && raw != "github" && raw != "gitlab" {
+		return forgeForgejo, true, fmt.Errorf("smart defaults: %s must list forgejo, github, or gitlab (fail-closed)", label)
+	}
+	return parseForge(raw), true, nil
 }
 
 func applyBundleReposChild(defs *smartDefaults, srcPath string, c *kdl.Node, repoAuthoritySeen, burndownSeen *bool) error {
@@ -875,14 +971,41 @@ func (d smartDefaults) trustedOwnerList() []string {
 	return out
 }
 
-func (d smartDefaults) forgeForRepo(owner, repo string) forge {
+// repoAuthority is the resolved split-stack routing plan. Tracker is independent
+// from checkout and landing so an issue URL stays authoritative.
+type repoAuthority struct {
+	Checkout forge
+	Landing  forge
+	Tracker  tracker
+	Mirrors  []forge
+}
+
+func (d smartDefaults) authorityForRepo(owner, repo string) repoAuthority {
 	slug := owner + "/" + repo
+	if rule, ok := d.repoAuthorityRuleForSlug(slug); ok {
+		out := repoAuthority{Checkout: rule.Forge, Landing: rule.Forge, Tracker: trackerFromForge(rule.Forge), Mirrors: append([]forge{}, rule.Mirrors...)}
+		if rule.TrackerSet {
+			out.Tracker = rule.Tracker
+		}
+		if rule.LandingSet {
+			out.Landing = rule.Landing
+		}
+		return out
+	}
+	return repoAuthority{Checkout: d.repoAuthorityDefault, Landing: d.repoAuthorityDefault, Tracker: trackerFromForge(d.repoAuthorityDefault)}
+}
+
+func (d smartDefaults) repoAuthorityRuleForSlug(slug string) (repoAuthorityRule, bool) {
+	var best repoAuthorityRule
+	bestSpecificity := -1
 	for _, rule := range d.repoAuthorityRules {
 		if ok, _ := path.Match(rule.Pattern, slug); ok {
-			return rule.Forge
+			if specificity := repoPatternSpecificity(rule.Pattern); specificity > bestSpecificity {
+				best, bestSpecificity = rule, specificity
+			}
 		}
 	}
-	return d.repoAuthorityDefault
+	return best, bestSpecificity >= 0
 }
 
 func firstTrustedOwner(owners []string) string {

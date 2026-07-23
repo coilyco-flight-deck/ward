@@ -65,17 +65,18 @@ func (r agentIssueRef) url() string {
 		}
 		return fmt.Sprintf("%s/story/%d", shortcutAppBaseURL, r.Number)
 	}
-	if r.Forge == forgeGitLab {
+	base := r.trackerOrDefault().baseURL()
+	if r.trackerOrDefault() == trackerGitLab {
 		path := "issues"
 		if r.MergeRequest {
 			path = "merge_requests"
 		}
-		return fmt.Sprintf("%s/%s/%s/-/%s/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, path, r.Number)
+		return fmt.Sprintf("%s/%s/%s/-/%s/%d", strings.TrimRight(base, "/"), r.Owner, r.Repo, path, r.Number)
 	}
 	if r.MergeRequest {
-		return fmt.Sprintf("%s/%s/%s/%s/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, pullRequestPathSegment(r.Forge), r.Number)
+		return fmt.Sprintf("%s/%s/%s/%s/%d", strings.TrimRight(base, "/"), r.Owner, r.Repo, pullRequestPathSegment(forgeFromTracker(r.trackerOrDefault())), r.Number)
 	}
-	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(r.Forge.baseURL(), "/"), r.Owner, r.Repo, r.Number)
+	return fmt.Sprintf("%s/%s/%s/issues/%d", strings.TrimRight(base, "/"), r.Owner, r.Repo, r.Number)
 }
 
 func pullRequestPathSegment(f forge) string {
@@ -97,6 +98,32 @@ func (r agentIssueRef) trackerOrDefault() tracker {
 		return r.Tracker
 	}
 	return trackerFromForge(r.Forge)
+}
+
+func (t tracker) baseURL() string {
+	switch t {
+	case trackerGitHub:
+		return githubBaseURL
+	case trackerGitLab:
+		return gitlabBaseURL()
+	case trackerForgejo:
+		return forgejoBaseURL
+	case trackerShortcut:
+		return shortcutAppBaseURL
+	}
+	return forgejoBaseURL
+}
+
+func forgeFromTracker(t tracker) forge {
+	switch t {
+	case trackerGitHub:
+		return forgeGitHub
+	case trackerGitLab:
+		return forgeGitLab
+	case trackerForgejo, trackerShortcut:
+		return forgeForgejo
+	}
+	return forgeForgejo
 }
 
 // carryIssueBanner renders the exact carried issue once, as a stable identity
@@ -132,20 +159,16 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 	// A github.com URL or `github.com/owner/repo#N` short form is unambiguously a
 	// GitHub ref (ward#489). Shortcut story URLs are recognized first as well.
 	if ghRef, ok := parseGitHubIssueRef(s); ok {
-		return ghRef, nil
+		return applyIssueRepoAuthority(ghRef, true), nil
 	}
 	if glRef, ok := parseGitLabIssueRef(s); ok {
-		return glRef, nil
+		return applyIssueRepoAuthority(glRef, true), nil
 	}
 	if shortcutRef, ok := parseShortcutIssueRef(s); ok {
 		return shortcutRef, nil
 	}
 	if ref, err := parseDispatchIssueRef(s); err == nil {
-		if !looksLikeExplicitForgejoIssueRef(s) {
-			ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
-			ref.Tracker = trackerFromForge(ref.Forge)
-		}
-		return ref, nil
+		return applyIssueRepoAuthority(ref, looksLikeExplicitForgejoIssueRef(s)), nil
 	}
 	ref, err := issueref.Parse(s, forgejoBaseURL)
 	if err == nil {
@@ -168,6 +191,53 @@ func parseAgentIssueRef(s string) (agentIssueRef, error) {
 			s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"), shortcutAppBaseURL)
 	}
 	return agentIssueRef{}, fmt.Errorf("cannot parse issue ref %q: want owner/repo#N, a bare #N, %s/owner/repo/issues/N, %s/owner/repo/-/issues/N, or %s/<workspace>/story/N", s, strings.TrimRight(forgejoBaseURL, "/"), strings.TrimRight(gitlabBaseURL(), "/"), shortcutAppBaseURL)
+}
+
+// applyIssueRepoAuthority separates checkout policy from the issue-thread policy.
+// A full URL pins its tracker; compact refs use the configured tracker.
+func applyIssueRepoAuthority(ref agentIssueRef, trackerPinned bool) agentIssueRef {
+	if ref.Owner == "" || ref.Repo == "" {
+		return ref
+	}
+	defs := currentSmartDefaults()
+	authority := defs.authorityForRepo(ref.Owner, ref.Repo)
+	// A URL keeps same-host checkout behavior unless a split-stack rule exists.
+	// This preserves zero-config GitHub/GitLab URL dispatches.
+	if !trackerPinned || hasRepoAuthorityRule(defs, ref.Owner, ref.Repo) {
+		ref.Forge = authority.Checkout
+	}
+	if !trackerPinned {
+		ref.Tracker = authority.Tracker
+	}
+	return ref
+}
+
+func hasRepoAuthorityRule(defs smartDefaults, owner, repo string) bool {
+	_, ok := defs.repoAuthorityRuleForSlug(owner + "/" + repo)
+	return ok
+}
+
+func resolvedRepoAuthority(ref agentIssueRef) repoAuthority {
+	return currentSmartDefaults().authorityForRepo(ref.Owner, ref.Repo)
+}
+
+func authorityPlanLines(ref agentIssueRef, branch string) []string {
+	authority := resolvedRepoAuthority(ref)
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		branch = "main"
+	}
+	lines := []string{
+		fmt.Sprintf("issue:   %s  %s", ref.trackerOrDefault(), ref.url()),
+		fmt.Sprintf("clone:   %s  %s@%s", ref.Forge, ref.repoSlug(), branch),
+		fmt.Sprintf("land:    %s  %s@%s", authority.Landing, ref.repoSlug(), branch),
+	}
+	for _, mirror := range authority.Mirrors {
+		if mirror != ref.Forge && mirror != authority.Landing {
+			lines = append(lines, fmt.Sprintf("mirror:  %s  configured", mirror))
+		}
+	}
+	return lines
 }
 
 var forgejoPullRequestRefRE = regexp.MustCompile(`(?i)^(?:https?://)?(?:www\.)?` + regexp.QuoteMeta(strings.TrimRight(forgejoBaseURL, "/")) +
@@ -196,8 +266,7 @@ func parseAgentPullRequestRef(s string) (agentIssueRef, bool) {
 			return agentIssueRef{}, false
 		}
 		ref := agentIssueRef{Owner: m[1], Repo: strings.TrimSuffix(m[2], ".git"), Number: n, MergeRequest: true}
-		ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
-		ref.Tracker = trackerFromForge(ref.Forge)
+		ref = applyIssueRepoAuthority(ref, false)
 		return ref, true
 	}
 	return agentIssueRef{}, false
@@ -277,9 +346,6 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 		return agentIssueRef{}, err
 	}
 	if ref.Owner != "" && ref.Repo != "" {
-		if ref.Forge == 0 {
-			ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
-		}
 		kind := "issue ref"
 		if ref.MergeRequest {
 			kind = "pull request ref"
@@ -294,9 +360,7 @@ func (r *Runner) resolveAgentIssueRef(ctx context.Context, arg string) (agentIss
 				"(use owner/repo#%d or run from inside the repo's checkout): %w", arg, ref.Number, terr)
 	}
 	ref.Owner, ref.Repo = repo.Owner, repo.Name
-	if ref.Forge == 0 {
-		ref.Forge = currentSmartDefaults().forgeForRepo(ref.Owner, ref.Repo)
-	}
+	ref = applyIssueRepoAuthority(ref, false)
 	kind := "bare issue ref"
 	if ref.MergeRequest {
 		kind = "bare pull request ref"
@@ -971,6 +1035,9 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	// already parses there on its own; ward#489). See docs/agent-github.md.
 	if c.Bool("github") {
 		ref.Forge = forgeGitHub
+		if !looksLikeExplicitForgejoIssueRef(c.Args().First()) {
+			ref.Tracker = trackerGitHub
+		}
 	}
 	if c.Bool("pr") {
 		ref.MergeRequest = true
@@ -1133,13 +1200,18 @@ func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode container
 // fetchIssue reads the issue off the ref's tracker.
 // It fails fast before a container launches.
 func (r *Runner) fetchIssue(ctx context.Context, ref agentIssueRef) (*Issue, error) {
-	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), currentAgentMode())
+	tracker := ref.trackerOrDefault()
+	cl, err := r.hostTrackerClient(ctx, tracker, currentAgentMode())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tracker read: %s: %w", tracker, err)
 	}
-	return resolveIssueWithRetry("ward agent", ref.String(), resolveIssueSleep, func() (*Issue, error) {
+	issue, err := resolveIssueWithRetry("ward agent", ref.url(), resolveIssueSleep, func() (*Issue, error) {
 		return cl.GetIssue(ctx, ref.Owner, ref.Repo, ref.Number)
 	})
+	if err != nil {
+		return nil, fmt.Errorf("tracker read: %s %s: %w", tracker, ref.url(), err)
+	}
+	return issue, nil
 }
 
 // resolveRetryAttempts / resolveRetryBackoff bound the dispatch-path resolve retry: a
@@ -2504,7 +2576,8 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	// a stale-ward reminder before it files+launches (ward#143).
 	r.maybeWarnWardOutdatedForTask(ctx, c, label)
 
-	cl, err := r.hostTrackerClient(ctx, trackerForgejo, mode)
+	authority := currentSmartDefaults().authorityForRepo(repo.Owner, repo.Name)
+	cl, err := r.hostTrackerClient(ctx, authority.Tracker, mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
@@ -2512,7 +2585,7 @@ func (r *Runner) runAgentTaskDirect(ctx context.Context, c *cli.Command, mode co
 	if err != nil {
 		return fmt.Errorf("%s: file issue in %s/%s: %w", label, repo.Owner, repo.Name, err)
 	}
-	ref := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: number, Tracker: trackerForgejo}
+	ref := agentIssueRef{Owner: repo.Owner, Repo: repo.Name, Number: number, Forge: authority.Checkout, Tracker: authority.Tracker}
 	writef(os.Stderr, "%s: filed %s - %s\n", label, ref, ref.url())
 
 	// The freeform engineer run carries headless, so it gets the same pre-flight
@@ -2672,8 +2745,9 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	if p.Headless {
 		writef(&b, "headless: agent runs detached in print mode (-p)\n")
 	}
-	writef(&b, "issue:   %s\n", ref)
-	writef(&b, "url:     %s\n", ref.url())
+	for _, line := range authorityPlanLines(ref, p.Branch) {
+		writef(&b, "%s\n", line)
+	}
 	writef(&b, "title:   %s\n", title)
 	writef(&b, "repo:    %s\n", p.Repo.slug())
 	writef(&b, "branch:  %s\n", p.Branch)

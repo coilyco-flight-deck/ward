@@ -309,7 +309,7 @@ func TestParseForge(t *testing.T) {
 // set separately on the same issue ref.
 func TestForgeAndTrackerPairIndependence(t *testing.T) {
 	ref := agentIssueRef{Owner: "owner", Repo: "repo", Number: 9, Forge: forgeGitHub, Tracker: trackerForgejo}
-	if got, want := ref.url(), "https://github.com/owner/repo/issues/9"; got != want {
+	if got, want := ref.url(), forgejoBaseURL+"/owner/repo/issues/9"; got != want {
 		t.Fatalf("paired ref url = %q, want %q", got, want)
 	}
 	if got, want := ref.trackerOrDefault(), trackerForgejo; got != want {

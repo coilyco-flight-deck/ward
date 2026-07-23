@@ -1369,7 +1369,9 @@ func (r *Runner) brokerDispatchRef(ctx context.Context, arg string) (agentIssueR
 }
 
 func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
-	argv := []string{"engineer", ref.String(), "--harness", string(brokerDispatchHarness(c, mode))}
+	// Preserve the tracker-qualified URL; compact refs can be re-resolved under
+	// checkout policy and silently turn a Forgejo ticket into a GitHub lookup.
+	argv := []string{"engineer", ref.url(), "--harness", string(brokerDispatchHarness(c, mode))}
 	argv = appendBrokerContainerFlags(argv, c)
 	argv = appendBrokerLocalHarnessConfig(argv, c, mode)
 	if c.IsSet("workflow") {
