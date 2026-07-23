@@ -19,6 +19,7 @@ concurrency:
 
 permissions:
   contents: write
+  packages: read
 
 jobs:
   release:
@@ -40,13 +41,12 @@ jobs:
         run: bash scripts/release-tag.sh
 
       - name: Verify the ward agent image alias resolves
+        env:
+          IMAGE: forgejo.coilysiren.me/coilyco-flight-deck/ward:release
+          REGISTRY_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          image=forgejo.coilysiren.me/coilyco-flight-deck/ward:release
-          if ! docker manifest inspect "$image" >/dev/null 2>&1; then
-            echo "::error::default agent image ${image} does not resolve; promote must publish it first" >&2
-            exit 1
-          fi
+          bash scripts/registry-manifest-exists.sh
 
       - id: notes
         if: ${{ steps.tag.outputs.new_tag != '' }}

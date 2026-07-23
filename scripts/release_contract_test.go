@@ -101,11 +101,17 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 	for _, want := range []string{
 		"scripts/release-tag.sh",
 		"scripts/publish-draft-release.sh",
-		"docker manifest inspect \"$image\" >/dev/null 2>&1",
+		"packages: read",
+		"IMAGE: forgejo.coilysiren.me/coilyco-flight-deck/ward:release",
+		"REGISTRY_TOKEN: ${{ github.token }}",
+		"scripts/registry-manifest-exists.sh",
 	} {
 		if !strings.Contains(release, want) {
 			t.Fatalf("release workflow should mention %q:\n%s", want, release)
 		}
+	}
+	if strings.Contains(release, "docker manifest inspect") {
+		t.Fatalf("release workflow should not require a Docker daemon to verify the alias:\n%s", release)
 	}
 	scoopJob := workflowJobSection(t, release, "bump-scoop-manifest:", "Alert Telegram on main failure")
 	for _, want := range []string{
@@ -327,6 +333,51 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 		if !strings.HasPrefix(auth, "Basic ") {
 			t.Fatalf("request %d missing basic auth header: %q", i, auth)
 		}
+	}
+}
+
+func TestRegistryManifestExistsChecksAliasWithoutDockerDaemon(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		code    int
+		wantErr bool
+	}{
+		{name: "alias exists", code: http.StatusOK},
+		{name: "alias missing", code: http.StatusNotFound, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var auth string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				auth = r.Header.Get("Authorization")
+				if r.Method != http.MethodGet || r.URL.Path != "/v2/coilyco-flight-deck/ward/manifests/release" {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+				w.WriteHeader(tc.code)
+				_, _ = io.WriteString(w, `{"schemaVersion":2}`)
+			}))
+			defer srv.Close()
+
+			host := strings.TrimPrefix(srv.URL, "http://")
+			cmd := exec.Command("bash", filepath.Join(repoRoot(t), "scripts", "registry-manifest-exists.sh"))
+			cmd.Dir = repoRoot(t)
+			cmd.Env = append(os.Environ(),
+				"IMAGE="+host+"/coilyco-flight-deck/ward:release",
+				"REGISTRY_TOKEN=registry-secret",
+				"REGISTRY_SCHEME=http",
+			)
+			out, err := cmd.CombinedOutput()
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("registry-manifest-exists.sh error = %v, wantErr %t\noutput: %s", err, tc.wantErr, out)
+			}
+			if tc.wantErr && !strings.Contains(string(out), "does not resolve") {
+				t.Fatalf("missing-alias output = %q, want resolution error", out)
+			}
+			if !strings.HasPrefix(auth, "Basic ") {
+				t.Fatalf("request missing basic auth header: %q", auth)
+			}
+		})
 	}
 }
 
