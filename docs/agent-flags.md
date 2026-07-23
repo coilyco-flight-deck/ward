@@ -65,6 +65,12 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 ## `ward agent pr runs`
 
 - --limit
+## `ward agent recover`
+
+- --apply, --work, --include-quarantined, --override-reservation
+## `ward agent recover prune`
+
+- --older-than, --confirm
 ## `ward agent review`
 
 - --class, --diff-base, --ci-log, --worker, --print, --json

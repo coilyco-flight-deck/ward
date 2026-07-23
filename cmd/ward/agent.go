@@ -750,6 +750,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// pr carries the native PR-workflow verbs (merge/status/runs/rerun), not a
 			// startup role (ward#1067). docs/agent-pr-workflow.md.
 			agentPRCommand(),
+			// recover consumes host-owned Git-only rescue bundles made before a
+			// failed engineer container is removed (ward#1515).
+			agentRecoverCommand(),
 			// review is the pre-landing adversarial-review gate, not a startup role
 			// (ward#134): a diff must survive a multi-model panel. docs/dispatch-review.md.
 			agentReviewCommand(),

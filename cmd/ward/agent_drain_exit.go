@@ -60,7 +60,9 @@ func (r *Runner) drainOnExit(ctx context.Context, name string) {
 	// `docker wait` returns on exit OR removal; a wait error (already gone) still
 	// falls through to a best-effort drain attempt.
 	_ = r.dockerExec(ctx, "wait", name)
-	r.drainAgentRunIdempotent(ctx, name, agentLogsDir())
+	if err := r.drainAgentRunIdempotent(ctx, name, agentLogsDir()); err != nil {
+		fmt.Fprintf(os.Stderr, "ward container: durable rescue for %s failed; container is retained for retry: %v\n", name, err)
+	}
 }
 
 // spawnDrainWaiter starts the detached `container drain-exit <name>` grandchild that

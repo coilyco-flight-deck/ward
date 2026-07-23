@@ -16,6 +16,25 @@ The container exists to carry one feature from start to merge.
 - Clean runs land or merge, then disappear.
 - Wedged runs are reaped by policy.
 - Debugging starts from the container logs, not by rummaging in the host tree.
+- Before a stopped engineer container can be removed, Ward preserves any
+  unlanded committed Git history as a host-owned rescue artifact under
+  `~/.ward/rescues/<run-id>/`. The artifact contains verified Git bundles and a
+  manifest, never a workspace or ignored files.
+
+## Forge outage recovery
+
+When a forge failure prevents landing, use `ward agent recover owner/repo#N`.
+It prints the newest matching rescue plan without mutation. After reviewing the
+file inventory and any quarantine marker, run it again with `--apply --work
+<fresh-clean-clone>` to prepare an `issue-N-recovery` branch from current
+`origin/main`. That branch then follows the normal PR workflow.
+
+Rescues are intentionally retained across ordinary reaping and broker restarts.
+They are Git-object-only: Ward does not copy ignored files, credentials, or
+arbitrary container state. Large deletion sets and generated binaries are
+quarantined and require `--include-quarantined` on the explicit recovery run.
+After a consumed artifact has passed the retention window, remove it only with
+`ward agent recover prune --older-than 720h --confirm`.
 
 ## Launch details
 

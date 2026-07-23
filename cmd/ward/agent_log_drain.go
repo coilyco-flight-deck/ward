@@ -280,14 +280,28 @@ func sweepActions(exited, stale []string, baseDir string) []sweepAction {
 // idempotently, then `docker rm` the stale subset and clear its markers (ward#510).
 func (r *Runner) drainStaleContainers(ctx context.Context, exited, stale []string) error {
 	baseDir := agentLogsDir()
+	removable := make(map[string]bool, len(stale))
 	for _, a := range sweepActions(exited, stale, baseDir) {
 		switch a.Op {
 		case sweepDrain:
-			r.drainAgentRunIdempotent(ctx, a.Container, baseDir)
+			if err := r.drainAgentRunIdempotent(ctx, a.Container, baseDir); err != nil {
+				fmt.Fprintf(os.Stderr, "ward container: retaining %s because durable rescue failed: %v\n", a.Container, err)
+				continue
+			}
+			removable[a.Container] = true
 		case sweepRemove:
-			fmt.Fprintf(os.Stderr, "ward container: removing containers %v\n", a.Names)
-			rmErr := r.dockerExec(ctx, dockerRmArgv(a.Names)...)
+			var names []string
 			for _, name := range a.Names {
+				if removable[name] {
+					names = append(names, name)
+				}
+			}
+			if len(names) == 0 {
+				return nil
+			}
+			fmt.Fprintf(os.Stderr, "ward container: removing containers %v\n", names)
+			rmErr := r.dockerExec(ctx, dockerRmArgv(names)...)
+			for _, name := range names {
 				clearDrainMarker(baseDir, name)
 			}
 			return rmErr
@@ -298,13 +312,17 @@ func (r *Runner) drainStaleContainers(ctx context.Context, exited, stale []strin
 
 // drainAgentRunIdempotent drains name once: a drain sentinel makes a repeat a cheap
 // no-op, so the exit waiter and the later keep-10 sweep never double-pull (ward#510).
-func (r *Runner) drainAgentRunIdempotent(ctx context.Context, name, baseDir string) {
+func (r *Runner) drainAgentRunIdempotent(ctx context.Context, name, baseDir string) error {
 	if alreadyDrained(baseDir, name) {
 		fmt.Fprintf(os.Stderr, "ward container: drain of %s skipped (already drained)\n", name)
-		return
+		return nil
+	}
+	if err := r.rescueContainerRun(ctx, name); err != nil {
+		return err
 	}
 	r.drainAgentRun(ctx, name, filepath.Join(baseDir, name))
 	markDrained(baseDir, name)
+	return nil
 }
 
 // drainAgentRun pulls one exited container's console + transcript + meta into

@@ -641,6 +641,11 @@ func (r *Runner) clearExitedContainer(ctx context.Context, name string) {
 	if err != nil || strings.TrimSpace(string(out)) == "" {
 		return
 	}
+	// Do not let deterministic-name reuse bypass the host rescue gate.
+	if err := r.drainAgentRunIdempotent(ctx, name, agentLogsDir()); err != nil {
+		writef(os.Stderr, "ward container: retaining exited %q because durable rescue failed (%v)\n", name, err)
+		return
+	}
 	if rmErr := r.dockerExec(ctx, "rm", "-f", name); rmErr != nil {
 		writef(os.Stderr, "ward container: could not clear exited container %q for name reuse (%v); continuing\n", name, rmErr)
 	}
