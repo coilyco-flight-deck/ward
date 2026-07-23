@@ -918,8 +918,9 @@ func TestForwardAgentDispatchToHostBrokerReportsUnreachableBroker(t *testing.T) 
 func TestDispatchBrokerForwardedLineIncludesLogPathWhenAvailable(t *testing.T) {
 	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--ward-version", "v0.569.0"}, "/tmp/ward/dispatch.log")
 	for _, want := range []string{
-		"ward dispatch broker: forwarded `ward agent engineer coilyco-flight-deck/ward#378 --harness codex --ward-version v0.569.0` to host ward",
+		"ward dispatch broker: accepted `ward agent engineer coilyco-flight-deck/ward#378 --harness codex --ward-version v0.569.0`; host Ward launch started",
 		"(effective ward v0.569.0)",
+		"(container visibility and engineer harness startup are pending)",
 		"(run output on the host at /tmp/ward/dispatch.log)",
 	} {
 		if !strings.Contains(got, want) {
@@ -931,8 +932,9 @@ func TestDispatchBrokerForwardedLineIncludesLogPathWhenAvailable(t *testing.T) {
 func TestDispatchBrokerForwardedLineFallsBackToLookupCommandWhenPathMissing(t *testing.T) {
 	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#902", "--harness", "codex", "--ward-version", "v0.569.0"}, "")
 	for _, want := range []string{
-		"ward dispatch broker: forwarded `ward agent engineer coilyco-flight-deck/ward#902 --harness codex --ward-version v0.569.0` to host ward",
+		"ward dispatch broker: accepted `ward agent engineer coilyco-flight-deck/ward#902 --harness codex --ward-version v0.569.0`; host Ward launch started",
 		"(effective ward v0.569.0)",
+		"(container visibility and engineer harness startup are pending)",
 		"dispatch log path unavailable yet",
 		"`ward agent logs coilyco-flight-deck/ward#902`",
 	} {
@@ -940,8 +942,8 @@ func TestDispatchBrokerForwardedLineFallsBackToLookupCommandWhenPathMissing(t *t
 			t.Fatalf("forwarded line = %q, want %q", got, want)
 		}
 	}
-	if strings.Contains(got, "forwarded `ward agent engineer coilyco-flight-deck/ward#902 --harness codex` to host ward\n") {
-		t.Fatalf("forwarded line unexpectedly retained the bare success shape: %q", got)
+	if strings.Contains(got, "forwarded `ward agent engineer") {
+		t.Fatalf("forwarded line unexpectedly retained the old ambiguous success shape: %q", got)
 	}
 }
 
@@ -1488,14 +1490,22 @@ func TestServeHostDispatchBrokerSurvivesExit125NameConflict(t *testing.T) {
 
 	origLaunch := dispatchBrokerLaunch
 	origFailedHook := dispatchFailedDispatchLaunchHook
+	origRestoreHook := dispatchStdioRestoreHook
+	failed := make(chan struct{})
+	restored := make(chan struct{})
 	t.Cleanup(func() {
 		dispatchBrokerLaunch = origLaunch
 		dispatchFailedDispatchLaunchHook = origFailedHook
+		dispatchStdioRestoreHook = origRestoreHook
 		_ = ln.Close()
 	})
 
 	var launches atomic.Int32
-	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool {
+		close(failed)
+		return true
+	}
+	dispatchStdioRestoreHook = func() { close(restored) }
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
 		if launches.Add(1) == 1 {
 			panic(errors.New(`exit status 125: Conflict. The container name "/engineer-codex-ward-786" is already in use`))
@@ -1510,17 +1520,21 @@ func TestServeHostDispatchBrokerSurvivesExit125NameConflict(t *testing.T) {
 		Argv:  []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex", "--pr"},
 		Token: "secret",
 	})
-	if first.OK {
-		t.Fatal("failed launch unexpectedly returned OK")
+	if !first.OK {
+		t.Fatalf("accepted launch response = %+v, want successful detach", first)
 	}
-	if !strings.Contains(first.Error, "request failure") {
-		t.Fatalf("first response error = %q, want a launch request failure classification", first.Error)
+	if first.LogPath == "" {
+		t.Fatal("accepted launch response omitted the durable dispatch artifact path")
 	}
-	if !strings.Contains(first.Error, "exit status 125") {
-		t.Fatalf("first response error = %q, want the exit-125 failure detail", first.Error)
+	select {
+	case <-failed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("asynchronous duplicate-name failure never reached broker recovery")
 	}
-	if !strings.Contains(first.Error, "already in use") {
-		t.Fatalf("failed launch error = %q, want Docker name conflict", first.Error)
+	select {
+	case <-restored:
+	case <-time.After(2 * time.Second):
+		t.Fatal("asynchronous duplicate-name failure never finalized the launch worker")
 	}
 
 	second := roundTripDispatchBrokerRequest(t, ln.Addr().String(), dispatchBrokerRequest{
@@ -1536,8 +1550,8 @@ func TestServeHostDispatchBrokerSurvivesExit125NameConflict(t *testing.T) {
 	}
 }
 
-// Broker env stays clear until launch returns.
-func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T) {
+// Broker env stays clear while the asynchronously-owned host launch continues.
+func TestRunHostDispatchBrokerRequestDetachesAfterHostLaunchStarts(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Cleanup(func() {
@@ -1623,22 +1637,17 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	}
 	select {
 	case got = <-result:
-		t.Fatalf("runHostDispatchBrokerRequest returned early: %+v", got)
-	default:
-	}
-	close(release)
-	select {
-	case got = <-result:
 		if got.err != nil {
-			t.Fatalf("runHostDispatchBrokerRequest: %v", got.err)
+			t.Fatalf("startHostDispatchBrokerRequest: %v", got.err)
 		}
 		logPath = got.logPath
 		if !strings.Contains(got.logPath, "dispatch") {
 			t.Fatalf("log path %q does not look like a dispatch log", got.logPath)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("runHostDispatchBrokerRequest never returned")
+		t.Fatal("startHostDispatchBrokerRequest did not detach after host launch started")
 	}
+	close(release)
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -1652,7 +1661,9 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	for _, want := range []string{
 		"ward dispatch broker: this log captures the host wrapper only",
 		"ward agent logs coilyco-flight-deck/ward#795",
-		"ward dispatch broker: launch completed",
+		"broker accepted launch request",
+		"host Ward launch started; broker response detaches before container visibility and engineer harness start",
+		"host launch completed; container visibility was confirmed, but engineer harness startup remains in-container",
 	} {
 		if !strings.Contains(logText, want) {
 			t.Errorf("dispatch log missing %q\n%s", want, logText)
@@ -1670,9 +1681,9 @@ func TestRunHostDispatchBrokerRequestClearsBrokerEnvWhileLaunchRuns(t *testing.T
 	}
 }
 
-// TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure locks the host side
-// response: a launch error should carry the dispatch log path back to the caller.
-func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T) {
+// TestRunHostDispatchBrokerRequestReportsLaterLaunchFailureThroughArtifact locks the
+// detach contract: an accepted response still finalizes host failures in its artifact.
+func TestRunHostDispatchBrokerRequestReportsLaterLaunchFailureThroughArtifact(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	done := make(chan struct{})
 	recoveryStarted := make(chan struct{})
@@ -1722,17 +1733,24 @@ func TestRunHostDispatchBrokerRequestReturnsStructuredLaunchFailure(t *testing.T
 		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex", "--pr"},
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(t.Context(), req)
-	if err == nil {
-		t.Fatal("startHostDispatchBrokerRequest unexpectedly succeeded")
+	if err != nil {
+		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
 	}
 	if !strings.Contains(logPath, "dispatch") {
 		t.Fatalf("log path %q does not look like a dispatch log", logPath)
 	}
-	if !strings.Contains(err.Error(), "already in use") {
-		t.Fatalf("error %q does not carry the launch failure", err)
-	}
 	<-done
 	<-recoveryStarted
+	<-restored
+	summary, readErr := os.ReadFile(filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile)) // #nosec G304 -- test-owned artifact path
+	if readErr != nil {
+		t.Fatalf("read dispatch summary: %v", readErr)
+	}
+	for _, want := range []string{"outcome: failed-before-container", "already in use"} {
+		if !strings.Contains(string(summary), want) {
+			t.Fatalf("dispatch summary missing %q:\n%s", want, summary)
+		}
+	}
 }
 
 // TestCommentFailedDispatch writes the failure comment that supersedes a stale
@@ -2307,24 +2325,25 @@ func TestForwardAgentDispatchPrintsLookupCommandWhenLaunchSucceedsWithoutLogPath
 	}
 }
 
-func TestStartHostDispatchBrokerRequestWaitsForVisibleEngineer(t *testing.T) {
+func TestStartHostDispatchBrokerRequestDetachesBeforeEngineerVisibility(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	r := fakeEngineerVisibilityDockerRunner(t, "engineer-codex-ward-1087", 2)
 
 	origLaunch := dispatchBrokerLaunch
-	origTimeout := dispatchBrokerVisibilityTimeout
-	origPoll := dispatchBrokerVisibilityPoll
-	origFailedHook := dispatchFailedDispatchLaunchHook
+	origRestoreHook := dispatchStdioRestoreHook
 	t.Cleanup(func() {
 		dispatchBrokerLaunch = origLaunch
-		dispatchBrokerVisibilityTimeout = origTimeout
-		dispatchBrokerVisibilityPoll = origPoll
-		dispatchFailedDispatchLaunchHook = origFailedHook
+		dispatchStdioRestoreHook = origRestoreHook
 	})
-	dispatchBrokerVisibilityTimeout = time.Second
-	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
-	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
-	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
+	launchEntered := make(chan struct{})
+	releaseLaunch := make(chan struct{})
+	finished := make(chan struct{})
+	dispatchStdioRestoreHook = func() { close(finished) }
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
+		close(launchEntered)
+		<-releaseLaunch
+		return nil
+	}
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
@@ -2332,16 +2351,33 @@ func TestStartHostDispatchBrokerRequestWaitsForVisibleEngineer(t *testing.T) {
 		Requester: "director-codex-host",
 		Token:     "nonce-visible",
 	}
-	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
-	if err != nil {
-		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
+	result := make(chan error, 1)
+	go func() {
+		_, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+		result <- err
+	}()
+	select {
+	case <-launchEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("host Ward launch never began")
 	}
-	if logPath == "" {
-		t.Fatal("startHostDispatchBrokerRequest returned an empty log path")
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("startHostDispatchBrokerRequest: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("broker did not detach before container visibility")
+	}
+	close(releaseLaunch)
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("asynchronous host launch did not finish")
 	}
 }
 
-func TestStartHostDispatchBrokerRequestFailsWhenEngineerNeverBecomesVisible(t *testing.T) {
+func TestStartHostDispatchBrokerRequestReportsMissingEngineerVisibilityAsynchronously(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
 
@@ -2349,15 +2385,23 @@ func TestStartHostDispatchBrokerRequestFailsWhenEngineerNeverBecomesVisible(t *t
 	origTimeout := dispatchBrokerVisibilityTimeout
 	origPoll := dispatchBrokerVisibilityPoll
 	origFailedHook := dispatchFailedDispatchLaunchHook
+	origRestoreHook := dispatchStdioRestoreHook
+	recoveryStarted := make(chan struct{})
+	finished := make(chan struct{})
 	t.Cleanup(func() {
 		dispatchBrokerLaunch = origLaunch
 		dispatchBrokerVisibilityTimeout = origTimeout
 		dispatchBrokerVisibilityPoll = origPoll
 		dispatchFailedDispatchLaunchHook = origFailedHook
+		dispatchStdioRestoreHook = origRestoreHook
 	})
 	dispatchBrokerVisibilityTimeout = 75 * time.Millisecond
 	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
-	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool {
+		close(recoveryStarted)
+		return true
+	}
+	dispatchStdioRestoreHook = func() { close(finished) }
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
 
 	req := dispatchBrokerRequest{
@@ -2367,18 +2411,34 @@ func TestStartHostDispatchBrokerRequestFailsWhenEngineerNeverBecomesVisible(t *t
 		Token:     "nonce-missing",
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
-	if err == nil {
-		t.Fatal("startHostDispatchBrokerRequest unexpectedly succeeded")
+	if err != nil {
+		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
 	}
 	if logPath == "" {
-		t.Fatal("startHostDispatchBrokerRequest returned an empty log path on failure")
+		t.Fatal("startHostDispatchBrokerRequest returned an empty dispatch artifact path")
 	}
-	if !strings.Contains(err.Error(), "ward agent list") {
-		t.Fatalf("error = %q, want the director-surface follow-up command", err)
+	select {
+	case <-recoveryStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("missing engineer visibility never reached asynchronous recovery")
+	}
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("missing engineer visibility never finalized its artifact")
+	}
+	summary, readErr := os.ReadFile(filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile)) // #nosec G304 -- test-owned artifact path
+	if readErr != nil {
+		t.Fatalf("read dispatch summary: %v", readErr)
+	}
+	for _, want := range []string{"outcome: failed-before-container", "ward agent list"} {
+		if !strings.Contains(string(summary), want) {
+			t.Fatalf("dispatch summary missing %q:\n%s", want, summary)
+		}
 	}
 }
 
-func TestStartHostDispatchBrokerRequestDoesNotTrustCrossOwnerNameCollisions(t *testing.T) {
+func TestStartHostDispatchBrokerRequestReportsCrossOwnerVisibilityCollisionAsynchronously(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	script := filepath.Join(dir, "docker")
@@ -2409,15 +2469,23 @@ func TestStartHostDispatchBrokerRequestDoesNotTrustCrossOwnerNameCollisions(t *t
 	origTimeout := dispatchBrokerVisibilityTimeout
 	origPoll := dispatchBrokerVisibilityPoll
 	origFailedHook := dispatchFailedDispatchLaunchHook
+	origRestoreHook := dispatchStdioRestoreHook
+	recoveryStarted := make(chan struct{})
+	finished := make(chan struct{})
 	t.Cleanup(func() {
 		dispatchBrokerLaunch = origLaunch
 		dispatchBrokerVisibilityTimeout = origTimeout
 		dispatchBrokerVisibilityPoll = origPoll
 		dispatchFailedDispatchLaunchHook = origFailedHook
+		dispatchStdioRestoreHook = origRestoreHook
 	})
 	dispatchBrokerVisibilityTimeout = 75 * time.Millisecond
 	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
-	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool { return true }
+	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool {
+		close(recoveryStarted)
+		return true
+	}
+	dispatchStdioRestoreHook = func() { close(finished) }
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
 
 	req := dispatchBrokerRequest{
@@ -2427,14 +2495,28 @@ func TestStartHostDispatchBrokerRequestDoesNotTrustCrossOwnerNameCollisions(t *t
 		Token:     "nonce-collision",
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
-	if err == nil {
-		t.Fatal("startHostDispatchBrokerRequest unexpectedly succeeded on a cross-owner name collision")
+	if err != nil {
+		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
 	}
 	if logPath == "" {
-		t.Fatal("startHostDispatchBrokerRequest returned an empty log path on failure")
+		t.Fatal("startHostDispatchBrokerRequest returned an empty dispatch artifact path")
 	}
-	if !strings.Contains(err.Error(), "ward agent list") {
-		t.Fatalf("error = %q, want the visibility follow-up command", err)
+	select {
+	case <-recoveryStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cross-owner visibility collision never reached asynchronous recovery")
+	}
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cross-owner visibility collision never finalized its artifact")
+	}
+	summary, readErr := os.ReadFile(filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile)) // #nosec G304 -- test-owned artifact path
+	if readErr != nil {
+		t.Fatalf("read dispatch summary: %v", readErr)
+	}
+	if !strings.Contains(string(summary), "ward agent list") {
+		t.Fatalf("dispatch summary = %q, want the director-surface follow-up command", summary)
 	}
 }
 

@@ -350,8 +350,8 @@ func writeDispatchBrokerLogsResponse(conn net.Conn, source string, err error) {
 	}
 }
 
-// startHostDispatchBrokerRequest launches the validated request in the background.
-// It returns once the run is visible enough to count as real.
+// startHostDispatchBrokerRequest returns after the broker-owned host Ward launch starts.
+// Later milestones remain asynchronous and are recorded in the dispatch artifact.
 func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatchBrokerRequest) (string, error) {
 	if err := validateDispatchBrokerRequest(req); err != nil {
 		return "", err
@@ -383,20 +383,15 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 	}
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: this log captures the host wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`\n",
 		ref)
+	_, _ = fmt.Fprintf(logf, "ward dispatch broker: broker accepted launch request (request id %s; artifact %s)\n", paths.RequestID, paths.Dir)
 	restore := redirectStdioToLog(logf)
 	started := make(chan struct{})
-	done := make(chan dispatchBrokerLaunchResult, 1)
-	go r.handleHostDispatchBrokerLaunch(ctx, req, paths, logf, restore, lock, started, done)
-	return waitForDispatchBrokerLaunchResult(ctx, done)
-}
-
-type dispatchBrokerLaunchResult struct {
-	logPath string
-	err     error
+	go r.handleHostDispatchBrokerLaunch(ctx, req, paths, logf, restore, lock, started)
+	return waitForDispatchBrokerLaunchStart(ctx, paths.ConsolePath, started)
 }
 
 //nolint:funlen // the dispatch launch branches are the artifact contract
-func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, logf *os.File, restore func(), lock *sync.Mutex, started chan struct{}, done chan<- dispatchBrokerLaunchResult) {
+func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, logf *os.File, restore func(), lock *sync.Mutex, started chan struct{}) {
 	restored := false
 	finalized := false
 	resultErr := error(nil)
@@ -422,8 +417,10 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 			finalizeDispatchArtifact(paths, req, paths.ConsolePath, resultErr)
 		}
 		dispatchStdioRestoreHook()
-		done <- dispatchBrokerLaunchResult{logPath: paths.ConsolePath, err: resultErr}
 	}()
+	// This is the detach boundary; later milestones remain asynchronous.
+	fmt.Fprintln(os.Stderr, "ward dispatch broker: host Ward launch started; broker response detaches before container visibility and engineer harness start")
+	close(started)
 	if lock != nil {
 		lock.Lock()
 		defer lock.Unlock()
@@ -435,7 +432,6 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 	}
 	launchCtx := withDispatchLaunchReservationTracking(ctx)
 	if err := withBrokerForwardingDisabled(func() error {
-		close(started)
 		return dispatchBrokerLaunch(launchCtx, req)
 	}); err != nil {
 		if isPartialLaunchError(err) {
@@ -451,7 +447,7 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 		resultErr = err
 		return
 	}
-	fmt.Fprintf(os.Stderr, "ward dispatch broker: launch completed\n")
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: host launch completed; container visibility was confirmed, but engineer harness startup remains in-container\n")
 	finalizeDispatchArtifact(paths, req, paths.ConsolePath, nil)
 	finalized = true
 }
@@ -488,10 +484,10 @@ func dispatchBrokerPanicError(stage string, p any) error {
 	return fmt.Errorf("dispatch broker: %s panicked: %v", stage, p)
 }
 
-func waitForDispatchBrokerLaunchResult(ctx context.Context, done <-chan dispatchBrokerLaunchResult) (string, error) {
+func waitForDispatchBrokerLaunchStart(ctx context.Context, logPath string, started <-chan struct{}) (string, error) {
 	select {
-	case result := <-done:
-		return result.logPath, result.err
+	case <-started:
+		return logPath, nil
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
@@ -1322,10 +1318,11 @@ func (r *Runner) forwardFreeformEngineerLaunchToHostBroker(ctx context.Context, 
 // If logPath is missing, it falls back to a deterministic lookup command.
 func dispatchBrokerForwardedLine(argv []string, logPath string) string {
 	displayArgv := redactDispatchBrokerArgv(argv)
-	base := fmt.Sprintf("ward dispatch broker: forwarded `ward agent %s` to host ward", displayArgv)
+	base := fmt.Sprintf("ward dispatch broker: accepted `ward agent %s`; host Ward launch started", displayArgv)
 	if v := dispatchBrokerWardVersion(argv); v != "" {
 		base += fmt.Sprintf(" (effective ward %s)", v)
 	}
+	base += " (container visibility and engineer harness startup are pending)"
 	if path := strings.TrimSpace(logPath); path != "" {
 		return fmt.Sprintf("%s (run output on the host at %s)", base, path)
 	}
