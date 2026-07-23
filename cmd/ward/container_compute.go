@@ -782,18 +782,13 @@ func gitConfigValue(cwd string, global bool, key string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// launchEnvAllowlist copies the safe non-secret host context into the container
-// launch env while keeping the raw host env default-denied.
+// launchEnvAllowlist copies locale/time context while keeping the raw host env denied.
+// Terminal capability stays local to Docker's PTY so Codex redraws reliably (ward#1512).
 func launchEnvAllowlist() map[string]string {
 	env := map[string]string{}
 	for _, key := range []string{
-		"TERM",
-		"COLORTERM",
 		"LANG",
 		"TZ",
-		"NO_COLOR",
-		"CLICOLOR",
-		"CLICOLOR_FORCE",
 	} {
 		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 			env[key] = v
@@ -808,12 +803,9 @@ func launchEnvAllowlist() map[string]string {
 			env[key] = value
 		}
 	}
-	if _, ok := env["TERM"]; !ok {
-		env["TERM"] = "xterm-256color"
-	}
-	if _, ok := env["COLORTERM"]; !ok {
-		env["COLORTERM"] = "truecolor"
-	}
+	// The container owns this pseudo-terminal; keep Ward's known-good profile.
+	env["TERM"] = "xterm-256color"
+	env["COLORTERM"] = "truecolor"
 	return env
 }
 

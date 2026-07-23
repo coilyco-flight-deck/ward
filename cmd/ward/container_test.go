@@ -1119,21 +1119,23 @@ func TestDockerCreateArgvLaunchEnvAllowlist(t *testing.T) {
 
 	joined := strings.Join(dockerCreateArgv(sampleUpPlan(), ""), " ")
 	for _, want := range []string{
-		"-e TERM=screen-256color",
-		"-e COLORTERM=24bit",
+		"-e TERM=xterm-256color",
+		"-e COLORTERM=truecolor",
 		"-e LANG=en_US.UTF-8",
 		"-e LC_ALL=en_GB.UTF-8",
 		"-e LC_TIME=de_DE.UTF-8",
 		"-e TZ=UTC",
-		"-e NO_COLOR=1",
-		"-e CLICOLOR=1",
-		"-e CLICOLOR_FORCE=0",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("docker argv missing allowed env %q\n got: %s", want, joined)
 		}
 	}
 	for _, denied := range []string{
+		"TERM=screen-256color",
+		"COLORTERM=24bit",
+		"NO_COLOR=1",
+		"CLICOLOR=1",
+		"CLICOLOR_FORCE=0",
 		"WARD_TOKEN=dont-pass",
 		"WARD_GIT_NAME=host-bot",
 		"WARD_GIT_EMAIL=host@example.com",
