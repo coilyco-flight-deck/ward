@@ -166,8 +166,8 @@ func TestReadReapEnvParsesExtraRepos(t *testing.T) {
 // TestExtraRepoWorkDir pins the granted-repo working-copy layout the reaper verifies.
 func TestExtraRepoWorkDir(t *testing.T) {
 	got := extraRepoWorkDir(targetRepo{Owner: "coilyco-bridge", Name: "agentic-os-kai"})
-	if got != "/workspace/agentic-os-kai" {
-		t.Errorf("extraRepoWorkDir = %q, want /workspace/agentic-os-kai", got)
+	if got != "/workspace/coilyco-bridge/agentic-os-kai" {
+		t.Errorf("extraRepoWorkDir = %q, want /workspace/coilyco-bridge/agentic-os-kai", got)
 	}
 }
 

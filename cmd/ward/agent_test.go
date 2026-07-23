@@ -443,11 +443,13 @@ func TestAgentSeedPromptGrantedRepos(t *testing.T) {
 	extra := []targetRepo{{Owner: "coilyco-bridge", Name: "agentic-os-kai"}}
 	got := agentSeedPrompt(ref, "fix it", "do the thing", "", true, extra)
 	for _, want := range []string{
-		"coilyco-bridge/agentic-os-kai", // the grant is named
-		"VERIFIED to have",              // the verify-landed done-condition
-		"local HEAD must match",         // the concrete check
-		"silently rejected",             // why it matters
-		"native issue in that repo",     // the ward#291 steer
+		"coilyco-bridge/agentic-os-kai",            // the grant is named
+		"/workspace/coilyco-bridge/agentic-os-kai", // the grant path is explicit
+		"/workspace/ward",                          // primary cwd remains clear
+		"VERIFIED to have",                         // the verify-landed done-condition
+		"local HEAD must match",                    // the concrete check
+		"silently rejected",                        // why it matters
+		"native issue in that repo",                // the ward#291 steer
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("granted-repo seed missing %q\n got: %s", want, got)
@@ -661,11 +663,12 @@ func TestPreflightPrompt(t *testing.T) {
 	withExtra := preflightPrompt(ref, "migrate sandbox into cli-guard", "move the package", "", nil,
 		[]targetRepo{{Owner: "coilyco-flight-deck", Name: "cli-guard"}})
 	for _, want := range []string{
-		"coilyco-flight-deck/cli-guard", // names the granted repo
-		"--repo",                        // names how it was granted (ward#280)
-		"WRITABLE",                      // tells the agent it can author there
-		"squarely in scope",             // cross-repo work is not a NO-GO
-		"FRESH CLONES",                  // plural clone scope when a repo is granted
+		"coilyco-flight-deck/cli-guard",            // names the granted repo
+		"/workspace/coilyco-flight-deck/cli-guard", // names the granted repo path
+		"--repo",            // names how it was granted (ward#280)
+		"WRITABLE",          // tells the agent it can author there
+		"squarely in scope", // cross-repo work is not a NO-GO
+		"FRESH CLONES",      // plural clone scope when a repo is granted
 	} {
 		if !strings.Contains(withExtra, want) {
 			t.Errorf("preflight prompt with --repo grant missing %q\n got: %s", want, withExtra)

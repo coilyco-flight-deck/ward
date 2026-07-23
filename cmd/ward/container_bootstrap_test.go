@@ -744,7 +744,7 @@ func TestCloneExtraRepoResumesExistingOriginBranch(t *testing.T) {
 		Branch:      branch,
 	}, targetRepo{Owner: "owner", Name: name}, false, "")
 
-	work := filepath.Join(workspaceRoot, name)
+	work := filepath.Join(workspaceRoot, "owner", name)
 	if got := mustGitRev(t, work, "HEAD"); got != branchRev {
 		t.Fatalf("HEAD = %s, want resumed branch rev %s", got, branchRev)
 	}
@@ -777,12 +777,46 @@ func TestCloneExtraRepoStartsFromBaseWhenOriginBranchMissing(t *testing.T) {
 		Branch:      "issue-999",
 	}, targetRepo{Owner: "owner", Name: name}, false, "")
 
-	work := filepath.Join(workspaceRoot, name)
+	work := filepath.Join(workspaceRoot, "owner", name)
 	if got := mustGitRev(t, work, "HEAD"); got != mainRev {
 		t.Fatalf("HEAD = %s, want base rev %s", got, mainRev)
 	}
 	if got := gitText(t, work, "rev-parse", "--abbrev-ref", "HEAD"); got != "issue-999" {
 		t.Fatalf("current branch = %q, want %q", got, "issue-999")
+	}
+}
+
+// TestCloneExtraReposWithSameBasename proves the working-copy layout, not just
+// parsing, permits organization .github repositories in one engineer workspace.
+func TestCloneExtraReposWithSameBasename(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gitRunner()
+	workspace := useTestWorkspaceRoot(t)
+	cloneBase := t.TempDir()
+	gitCache := t.TempDir()
+	owners := []string{"coilyco-flight-deck", "coilyco-bridge"}
+	for _, owner := range owners {
+		seedBranchResumeRepo(t, cloneBase, ".github")
+		from := filepath.Join(cloneBase, "owner", ".github.git")
+		to := filepath.Join(cloneBase, owner, ".github.git")
+		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(from, to); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := bootstrapEnv{ForgejoBase: "https://forgejo.example", CloneBase: cloneBase, GitCache: gitCache, Branch: "issue-1526"}
+	for _, owner := range owners {
+		r.cloneExtraRepo(context.Background(), e, targetRepo{Owner: owner, Name: ".github"}, false, "")
+	}
+	for _, owner := range owners {
+		work := filepath.Join(workspace, owner, ".github")
+		if !isDir(filepath.Join(work, ".git")) {
+			t.Errorf("%s clone missing at %s", owner, work)
+		}
 	}
 }
 

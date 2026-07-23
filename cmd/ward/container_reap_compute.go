@@ -430,14 +430,14 @@ func closingReferenceStateBody(r salvageReport) string {
 
 // --- granted-repo (--repo) push verification (ward#291) ----------------------
 
-// containerWorkspace is where the entrypoint clones the target and every --repo
-// grant, as /workspace/<name>; mirrors cloneExtraRepo's layout (ward#230).
+// containerWorkspace is where the entrypoint clones the primary checkout at
+// /workspace/<name> and every --repo grant at /workspace/<owner>/<name>.
 const containerWorkspace = "/workspace"
 
 // extraRepoWorkDir is the in-container working copy of a granted repo, the tree
 // the reaper verifies actually landed before the run reads as done.
 func extraRepoWorkDir(repo targetRepo) string {
-	return containerWorkspace + "/" + repo.Name
+	return grantedRepoWorkspaceDir(containerWorkspace, repo)
 }
 
 // extraRepoUnlanded is one granted repo the reaper could not confirm landed on its

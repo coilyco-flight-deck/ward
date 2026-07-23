@@ -53,7 +53,7 @@ type scratchGateStatus struct {
 	image             string   // resolved docker image
 	wardVersion       string   // the ward release the container will run
 	wardVersionSource string   // how the ward version resolved (explicit pin, host ward, latest)
-	withRepos         []string // --with-repo grants landed alongside the primary repo
+	withRepos         []string // --with-repo grants with their resolved workspace paths
 	scratchRoot       string   // writable temp/cache root the surface will use
 	scratchGoCache    string   // GOCACHE root beneath the writable surface root
 	scratchBudget     string   // human budget note for the writable surface
@@ -77,7 +77,7 @@ func newScratchGateStatus(p upPlan, readOnly, behind bool, current, latest strin
 	}
 	extras := make([]string, 0, len(p.ExtraRepos))
 	for _, e := range p.ExtraRepos {
-		extras = append(extras, e.slug())
+		extras = append(extras, e.slug()+" -> "+grantedRepoWorkspaceDir(containerWorkspace, e))
 	}
 	scratchRoot := directorSurfaceScratchDir(readOnly)
 	return scratchGateStatus{

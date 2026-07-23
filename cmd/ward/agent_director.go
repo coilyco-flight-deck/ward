@@ -159,7 +159,7 @@ func directorFlags() []cli.Flag {
 		&cli.StringFlag{Name: "engineer-harness", Usage: "harness for the engineers the director dispatches: " + agentHarnessChoices() + " (default: inherit --harness)"},
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
-		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed under /workspace alongside the scope (ward#230)."},
+		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed at /workspace/<owner>/<repo> (ward#1526)."},
 		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight container cap from the bundled smart-defaults file"},
 		&cli.BoolFlag{Name: "burndown", Aliases: []string{"drain"}, Usage: "run the autonomous headless backlog burndown loop. Without this flag, director opens its read-only surface after status refresh"},
 		&cli.BoolFlag{Name: "triage", Value: true, Usage: "run the startup triage pass before burndown: label each untriaged open issue's tier (P0-P4) + automation mode (headless/interactive/consult) to warm the headless lane (ward#397). On by default for --burndown. --no-triage skips it"},
