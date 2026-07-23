@@ -327,7 +327,7 @@ func reviewGateDisabledByTemporaryDefault(role string) bool {
 }
 
 // headlessReflection is the headless run's closing retro led by a
-// WARDED_WORKFLOW outcome line.
+// WARD-WORKFLOW outcome line.
 func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, reviewSkip string) string {
 	outcomeStatus := workflowOutcomeStatus(wf, reviewGate)
 	workflowLine := "workflow: <mode>; review summary: <summary or skip state>"
@@ -419,7 +419,7 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"line on stdout:\n"+
 			"  - `WARD-REVIEW: pass ...`  -> you are cleared to land. Proceed.\n"+
 			"  - `WARD-REVIEW: block ...` -> do NOT %s and do NOT merge. Post one hypercurt conclusion comment "+
-			"starting with `WARDED_WORKFLOW: blocked 🛑` and put the reviewer verdicts, reasons, and review summary inside its collapsed details block. The gate is fail-closed - a "+
+			"starting with `WARD-WORKFLOW: blocked 🛑` and put the reviewer verdicts, reasons, and review summary inside its collapsed details block. The gate is fail-closed - a "+
 			"reviewer error or timeout is a block, not a pass.\n"+
 			"  - `WARD-REVIEW: advisory ...` -> only if the gate had no runnable reviewer at all. Treat that as a "+
 			"block, not a pass, and write the skip/availability summary into the conclusion comment so the issue shows "+
@@ -429,7 +429,7 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"%s\n"+
 			"The gate's exit code mirrors the verdict (non-zero on block), so a shell `&&` also enforces it. Do "+
 			"not skip it, and do not land on a block. If the review was intentionally skipped via `--skip-review`, "+
-			"`--skip-preflight`, or config, the final `WARDED_WORKFLOW` comment must say so explicitly.",
+			"`--skip-preflight`, or config, the final `WARD-WORKFLOW` comment must say so explicitly.",
 		landing, landing, workflowTail)
 }
 

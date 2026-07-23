@@ -459,8 +459,8 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 					Family: "codex", Verdict: reviewpanel.Pass, Reason: "looks good", Confidence: 0.91,
 				}},
 			},
-			visible: "WARDED_WORKFLOW: review-pass",
-			want:    []string{"WARDED_WORKFLOW: review-pass", "review summary: passed: looks good"},
+			visible: "WARD-WORKFLOW: review-pass",
+			want:    []string{"WARD-WORKFLOW: review-pass", "review summary: passed: looks good"},
 		},
 		{
 			name: "block",
@@ -472,8 +472,8 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 					Family: "codex", Verdict: reviewpanel.Block, Reason: "diff misses baseline", Confidence: 0.91,
 				}},
 			},
-			visible: "WARDED_WORKFLOW: review-block",
-			want:    []string{"WARDED_WORKFLOW: review-block", "review summary: blocked: no runnable reviewer", "codex: diff misses baseline"},
+			visible: "WARD-WORKFLOW: review-block",
+			want:    []string{"WARD-WORKFLOW: review-block", "review summary: blocked: no runnable reviewer", "codex: diff misses baseline"},
 		},
 		{
 			name: "skipped",
@@ -482,8 +482,8 @@ func TestReviewConclusionCommentBodyIncludesSummary(t *testing.T) {
 				Note:   "review gate skipped by --skip-review / --no-review-gate",
 				Worker: "codex",
 			},
-			visible: "WARDED_WORKFLOW: review-pass",
-			want:    []string{"WARDED_WORKFLOW: review-pass", "review summary: skipped: review gate skipped by --skip-review / --no-review-gate"},
+			visible: "WARD-WORKFLOW: review-pass",
+			want:    []string{"WARD-WORKFLOW: review-pass", "review summary: skipped: review gate skipped by --skip-review / --no-review-gate"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

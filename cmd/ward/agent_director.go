@@ -317,7 +317,7 @@ refreshes the ledger from the live backlog, prints the ranked lanes, and then
 hands control to an interactive director session without dispatching engineers.
 
 Use --burndown to run the autonomous heartbeat. In that mode each tick reconciles
-in-flight engineers (reading their WARDED_WORKFLOW comments), refreshes the ledger
+in-flight engineers (reading their WARD-WORKFLOW comments), refreshes the ledger
 from the live backlog (ranking issues into lanes by tier/mode labels), asks a host
 one-shot which queued headless issues to dispatch under --max-parallel, dispatches
 the chosen set via ward's native engineer, then sleeps cheaply with no LLM held
@@ -924,10 +924,10 @@ func dropClosedBacklogEntries(led *backlogLedger, seen map[int]bool) {
 // --- outcome parsing -------------------------------------------------------
 
 // backlogOutcomeRE parses the status + optional status emoji + reason that
-// follow the WARDED_WORKFLOW marker.
+// follow the WARD-WORKFLOW marker.
 var backlogOutcomeRE = regexp.MustCompile(`(?i)^(done|submitted|merge-ready|pending|ready-for-merge|blocked|failed)\b(?:\s+[✅🛑❌])?[\s:.\-]*(.*)`)
 
-// parseBacklogOutcome classifies the latest comment leading with WARDED_WORKFLOW,
+// parseBacklogOutcome classifies the latest comment leading with WARD-WORKFLOW,
 // nil when none. Ports backlog-loop.py's parse_outcome.
 func parseBacklogOutcome(comments []issueComment) *backlogOutcome {
 	latest, ok := latestBacklogOutcomeComment(comments)
@@ -942,7 +942,7 @@ func parseBacklogOutcome(comments []issueComment) *backlogOutcome {
 }
 
 // latestBacklogOutcomeComment returns the most recent comment body carrying a
-// WARDED_WORKFLOW marker.
+// WARD-WORKFLOW marker.
 func latestBacklogOutcomeComment(comments []issueComment) (issueComment, bool) {
 	if humanFeedbackOutcomeBlocked(comments, time.Time{}) {
 		return issueComment{}, false
@@ -1077,12 +1077,12 @@ func parseDirectorStatusContexts(s string) []directorMergeStatusContext {
 }
 
 // backlogCommentLine normalizes the leading quote/list markers the same way the
-// WARDED_WORKFLOW parser does, so the policy parser can read wrapped comments too.
+// WARD-WORKFLOW parser does, so the policy parser can read wrapped comments too.
 func backlogCommentLine(ln string) string {
 	return strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(ln), ">*-•# "))
 }
 
-// backlogOutcomeOfComment parses the WARDED_WORKFLOW status from one comment body,
+// backlogOutcomeOfComment parses the WARD-WORKFLOW status from one comment body,
 // reporting ok=false when the body carries no leading marker line.
 func backlogOutcomeOfComment(body string) (backlogOutcome, bool) {
 	header, ok := parseWorkflowCommentHeader(body)
@@ -1830,7 +1830,7 @@ func reconcileNoOutcome(comments []issueComment, dispatchedAt time.Time, attempt
 	if !prelaunchDeathRelease(comments, dispatchedAt) {
 		return "failed", &backlogOutcome{
 			Status: "exited-no-outcome",
-			Text:   "container exited without a WARDED_WORKFLOW comment; read its log",
+			Text:   "container exited without a WARD-WORKFLOW comment; read its log",
 		}, attempts
 	}
 	attempts++

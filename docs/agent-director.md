@@ -43,9 +43,7 @@ The director surface is the read-only control plane for runs.
 - update the oldest merge-ready PR branch when open PR pressure is over cap and
   the branch still conflicts with main.
 
-The director's machine-readable issue comments use `WARDED_WORKFLOW` as the
-canonical first line. Legacy `WARD-*` headers are still parsed on old threads,
-but new PR handoffs start with `WARDED_WORKFLOW: <fully-qualified pull request link>`.
+The director's machine-readable issue comments use `WARD-WORKFLOW:` as the canonical first line. `WARDED_WORKFLOW:` and the older typed `WARD-*` headers remain parser compatibility for old threads, but new PR handoffs start with `WARD-WORKFLOW: <fully-qualified pull request link>`.
 Review-gated `pull-request-and-merge` handoffs keep the first line as the PR URL
 and carry `director merge authorization: reviewed-and-ready` in the details
 block so the merge sweep can still recognize the ready state.

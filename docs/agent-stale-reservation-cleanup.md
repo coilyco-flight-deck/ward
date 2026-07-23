@@ -17,8 +17,9 @@ the issue thread still needs a surgical comment fix instead of a cache clear.
 - Look for `phase: container starting`, `status: cleanup-needed`, empty
   `started_at`, and an expired or implausibly old `budget_remaining`.
 - Check the issue thread first for terminal evidence such as
-  `WARD-OUTCOME: submitted`, `WARD-OUTCOME: merge-ready`, `WARD-OUTCOME:
-  blocked`, or `WARD-OUTCOME: failed`.
+  `WARD-WORKFLOW: submitted`, `WARD-WORKFLOW: merge-ready`,
+  `WARD-WORKFLOW: blocked`, or `WARD-WORKFLOW: failed`. Older
+  `WARD-OUTCOME:` comments remain readable as compatibility input.
 
 ## Find the comment
 

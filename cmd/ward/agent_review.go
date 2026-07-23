@@ -465,7 +465,7 @@ func reviewSessionID() string {
 }
 
 // reportPanel prints the human summary + the machine WARD-REVIEW line the seed keys
-// off, plus a concise review summary for the final WARDED_WORKFLOW comment.
+// off, plus a concise review summary for the final WARD-WORKFLOW comment.
 func (r *Runner) reportPanel(c *cli.Command, res reviewpanel.PanelResult) {
 	if c.Bool("json") {
 		if b, err := json.MarshalIndent(res, "", "  "); err == nil {

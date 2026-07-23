@@ -14,7 +14,7 @@ This page is the durable anchor for launch-time reservations.
 ## Release semantics
 
 - A release-marker comment at or after the latest reservation retracts it.
-- A terminal `WARDED_WORKFLOW` comment (done, a canonical PR URL for PR
+- A terminal `WARD-WORKFLOW:` comment (done, a canonical PR URL for PR
   workflows, a URL-headed reviewed-and-ready PR-and-merge handoff, merge-ready,
   blocked, failed) retracts it the same way, the moment it posts
   ([ward#1149](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1149)).

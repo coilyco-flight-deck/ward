@@ -370,7 +370,7 @@ func TestAgentListKeepsFailedBeforeStartRowsVisibleButExcluded(t *testing.T) {
 	logPath := filepath.Join(dispatchDir, "20260710T101500Z-director-box-coilyco-flight-deck-ward-1035.log")
 	if err := os.WriteFile(logPath, []byte(
 		"ward dispatch broker: director-box requested `ward agent engineer coilyco-flight-deck/ward#1035 --harness codex`\n"+
-			"WARDED_WORKFLOW: dispatch-failed\n"), 0o644); err != nil {
+			"WARD-WORKFLOW: dispatch-failed\n"), 0o644); err != nil {
 		t.Fatalf("write dispatch log: %v", err)
 	}
 
@@ -436,7 +436,7 @@ func TestAgentListPrunesFailedBeforeStartRowAfterSuccessfulDrain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openDispatchArtifact: %v", err)
 	}
-	if _, err := fmt.Fprintln(logf, "WARDED_WORKFLOW: dispatch-failed"); err != nil {
+	if _, err := fmt.Fprintln(logf, "WARD-WORKFLOW: dispatch-failed"); err != nil {
 		t.Fatalf("write dispatch log: %v", err)
 	}
 	if err := logf.Close(); err != nil {
@@ -676,7 +676,7 @@ func TestDispatchLaunchPhaseFromLog(t *testing.T) {
 		},
 		{
 			name: "failed",
-			body: "ward dispatch broker: director requested `ward agent engineer coilyco-flight-deck/ward#1 --harness codex`\nWARDED_WORKFLOW: dispatch-failed\n",
+			body: "ward dispatch broker: director requested `ward agent engineer coilyco-flight-deck/ward#1 --harness codex`\nWARD-WORKFLOW: dispatch-failed\n",
 			want: agentLaunchPhaseFailed,
 		},
 	}

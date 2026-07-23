@@ -119,7 +119,7 @@ func TestGitHubHumanInterventionBlockMirrorsIssueAndPRThreads(t *testing.T) {
 		t.Fatalf("read bodies log: %v", err)
 	}
 	body := string(got)
-	if count := strings.Count(body, "WARDED_WORKFLOW: blocked"); count != 2 {
+	if count := strings.Count(body, "WARD-WORKFLOW: blocked"); count != 2 {
 		t.Fatalf("blocked-comment count = %d, want 2\n%s", count, body)
 	}
 	if !strings.Contains(body, "human comment by @alice") || !strings.Contains(body, "This action is blocked until the feedback is visibly acknowledged.") {

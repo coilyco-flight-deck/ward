@@ -14,9 +14,8 @@ Legacy aliases `direct-main`, `direct-to-main`, `pull-requests`,
 `pull-requests-and-merge`, and `patch-only` are still accepted with warnings.
 `pr` is not accepted.
 
-The machine-readable issue-comment prefix for ward-authored workflow updates is
-`WARDED_WORKFLOW`. Legacy `WARD-*` issue-comment headers still parse on old
-threads, but new PR handoffs emit `WARDED_WORKFLOW: <fully-qualified pull request link>` instead of the old submitted marker. Review-gated `pull-request-and-merge` handoffs carry `director merge authorization: reviewed-and-ready` in the collapsed details so the director can still treat the run as merge-ready.
+The machine-readable issue-comment prefix for ward-authored workflow updates is `WARD-WORKFLOW:`. New PR handoffs emit `WARD-WORKFLOW: <fully-qualified pull request link>`.
+For historical issue threads, parsers also accept the former `WARDED_WORKFLOW:` header and the earlier typed `WARD-OUTCOME:`, `WARD-RESERVATION:`, `WARD-DISPATCH:`, `WARD-QA:`, `WARD-STATUS:`, `WARD-REAP:`, and `WARD-TRIAGE:` headers. Those headers are compatibility input only; new workflow state always uses `WARD-WORKFLOW:`. Review-gated `pull-request-and-merge` handoffs carry `director merge authorization: reviewed-and-ready` in the collapsed details so the director can still treat the run as merge-ready.
 
 ## Review
 

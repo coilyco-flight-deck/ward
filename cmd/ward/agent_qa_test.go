@@ -60,7 +60,7 @@ func TestQAVerdictCommentSurfacesFailure(t *testing.T) {
 		RunIdentity:    "ward-qa-1",
 	}, read)
 	for _, want := range []string{
-		"WARDED_WORKFLOW: qa-failed ❌",
+		"WARD-WORKFLOW: qa-failed ❌",
 		"verdict: fail",
 		"reviewed_sha: abc123",
 		"reviewer_family: internal",
@@ -81,7 +81,7 @@ func TestQAVerdictCommentSurfacesFailure(t *testing.T) {
 
 func TestQAVerdictCommentFallbacksOnMalformedOutput(t *testing.T) {
 	got := qaVerdictComment(modeClaude, qaThoroughness{}, qaFamilyInternal, "inspect the branch", qaLaunchContext{}, "this is not json")
-	if !strings.Contains(got, "WARDED_WORKFLOW: qa-failed ❌") {
+	if !strings.Contains(got, "WARD-WORKFLOW: qa-failed ❌") {
 		t.Fatalf("malformed QA output should surface a failure, got:\n%s", got)
 	}
 	if !strings.Contains(got, "Could not parse") {

@@ -3,7 +3,13 @@ package main
 import "strings"
 
 const (
-	wardedWorkflowMarker = "WARDED_WORKFLOW:"
+	// wardWorkflowMarker is the canonical, grep-friendly first line for every
+	// ward-authored workflow comment. Keep this a literal WARD-<THING>: marker.
+	wardWorkflowMarker = "WARD-WORKFLOW:"
+
+	// legacyWardedWorkflowMarker is parser-only compatibility for old issue
+	// threads; new comments must use the canonical WARD-WORKFLOW marker.
+	legacyWardedWorkflowMarker = "WARDED_WORKFLOW:"
 
 	legacyWardOutcomeMarker     = "WARD-OUTCOME:"
 	legacyWardReservationMarker = "WARD-RESERVATION:"
@@ -14,7 +20,7 @@ const (
 	legacyWardTriageMarker      = "WARD-TRIAGE:"
 )
 
-var wardedWorkflowCommentVariants = []string{
+var wardWorkflowCommentVariants = []string{
 	"reservation-held",      // The run has a reservation and the container is still waiting to start.
 	"reservation-released",  // The reservation is gone and the launch slot is open again.
 	"dispatch-failed",       // The agent launch failed before the run could get underway.
@@ -86,7 +92,8 @@ type backlogOutcome struct {
 type workflowCommentHeaderParser func(string) (workflowCommentHeader, bool)
 
 var workflowCommentHeaderParsers = []workflowCommentHeaderParser{
-	parseWardedWorkflowCommentHeader,
+	parseWardWorkflowCommentHeader,
+	parseLegacyWardedWorkflowCommentHeader,
 	parseLegacyOutcomeWorkflowCommentHeader,
 	parseLegacyReservationWorkflowCommentHeader,
 	parseLegacyDispatchWorkflowCommentHeader,
@@ -96,9 +103,9 @@ var workflowCommentHeaderParsers = []workflowCommentHeaderParser{
 	parseLegacyTriageWorkflowCommentHeader,
 }
 
-// workflowCommentVisible renders the canonical WARDED_WORKFLOW header.
+// workflowCommentVisible renders the canonical WARD-WORKFLOW header.
 func workflowCommentVisible(variant string, detail ...string) string {
-	visible := wardedWorkflowMarker + " " + strings.TrimSpace(variant)
+	visible := wardWorkflowMarker + " " + strings.TrimSpace(variant)
 	if len(detail) > 0 {
 		if s := strings.TrimSpace(detail[0]); s != "" {
 			visible += " " + s
@@ -107,12 +114,20 @@ func workflowCommentVisible(variant string, detail ...string) string {
 	return strings.TrimSpace(visible)
 }
 
-func parseWardedWorkflowCommentHeader(s string) (workflowCommentHeader, bool) {
-	if !strings.HasPrefix(strings.ToUpper(s), wardedWorkflowMarker) {
+func parseWardWorkflowCommentHeader(s string) (workflowCommentHeader, bool) {
+	if !strings.HasPrefix(strings.ToUpper(s), wardWorkflowMarker) {
 		return workflowCommentHeader{}, false
 	}
-	rest := strings.TrimSpace(s[len(wardedWorkflowMarker):])
+	rest := strings.TrimSpace(s[len(wardWorkflowMarker):])
 	return parseWorkflowCommentRest(rest, false)
+}
+
+func parseLegacyWardedWorkflowCommentHeader(s string) (workflowCommentHeader, bool) {
+	if !strings.HasPrefix(strings.ToUpper(s), legacyWardedWorkflowMarker) {
+		return workflowCommentHeader{}, false
+	}
+	rest := strings.TrimSpace(s[len(legacyWardedWorkflowMarker):])
+	return parseWorkflowCommentRest(rest, true)
 }
 
 func parseLegacyOutcomeWorkflowCommentHeader(s string) (workflowCommentHeader, bool) {

@@ -228,7 +228,7 @@ func TestTriageCommentBody(t *testing.T) {
 		nil,
 	)
 	for _, want := range []string{
-		"WARDED_WORKFLOW: triage #7 P0 headless (headless)",
+		"WARD-WORKFLOW: triage #7 P0 headless (headless)",
 		"<details><summary>triage details</summary>",
 		"method: tooling-issue-prioritization",
 		"P0 candidate: yes",

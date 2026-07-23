@@ -74,13 +74,13 @@ func TestDirectorMergeDecision(t *testing.T) {
 			name: "needs-ready-state",
 			pr:   basePR,
 			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "submitted"}, Workflow: string(workflowPullRequestAndMerge), Review: "passed: ok"},
-			want: "linked issue did not finish with WARDED_WORKFLOW: merge-ready",
+			want: "linked issue did not finish with WARD-WORKFLOW: merge-ready",
 		},
 		{
 			name: "done-is-not-merge-ready",
 			pr:   basePR,
 			meta: directorRunMeta{HasOutcome: true, Outcome: backlogOutcome{Status: "done"}, Workflow: string(workflowPullRequestAndMerge), Review: "passed: ok"},
-			want: "linked issue did not finish with WARDED_WORKFLOW: merge-ready",
+			want: "linked issue did not finish with WARD-WORKFLOW: merge-ready",
 		},
 	}
 	for _, tc := range cases {
@@ -108,7 +108,7 @@ func TestDirectorMergeEligibilityBlocksOnHumanFeedback(t *testing.T) {
 			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729/comments":
 			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"body": "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
 				{"body": "this is still missing the actual need", "created_at": "2026-07-09T00:10:00Z", "user": map[string]any{"login": "coilysiren"}},
 			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/729":
@@ -167,7 +167,7 @@ func TestRecordDirectorMergeDoneBlocksOnHumanFeedback(t *testing.T) {
 		updatedAt: now,
 		comments: []issueComment{
 			{
-				Body:      "WARDED_WORKFLOW: done ✅",
+				Body:      "WARD-WORKFLOW: done ✅",
 				CreatedAt: now,
 				User: struct {
 					Login string `json:"login"`
@@ -359,7 +359,7 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 		t.Fatal("comment body should parse as an outcome comment")
 	}
 	urlBody := strings.Join([]string{
-		"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
+		"WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
 		"",
 		"<details><summary>details</summary>",
 		"",
@@ -402,7 +402,7 @@ func TestDirectorRunMetaParsesWorkflowAndReview(t *testing.T) {
 
 func TestDirectorMergeDecisionRejectsSkippedReview(t *testing.T) {
 	body := strings.Join([]string{
-		"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
+		"WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
 		"",
 		"<details><summary>details</summary>",
 		"",
@@ -433,7 +433,7 @@ func TestDirectorMergeDecisionRejectsSkippedReview(t *testing.T) {
 	if allowed {
 		t.Fatal("skipped-review run: want deny, got allow")
 	}
-	if reason != "linked issue did not finish with WARDED_WORKFLOW: merge-ready" {
+	if reason != "linked issue did not finish with WARD-WORKFLOW: merge-ready" {
 		t.Fatalf("skipped-review reason = %q, want merge-ready denial", reason)
 	}
 }
@@ -471,7 +471,7 @@ func TestDirectorMergeEligibilityRequiresMatchingQAVerdict(t *testing.T) {
 			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729/comments":
 			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"body": "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729\n\n<details><summary>details</summary>\n\ndirector merge authorization: reviewed-and-ready\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729\n\n<details><summary>details</summary>\n\ndirector merge authorization: reviewed-and-ready\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
 				{"body": currentQA, "created_at": "2026-07-09T00:05:00Z", "user": map[string]any{"login": "coilyco-ops"}},
 				{"body": staleQA, "created_at": "2026-07-09T00:10:00Z", "user": map[string]any{"login": "coilyco-ops"}},
 			})
@@ -612,7 +612,7 @@ func TestDirectorMergeEligibilityUsesLatestStatusHistoryEntry(t *testing.T) {
 			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729/comments":
 			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"body": "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729\n\n<details><summary>details</summary>\n\ndirector merge authorization: reviewed-and-ready\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729\n\n<details><summary>details</summary>\n\ndirector merge authorization: reviewed-and-ready\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
 				{"body": currentQA, "created_at": "2026-07-09T00:05:00Z", "user": map[string]any{"login": "coilyco-ops"}},
 				{"body": staleQA, "created_at": "2026-07-09T00:10:00Z", "user": map[string]any{"login": "coilyco-ops"}},
 			})
@@ -764,7 +764,7 @@ func directorMergeEligibilityFixtureWithBranchProtection(t *testing.T, headSHA s
 			})
 		case "/api/v1/repos/coilyco-flight-deck/ward/issues/729/comments":
 			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"body": "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729\n\n<details><summary>details</summary>\n\ndirector merge authorization: reviewed-and-ready\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
+				{"body": "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729\n\n<details><summary>details</summary>\n\ndirector merge authorization: reviewed-and-ready\nworkflow: pull-request-and-merge; review summary: passed: all green\n\n</details>", "created_at": "2026-07-09T00:00:00Z", "user": map[string]any{"login": "coilyco-ops"}},
 				{"body": currentQA, "created_at": "2026-07-09T00:05:00Z", "user": map[string]any{"login": "coilyco-ops"}},
 				{"body": staleQA, "created_at": "2026-07-09T00:10:00Z", "user": map[string]any{"login": "coilyco-ops"}},
 			})
@@ -874,13 +874,13 @@ func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
 		UpdatedAt: now.Add(-30 * time.Minute),
 	}
 	active := directorMergeConflictReasonFromComments(pr, nil, now)
-	if !strings.Contains(active, "active worker branch with no WARDED_WORKFLOW yet") || !strings.Contains(active, "30m ago") {
+	if !strings.Contains(active, "active worker branch with no WARD-WORKFLOW yet") || !strings.Contains(active, "30m ago") {
 		t.Fatalf("active reason = %q, want active worker classification", active)
 	}
 
 	pr.UpdatedAt = now.Add(-3 * time.Hour)
 	stale := directorMergeConflictReasonFromComments(pr, nil, now)
-	if !strings.Contains(stale, "stale worker branch with no WARDED_WORKFLOW yet") || !strings.Contains(stale, "3h0m ago") {
+	if !strings.Contains(stale, "stale worker branch with no WARD-WORKFLOW yet") || !strings.Contains(stale, "3h0m ago") {
 		t.Fatalf("stale reason = %q, want stale worker classification", stale)
 	}
 

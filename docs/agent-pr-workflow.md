@@ -39,7 +39,7 @@ See [agent-human-feedback.md](agent-human-feedback.md).
 The status, wait, and log follow-up object is documented in
 [agent-pr-status-object.md](agent-pr-status-object.md).
 
-The `ward agent director merge` composite keeps its stricter thread-driven policy (`WARDED_WORKFLOW`, review, QA verdict); `ward agent pr merge` is the operator-driven single-PR tool under the same status and permission gates.
+The `ward agent director merge` composite keeps its stricter thread-driven policy (`WARD-WORKFLOW:`, review, QA verdict); `ward agent pr merge` is the operator-driven single-PR tool under the same status and permission gates.
 
 The recovery and execution-placement details live in [agent-pr-workflow-recovery.md](agent-pr-workflow-recovery.md).
 

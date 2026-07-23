@@ -83,7 +83,7 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			kind:   backlogKindPullRequest,
 			openPR: true,
 			comments: []issueComment{{
-				Body:      "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/4",
+				Body:      "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/4",
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
 			wantState: directorQueueStateSubmittedPR,
@@ -95,7 +95,7 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 			openPR: true,
 			comments: []issueComment{{
 				Body: strings.Join([]string{
-					"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/5",
+					"WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/5",
 					"",
 					"<details><summary>details</summary>",
 					"",
@@ -221,12 +221,12 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
 			repo + "#4": {{
-				Body:      "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/4",
+				Body:      "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/4",
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
 			repo + "#5": {{
 				Body: strings.Join([]string{
-					"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/5",
+					"WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/5",
 					"",
 					"<details><summary>details</summary>",
 					"",

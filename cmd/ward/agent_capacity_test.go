@@ -521,7 +521,7 @@ func reservationIssueComment(body string, at time.Time) issueComment {
 }
 
 func terminalIssueComment(status string, at time.Time) issueComment {
-	comment := issueComment{Body: "WARDED_WORKFLOW: " + status, CreatedAt: at}
+	comment := issueComment{Body: "WARD-WORKFLOW: " + status, CreatedAt: at}
 	comment.User.Login = "coilyco-ops"
 	return comment
 }

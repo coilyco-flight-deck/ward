@@ -107,7 +107,7 @@ func TestPRWorkflowCloseBlocksOnHumanFeedback(t *testing.T) {
 		prState: "open",
 		comments: []issueComment{
 			{
-				Body:      "WARDED_WORKFLOW: done ✅",
+				Body:      "WARD-WORKFLOW: done ✅",
 				CreatedAt: time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC),
 				User: struct {
 					Login string `json:"login"`

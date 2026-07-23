@@ -30,7 +30,7 @@ ward fails loudly instead of pretending the merge landed.
   session's own credential.
 
 The `ward agent director merge` composite keeps its stricter thread-driven
-policy (`WARDED_WORKFLOW`, review, QA verdict). `ward agent pr merge` is the
+policy (`WARD-WORKFLOW:`, review, QA verdict). `ward agent pr merge` is the
 operator-driven single-PR tool under the same gates.
 
 ## See also

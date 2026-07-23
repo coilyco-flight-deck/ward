@@ -1865,12 +1865,12 @@ func TestCommentReservationConflictDispatch(t *testing.T) {
 	}
 	for _, want := range []string{
 		agentNeedsRedispatchMarker,
-		"WARDED_WORKFLOW: dispatch-deferred",
+		"WARD-WORKFLOW: dispatch-deferred",
 		"reservation-collision details",
 		"Attempted harness: `codex`",
 		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#927 --harness codex`",
 		"Host log: `/tmp/ward/dispatch.log`",
-		"terminal `WARDED_WORKFLOW` outcome supersedes its reservation (ward#1149)",
+		"terminal `WARD-WORKFLOW` outcome supersedes its reservation (ward#1149)",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("conflict comment missing %q\n%s", want, body)

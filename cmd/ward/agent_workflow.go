@@ -34,12 +34,12 @@ const (
 	// directorMergeWorkflowMarker is the PR-body marker the director sweep reads
 	// when deciding whether a ward-owned PR may be merged automatically.
 	directorMergeWorkflowMarker      = "ward.workflow: pull-request-and-merge"
-	pullRequestWorkflowOutcomeMarker = "WARDED_WORKFLOW: <fully-qualified pull request link>"
+	pullRequestWorkflowOutcomeMarker = wardWorkflowMarker + " <fully-qualified pull request link>"
 )
 
 func workflowOutcomeLinkMarker(f forge) string {
 	noun := workflowReviewNoun(f)
-	return "WARDED_WORKFLOW: <fully-qualified " + noun + " link>"
+	return workflowCommentVisible("<fully-qualified " + noun + " link>")
 }
 
 // orDefault collapses the "" zero value onto the default and normalizes legacy
@@ -224,7 +224,7 @@ func pullRequestCIWatchClauseFor(f forge) string {
 	return "After the " + noun + " opens, keep watching its CI/checks and fetch the status/logs if anything " +
 		"fails. Patch the branch, push updates, and repeat until the checks are green or the failure is " +
 		"genuinely blocked. A failing check is not a done state, human feedback on the issue or " + noun + " is " +
-		"blocking until it is visibly acknowledged, and the final `WARDED_WORKFLOW` comment is not allowed until " +
+		"blocking until it is visibly acknowledged, and the final `WARD-WORKFLOW` comment is not allowed until " +
 		"the " + noun + " is green. " + workflowFailureCommentClauseFor(f)
 }
 

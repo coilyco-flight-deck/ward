@@ -180,11 +180,11 @@ func TestUnlandedExtraReposComment(t *testing.T) {
 		{Repo: targetRepo{Owner: "coilyco-flight-deck", Name: "cli-guard"}, NoMain: true, PushErr: "remote: forbidden\nfatal: unable to access"},
 	}
 	got := unlandedExtraReposComment(env, reports)
-	if visible := visibleLinesBeforeDetails(got); visible != "WARDED_WORKFLOW: reopened" {
+	if visible := visibleLinesBeforeDetails(got); visible != "WARD-WORKFLOW: reopened" {
 		t.Fatalf("unlanded grant visible line = %q\n%s", visible, got)
 	}
 	for _, want := range []string{
-		"WARDED_WORKFLOW: reopened",               // the headline undoing the close
+		"WARD-WORKFLOW: reopened",                 // the headline undoing the close
 		"coilyco-flight-deck/ward",                // the issue's own repo, named
 		"coilyco-bridge/agentic-os-kai",           // the un-landed grant
 		"2 local commit(s) never reached",         // the ahead count
@@ -563,10 +563,10 @@ func TestPostLaunchedNoOutcomeComment(t *testing.T) {
 	if fc.unlocked != 1 {
 		t.Fatalf("unlockIssue called %d times, want 1", fc.unlocked)
 	}
-	if visible := visibleLinesBeforeDetails(fc.commented[0]); visible != "WARDED_WORKFLOW: failed ❌" {
+	if visible := visibleLinesBeforeDetails(fc.commented[0]); visible != "WARD-WORKFLOW: failed ❌" {
 		t.Fatalf("visible line = %q\n%s", visible, fc.commented[0])
 	}
-	for _, want := range []string{"found no residual work to salvage", "exited without a `WARDED_WORKFLOW` comment", "engineer-goose-ward-697"} {
+	for _, want := range []string{"found no residual work to salvage", "exited without a `WARD-WORKFLOW` comment", "engineer-goose-ward-697"} {
 		if !strings.Contains(fc.commented[0], want) {
 			t.Errorf("failure comment missing %q\n%s", want, fc.commented[0])
 		}
@@ -581,10 +581,10 @@ func TestReleaseReservationIfTerminalOutcomeComment(t *testing.T) {
 		wantVisible     string
 		wantRunFinished string
 	}{
-		{name: "blocked", body: "WARDED_WORKFLOW: blocked 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARDED_WORKFLOW: reservation-released", wantRunFinished: "WARDED_WORKFLOW: blocked 🛑"},
-		{name: "merge-ready", body: "WARDED_WORKFLOW: merge-ready 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARDED_WORKFLOW: reservation-released", wantRunFinished: "WARDED_WORKFLOW: merge-ready"},
-		{name: "failed", body: "WARDED_WORKFLOW: failed 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARDED_WORKFLOW: reservation-released", wantRunFinished: "WARDED_WORKFLOW: failed ❌"},
-		{name: "submitted url", body: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARDED_WORKFLOW: reservation-released", wantRunFinished: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042"},
+		{name: "blocked", body: "WARD-WORKFLOW: blocked 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARD-WORKFLOW: reservation-released", wantRunFinished: "WARD-WORKFLOW: blocked 🛑"},
+		{name: "merge-ready", body: "WARD-WORKFLOW: merge-ready 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARD-WORKFLOW: reservation-released", wantRunFinished: "WARD-WORKFLOW: merge-ready"},
+		{name: "failed", body: "WARD-WORKFLOW: failed 🛑\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARD-WORKFLOW: reservation-released", wantRunFinished: "WARD-WORKFLOW: failed ❌"},
+		{name: "submitted url", body: "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARD-WORKFLOW: reservation-released", wantRunFinished: "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &fakeTerminalOutcomeTracker{
@@ -633,7 +633,7 @@ func TestReleaseReservationIfSubmittedPRClosedUnmergedCommentsFailure(t *testing
 		fakeTerminalOutcomeTracker: &fakeTerminalOutcomeTracker{
 			comments: []issueComment{
 				{Body: reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(-2*time.Minute), "", nil), CreatedAt: upAt.Add(-2 * time.Minute)},
-				{Body: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
+				{Body: "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
 			},
 			postAt: upAt.Add(2 * time.Minute),
 		},
@@ -658,7 +658,7 @@ func TestReleaseReservationIfSubmittedPRClosedUnmergedCommentsFailure(t *testing
 	if fc.unlocked != 1 {
 		t.Fatalf("unlockIssue called %d times, want 1", fc.unlocked)
 	}
-	if visible := visibleLinesBeforeDetails(fc.commented[0]); visible != "WARDED_WORKFLOW: failed ❌" {
+	if visible := visibleLinesBeforeDetails(fc.commented[0]); visible != "WARD-WORKFLOW: failed ❌" {
 		t.Fatalf("failure visible line = %q\n%s", visible, fc.commented[0])
 	}
 	for _, want := range []string{"closed it without merging", "pr", "engineer-goose-ward-1042"} {
@@ -1899,10 +1899,10 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 	if f.created != 0 {
 		t.Errorf("carried salvage must NOT file a standalone issue, got created=%d", f.created)
 	}
-	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/716" {
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/716" {
 		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
 	}
-	for _, want := range []string{"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/716", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
+	for _, want := range []string{"WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/716", "ward-salvage/ward-abc123", string(reasonConflict), "git fetch", "/pulls/716", "<details><summary>salvage details</summary>"} {
 		if !strings.Contains(f.commentBody, want) {
 			t.Errorf("carried-issue comment missing %q\n---\n%s", want, f.commentBody)
 		}
@@ -1929,7 +1929,7 @@ func TestNotifySalvageCarriedIssueWithoutPullRequestBlocks(t *testing.T) {
 	if err := notifySalvage(t.Context(), f, env, report); err != nil {
 		t.Fatalf("notifySalvage: %v", err)
 	}
-	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARDED_WORKFLOW: blocked 🛑" {
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-WORKFLOW: blocked 🛑" {
 		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
 	}
 	for _, want := range []string{"pull requests are disabled for this repo", "ward-salvage/ward-abc123", string(reasonConflict)} {

@@ -802,7 +802,7 @@ func dispatchLaunchReservationConflictCommentBody(mode containerMode, req dispat
 			"Collision: `%s`\n\n"+
 			"Nothing new is running for this dispatch, and the live run's hold is untouched. "+
 			"Retry: a `ward agent director` heartbeat sweeps this marker and redispatches once the hold "+
-			"releases - the run's terminal `WARDED_WORKFLOW` outcome supersedes its reservation (ward#1149). A manual "+
+			"releases - the run's terminal `WARD-WORKFLOW` outcome supersedes its reservation (ward#1149). A manual "+
 			"retry can pass `--override-reservation` if the collision is genuinely stale.",
 		mode, attempted, logDetail, firstLine(launchErr.Error()))
 	return agentNeedsRedispatchMarker + "\n" +

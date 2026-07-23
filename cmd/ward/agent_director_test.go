@@ -1415,7 +1415,7 @@ func TestParseBacklogOutcome(t *testing.T) {
 		},
 		{
 			name:       "submitted leading line",
-			comments:   []issueComment{{Body: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
+			comments:   []issueComment{{Body: "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729\n\nfelt calm", CreatedAt: at("2026-06-25T10:00:00Z")}},
 			wantStatus: "submitted",
 			wantText:   "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
 			wantPRURL:  "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
@@ -1424,7 +1424,7 @@ func TestParseBacklogOutcome(t *testing.T) {
 		{
 			name: "reviewed pr url leading line",
 			comments: []issueComment{{Body: strings.Join([]string{
-				"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
+				"WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/729",
 				"",
 				"<details><summary>details</summary>",
 				"",

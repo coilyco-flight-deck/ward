@@ -680,7 +680,8 @@ func dispatchLaunchPhaseForReservation(ref agentIssueRef) (phase, status string,
 
 func dispatchLaunchFailedBody(lower string) bool {
 	return strings.Contains(lower, "launch failed") ||
-		strings.Contains(lower, "warded_workflow: dispatch-failed") ||
+		strings.Contains(lower, "ward-workflow: dispatch-failed") ||
+		strings.Contains(lower, "warded_workflow: dispatch-failed") || // historical dispatch log
 		strings.Contains(lower, "ward-dispatch: failed") ||
 		strings.Contains(lower, "pre-flight no-go") ||
 		strings.Contains(lower, "wrong-repo") ||

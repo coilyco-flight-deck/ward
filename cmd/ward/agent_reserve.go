@@ -622,7 +622,7 @@ func warnRemoteReservationLost(label string, ref agentIssueRef, detail string) {
 }
 
 // reservationRetractedAt is the newest timestamp at which the thread retracted
-// a reservation or a terminal WARDED_WORKFLOW outcome (ward#1149, docs).
+// a reservation or a terminal WARD-WORKFLOW outcome (ward#1149, docs).
 func reservationRetractedAt(comments []issueComment) time.Time {
 	var released time.Time
 	for i := range comments {

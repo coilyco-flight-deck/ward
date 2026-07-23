@@ -160,7 +160,7 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(pr, pullRequestWorkflowOutcomeMarker) {
 		t.Errorf("pull-request reflection should end with the PR URL marker, not done\n got: %s", pr)
 	}
-	if strings.Contains(pr, "WARDED_WORKFLOW: done") {
+	if strings.Contains(pr, "WARD-WORKFLOW: done") {
 		t.Errorf("pull-request reflection must not ask the engineer to post done\n got: %s", pr)
 	}
 	if !strings.Contains(pr, "the branch is pushed, the pull request is open, and the required checks are green") {
@@ -205,7 +205,7 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(prMerge, pullRequestWorkflowOutcomeMarker) {
 		t.Errorf("pull-request-and-merge reflection should end with the PR URL marker, not done\n got: %s", prMerge)
 	}
-	if !strings.Contains(prMerge, "the engineer's final visible outcome is `WARDED_WORKFLOW: <fully-qualified pull request link>`") {
+	if !strings.Contains(prMerge, "the engineer's final visible outcome is `WARD-WORKFLOW: <fully-qualified pull request link>`") {
 		t.Errorf("pull-request-and-merge reflection should announce the PR URL outcome before done\n got: %s", prMerge)
 	}
 	if !strings.Contains(prMerge, "director merge authorization: reviewed-and-ready") {
@@ -217,7 +217,7 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(prMerge, "workflow: pull-request-and-merge; review summary: <summary or skip state>") {
 		t.Errorf("pull-request-and-merge reflection should use the canonical workflow token in the machine-readable line\n got: %s", prMerge)
 	}
-	if strings.Contains(prMerge, "WARDED_WORKFLOW: done") {
+	if strings.Contains(prMerge, "WARD-WORKFLOW: done") {
 		t.Errorf("pull-request-and-merge reflection must not ask the engineer to post done\n got: %s", prMerge)
 	}
 	if !strings.Contains(prMerge, "skip the PR comment") {

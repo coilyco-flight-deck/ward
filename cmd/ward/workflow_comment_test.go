@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestWardedWorkflowCommentVariants(t *testing.T) {
+func TestWardWorkflowCommentVariants(t *testing.T) {
 	want := map[string]bool{
 		"reservation-held":      true,
 		"reservation-released":  true,
@@ -32,11 +32,11 @@ func TestWardedWorkflowCommentVariants(t *testing.T) {
 		"reopened":              true,
 		"triage":                true,
 	}
-	if len(wardedWorkflowCommentVariants) != len(want) {
-		t.Fatalf("variant count = %d, want %d", len(wardedWorkflowCommentVariants), len(want))
+	if len(wardWorkflowCommentVariants) != len(want) {
+		t.Fatalf("variant count = %d, want %d", len(wardWorkflowCommentVariants), len(want))
 	}
 	seen := map[string]bool{}
-	for _, v := range wardedWorkflowCommentVariants {
+	for _, v := range wardWorkflowCommentVariants {
 		if v == "" {
 			t.Fatal("variant list contains an empty entry")
 		}
@@ -63,11 +63,12 @@ func TestWorkflowCommentParsingAcceptsLegacyCanonicalAndPRURLHeaders(t *testing.
 		wantURL string
 		wantPR  int
 	}{
-		{name: "legacy", body: "WARD-OUTCOME: merge-ready - review passed", want: "merge-ready"},
-		{name: "canonical", body: "WARDED_WORKFLOW: merge-ready - review passed", want: "merge-ready"},
-		{name: "pr url", body: "WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12", want: "submitted", wantURL: "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12", wantPR: 12},
+		{name: "legacy outcome", body: "WARD-OUTCOME: merge-ready - review passed", want: "merge-ready"},
+		{name: "legacy warded", body: "WARDED_WORKFLOW: merge-ready - review passed", want: "merge-ready"},
+		{name: "canonical", body: "WARD-WORKFLOW: merge-ready - review passed", want: "merge-ready"},
+		{name: "pr url", body: "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12", want: "submitted", wantURL: "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12", wantPR: 12},
 		{name: "pr url reviewed and ready", body: strings.Join([]string{
-			"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12",
+			"WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12",
 			"",
 			"<details><summary>details</summary>",
 			"",
@@ -96,8 +97,8 @@ func TestWorkflowCommentParsingAcceptsLegacyCanonicalAndPRURLHeaders(t *testing.
 
 func TestWorkflowCommentParsingRejectsMalformedPRURL(t *testing.T) {
 	for _, body := range []string{
-		"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/not-a-number",
-		"WARDED_WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12 extra",
+		"WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/not-a-number",
+		"WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/12 extra",
 	} {
 		if outcome, ok := backlogOutcomeOfComment(body); ok {
 			t.Fatalf("backlogOutcomeOfComment(%q) parsed unexpectedly: %+v", body, outcome)

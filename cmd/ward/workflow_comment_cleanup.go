@@ -44,7 +44,11 @@ func transientWorkflowCommentLine(ln string) bool {
 	if s == "" {
 		return false
 	}
-	if header, ok := parseWardedWorkflowCommentHeader(s); ok {
+	if header, ok := parseWardWorkflowCommentHeader(s); ok {
+		_, transient := transientWorkflowCommentCleanupKinds[header.Variant]
+		return transient
+	}
+	if header, ok := parseLegacyWardedWorkflowCommentHeader(s); ok {
 		_, transient := transientWorkflowCommentCleanupKinds[header.Variant]
 		return transient
 	}

@@ -762,7 +762,7 @@ func TestParsePreflightVerdict(t *testing.T) {
 
 func TestPreflightNoGoComment(t *testing.T) {
 	got := preflightNoGoComment(modeClaude, "engineer", "needs human scoping", "The scope is unclear.\nNO-GO: needs human scoping")
-	if visible := visibleLinesBeforeDetails(got); visible != "WARDED_WORKFLOW: pre-flight-no-go 🛑" {
+	if visible := visibleLinesBeforeDetails(got); visible != "WARD-WORKFLOW: pre-flight-no-go 🛑" {
 		t.Fatalf("preflightNoGoComment visible line = %q\n%s", visible, got)
 	}
 	for _, want := range []string{
@@ -906,7 +906,7 @@ func TestBlindfireIssueBody(t *testing.T) {
 func TestPreflightWrongRepoComment(t *testing.T) {
 	filed := agentIssueRef{Owner: "coilyco-bridge", Repo: "coily", Number: 42}
 	got := preflightWrongRepoComment(modeClaude, "engineer", filed, "ops verb", "It's ops.\nWRONG-REPO: coilyco-bridge/coily - ops verb")
-	if visible := visibleLinesBeforeDetails(got); visible != "WARDED_WORKFLOW: pre-flight-wrong-repo 🎯" {
+	if visible := visibleLinesBeforeDetails(got); visible != "WARD-WORKFLOW: pre-flight-wrong-repo 🎯" {
 		t.Fatalf("preflightWrongRepoComment visible line = %q\n%s", visible, got)
 	}
 	for _, want := range []string{

@@ -19,7 +19,7 @@ func TestWardAuthoredCommentNeedsStructuredMarkerByDefault(t *testing.T) {
 		t.Fatalf("plain comment from push user should be treated as human by default")
 	}
 	warded := issueComment{
-		Body: "WARDED_WORKFLOW: done ✅",
+		Body: "WARD-WORKFLOW: done ✅",
 		User: struct {
 			Login string `json:"login"`
 		}{Login: forgeForgejo.gitPushUser()},
@@ -68,7 +68,7 @@ func TestParseBacklogOutcomeBlocksWhenHumanFeedbackIsNewer(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	comments := []issueComment{
 		{
-			Body:      "WARDED_WORKFLOW: done ✅\n\n<details><summary>details</summary>\n\nfinished\n\n</details>",
+			Body:      "WARD-WORKFLOW: done ✅\n\n<details><summary>details</summary>\n\nfinished\n\n</details>",
 			CreatedAt: time.Date(2026, 7, 15, 8, 0, 0, 0, time.UTC),
 			User: struct {
 				Login string `json:"login"`

@@ -3,7 +3,7 @@ doc_goal: Capture the human-feedback gate in one small page so the PR workflow d
 ---
 # ward agent human feedback
 
-Ward treats structured `WARDED_WORKFLOW` comment-family markers as automation by default. Plain comments from the repo owner, the configured push user, or any other author block close/reopen/merge/done until they are visibly acknowledged by a newer ward-authored comment.
+Ward treats structured `WARD-WORKFLOW:` comment-family markers as automation by default. The former `WARDED_WORKFLOW:` and older typed `WARD-*` headers are recognized for historical threads. Plain comments from the repo owner, the configured push user, or any other author block close/reopen/merge/done until they are visibly acknowledged by a newer ward-authored comment.
 
 The host config extension point lives under `~/.ward/config.yaml`:
 

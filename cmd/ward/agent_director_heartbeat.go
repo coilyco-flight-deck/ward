@@ -47,7 +47,7 @@ func (h forgeHealth) String() string {
 // directorBackend is the heartbeat's seam onto the world: the #346 ledger layer, the
 // LLM decision, the dispatch path, and the interactive surface (tests inject a fake).
 type directorBackend interface {
-	// poll reconciles in-flight engineers against reality (reads WARD-OUTCOME).
+	// poll reconciles in-flight engineers against reality (reads WARD-WORKFLOW).
 	poll(ctx context.Context)
 	// refresh rebuilds the ledger from the live backlog; errors are non-fatal here.
 	refresh(ctx context.Context)

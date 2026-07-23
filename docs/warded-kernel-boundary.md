@@ -15,7 +15,7 @@ visible semantics:
 - dispatch broker routing for `ward agent` and `warded`.
 - reservation hold, release, stale-hold cleanup, and conflict logic.
 - repo-working state, including issue ownership and working-cap checks.
-- issue and PR workflow state machine, including `WARDED_WORKFLOW` comment
+- issue and PR workflow state machine, including `WARD-WORKFLOW:` comment
   semantics.
 - hidden container bring-up, teardown, drain, and reaper handoff.
 - log surfaces that explain the run after launch.
