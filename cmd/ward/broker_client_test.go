@@ -172,8 +172,8 @@ func captureRender(t *testing.T, argv []string, target broker.Target, res broker
 	return out
 }
 
-// TestBrokerForgejoActionRouting exercises the full Wrap interception over a live
-// broker: writes route, out-of-tier refuses, reads pass through, unbrokered is direct.
+// TestBrokerForgejoActionRouting exercises interception over a live broker.
+// See docs/broker.md for the read/write routing boundary.
 func TestBrokerForgejoActionRouting(t *testing.T) {
 	fake := &fakeExecutor{result: broker.Result{Number: 99, URL: "https://forge/i/99"}}
 	sock := serveTestBroker(t, fake)
@@ -275,6 +275,23 @@ func TestBrokerForgejoActionRouting(t *testing.T) {
 			t.Error("a brokered read must still run the direct action")
 		}
 	})
+}
+
+func TestReadOnlyForgejoTokenResolverUsesBrokerWithoutEnvironmentCredential(t *testing.T) {
+	sock := serveTestBroker(t, &fakeExecutor{result: broker.Result{Detail: "token-a"}})
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv(envBrokerSocket, sock)
+	t.Setenv("FORGEJO_TOKEN", "")
+	token, err := (&Runner{}).forgejoTokenResolver(context.Background(), forgejoTokenSSMPath)
+	if err != nil {
+		t.Fatalf("forgejoTokenResolver: %v", err)
+	}
+	if token != "token-a" {
+		t.Errorf("brokered token = %q, want broker result", token)
+	}
+	if got := os.Getenv("FORGEJO_TOKEN"); got != "" {
+		t.Errorf("dropped director environment still has FORGEJO_TOKEN=%q", got)
+	}
 }
 
 // serveTestBroker stands up a real broker over a fresh socket and returns its path.

@@ -12,6 +12,7 @@ The container contract is small.
 ## What the contract covers
 
 - `WARD_*` environment variables.
+- the read-only director's broker socket and its credential boundary.
 - bind mounts and read-only surfaces.
 - the permission shape the container itself can use.
 - the per-harness context level.
@@ -26,6 +27,14 @@ The container contract is small.
 The contract is the boundary between the host and the run. If a value needs to
 change the container's behavior, it belongs here or in the launch docs, not in
 the repo's `.ward/ward.yaml`.
+
+## Read-only director credentials
+
+`WARD_READONLY=1` starts the root Forgejo credential broker and exports its
+group-readable `WARD_BROKER_SOCK` to the dropped director. The socket is a
+capability, not a credential: `FORGEJO_TOKEN` is omitted from the director
+process and remains root-only for the broker/reaper. See [broker.md](broker.md)
+for its authorized operations and rotation recovery.
 
 ## What it does not cover
 

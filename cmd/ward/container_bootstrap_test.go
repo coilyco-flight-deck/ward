@@ -5,10 +5,12 @@ import (
 	"context"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -188,6 +190,53 @@ func TestLaunchAgentReportsOOMKilled(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "OOMKilled=true") {
 		t.Fatalf("launchAgent stderr missing OOM breadcrumb:\n%s", stderr)
+	}
+}
+
+func TestSetprivPrefixDropsRawForgejoTokenOnlyForReadOnlyDirector(t *testing.T) {
+	readOnly := setprivPrefix(bootstrapEnv{AgentUID: "1000", AgentGID: "1000", AgentHome: "/home/agent", ReadOnly: true})
+	joined := strings.Join(readOnly, " ")
+	if !strings.Contains(joined, "env -u FORGEJO_TOKEN HOME=/home/agent") {
+		t.Fatalf("read-only prefix = %q, want env to remove FORGEJO_TOKEN", joined)
+	}
+	normal := strings.Join(setprivPrefix(bootstrapEnv{AgentUID: "1000", AgentGID: "1000", AgentHome: "/home/agent"}), " ")
+	if strings.Contains(normal, "FORGEJO_TOKEN") {
+		t.Errorf("non-read-only prefix unexpectedly filters credential: %q", normal)
+	}
+}
+
+func TestReadOnlyBootstrapStartsBrokerAndExportsOnlySocketCapability(t *testing.T) {
+	socket := shortBrokerSocket(t)
+	logPath := filepath.Join(t.TempDir(), "logs", "broker.log")
+	t.Setenv(envBrokerSocket, socket)
+	t.Setenv("WARD_BROKER_LOG", logPath)
+	t.Setenv("FORGEJO_TOKEN", "token-a")
+	orig := credentialBrokerCommand
+	credentialBrokerCommand = func(ctx context.Context, _ string, socket, _ string) *exec.Cmd {
+		ln, err := net.Listen("unix", socket)
+		if err != nil {
+			t.Fatalf("test broker listener: %v", err)
+		}
+		t.Cleanup(func() { _ = ln.Close() })
+		return exec.CommandContext(ctx, "sleep", "60")
+	}
+	t.Cleanup(func() { credentialBrokerCommand = orig })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := (&Runner{}).startCredentialBroker(ctx, bootstrapEnv{ReadOnly: true, AgentGID: strconv.Itoa(os.Getgid())}); err != nil {
+		t.Fatalf("startCredentialBroker: %v", err)
+	}
+	if !isSocket(socket) {
+		t.Fatalf("broker socket %s was not reachable", socket)
+	}
+	if got := os.Getenv(envBrokerSocket); got != socket {
+		t.Errorf("%s = %q, want %q", envBrokerSocket, got, socket)
+	}
+	if _, err := os.Stat(logPath); err != nil {
+		t.Fatalf("broker log was not isolated at %s: %v", logPath, err)
+	}
+	if strings.Contains(strings.Join(setprivPrefix(bootstrapEnv{ReadOnly: true, AgentUID: "1000", AgentGID: "1000", AgentHome: "/home/agent"}), " "), "token-a") {
+		t.Fatal("dropped agent launch argv contains the raw broker token")
 	}
 }
 

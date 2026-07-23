@@ -15,6 +15,7 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/guardfile"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/respfmt"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/http/specverb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/valuesource"
 	kdl "github.com/calico32/kdl-go"
 	"github.com/urfave/cli/v3"
@@ -223,9 +224,17 @@ func forgejoUnavailableHelpError(reason error) error {
 	return fmt.Errorf("ward ops forgejo: unavailable - guardfile runtime failed to mount: %w. Try `ward ops forgejo --help` or `ward ops forgejo describe` once the bundle is mounted", reason)
 }
 
-// forgejoTokenResolver resolves the Forgejo bot token: the baked $FORGEJO_TOKEN in
-// a container (no SSM/aws), else the coilyco-ops bot token from SSM on a host.
+// forgejoTokenResolver asks the root broker first on a read-only director.
+// Ordinary containers and hosts retain the env/SSM path (ward#1521).
 func (r *Runner) forgejoTokenResolver(ctx context.Context, ssmPath string) (string, error) {
+	if os.Getenv("WARD_READONLY") == "1" {
+		if token, ok := r.brokerDispatchSeed(ctx, broker.Target{Owner: brokerOwnerPrefix, Repo: "credential", Number: 1}); ok {
+			return token, nil
+		}
+		if strings.TrimSpace(os.Getenv(envBrokerSocket)) != "" {
+			return "", fmt.Errorf("ward ops forgejo: credential broker is unavailable; recycle the director")
+		}
+	}
 	if tok := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); tok != "" {
 		return tok, nil
 	}

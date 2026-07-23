@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
@@ -24,6 +27,10 @@ const (
 	envBrokerSocket = "WARD_BROKER_SOCK"
 	// defaultBrokerSocket is the socket path when neither flag nor env is set.
 	defaultBrokerSocket = "/run/ward/broker.sock"
+	// defaultBrokerLog is deliberately separate from the shared director TUI.
+	defaultBrokerLog = "/run/ward/broker.log"
+	// brokerStartTimeout bounds bootstrap's wait for a usable socket.
+	brokerStartTimeout = 3 * time.Second
 	// brokerSocketMode is group-readable, not world (root owns, agent gid joins).
 	brokerSocketMode = 0o660
 	// brokerOwnerPrefix mirrors the write guardfile's `restrict owner matches coily*`.
@@ -31,6 +38,10 @@ const (
 	// defaultAgentGID is the dropped agent's gid (entrypoint AGENT_GID default).
 	defaultAgentGID = 1000
 )
+
+var credentialBrokerCommand = func(ctx context.Context, bin, socket, gid string) *exec.Cmd {
+	return exec.CommandContext(ctx, bin, "container", "broker", "--socket", socket, "--group", gid) // #nosec G204 -- current ward binary and bootstrap-derived socket/gid
+}
 
 // containerBrokerCommand is the Hidden `ward container broker` leaf: the daemon
 // the entrypoint runs as root for a read-only explore session (ward#329).
@@ -80,7 +91,9 @@ func runContainerBroker(ctx context.Context, c *cli.Command) error {
 		return err
 	}
 
-	exec := &wardKdlWriteExecutor{token: token}
+	exec := newWardKdlWriteExecutor(token, func(refreshCtx context.Context) (string, error) {
+		return r.ssmValueResolver(refreshCtx, forgejoTokenSSMPath)
+	})
 	srv, err := broker.NewServer(ln, exec, r.writeTierAuthorizer())
 	if err != nil {
 		_ = ln.Close()
@@ -101,6 +114,74 @@ func runContainerBroker(ctx context.Context, c *cli.Command) error {
 	}
 	fmt.Fprintln(os.Stderr, "ward-broker: shut down cleanly")
 	return nil
+}
+
+// startCredentialBroker ports the old root broker lifecycle and fails closed.
+// See docs/broker.md for the read-only credential boundary (ward#1521).
+func (r *Runner) startCredentialBroker(ctx context.Context, e bootstrapEnv) error {
+	if !e.ReadOnly {
+		return nil
+	}
+	if strings.TrimSpace(os.Getenv(credseed.EnvForgejoToken)) == "" {
+		// An unauthenticated read-only surface has no credential to leak and can
+		// still inspect public repos. Do not synthesize a fallback token path.
+		blog("broker skipped: %s is not set; Forgejo operations stay unauthenticated", credseed.EnvForgejoToken)
+		return nil
+	}
+	socket := envOr(envBrokerSocket, defaultBrokerSocket)
+	logPath := envOr("WARD_BROKER_LOG", defaultBrokerLog)
+	if err := os.MkdirAll(filepath.Dir(socket), 0o755); err != nil {
+		return fmt.Errorf("ward container broker: create socket directory: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		return fmt.Errorf("ward container broker: create log directory: %w", err)
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("ward container broker: open daemon log: %w", err)
+	}
+	bin, err := os.Executable()
+	if err != nil {
+		_ = logFile.Close()
+		return fmt.Errorf("ward container broker: resolve ward executable: %w", err)
+	}
+	cmd := credentialBrokerCommand(ctx, bin, socket, e.AgentGID)
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	if err := cmd.Start(); err != nil {
+		_ = logFile.Close()
+		return fmt.Errorf("ward container broker: start daemon: %w", err)
+	}
+	// Cmd.Wait owns process cleanup; the file stays open until the daemon exits.
+	go func() {
+		_ = cmd.Wait()
+		_ = logFile.Close()
+	}()
+	deadline := time.Now().Add(brokerStartTimeout)
+	for time.Now().Before(deadline) {
+		if brokerSocketReachable(socket) {
+			if err := os.Setenv(envBrokerSocket, socket); err != nil {
+				return fmt.Errorf("ward container broker: export socket: %w", err)
+			}
+			blog("broker ready: exported %s=%s; daemon log at %s", envBrokerSocket, socket, logPath)
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	_ = cmd.Process.Kill()
+	return fmt.Errorf("ward container broker: socket did not become ready within %s; see %s", brokerStartTimeout, logPath)
+}
+
+func brokerSocketReachable(socket string) bool {
+	if !isSocket(socket) {
+		return false
+	}
+	conn, err := net.DialTimeout("unix", socket, 100*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // newBrokerListener opens the unix socket at path and permissions it group-

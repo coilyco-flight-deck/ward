@@ -496,10 +496,15 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
 	r.chownAgentTree(ctx, e, work)
 	if e.ReadOnly {
-		// Read-only surface: scope push off this clone but keep the dispatch token +
-		// socket so it can commission sibling runs and reap stale ones (ward#293, ward#315).
+		// Read-only surface: hand Forgejo access to the root-held broker pre-drop.
+		// setprivPrefix removes the raw token from the dropped process (ward#1521).
 		r.makeReadOnlyTree(work)
 		r.revokePushCredential(ctx)
+		if berr := r.startCredentialBroker(ctx, e); berr != nil {
+			blog("fatal: %v", berr)
+			writeGateFailure("broker", berr.Error())
+			return berr
+		}
 		r.grantDockerSocketAccess(ctx, e)
 	} else if cerr := r.ensureGitCredReadable(e); cerr != nil {
 		// Re-assert the credential perms git's `store` helper clobbered on the clones,
@@ -745,12 +750,12 @@ func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 	_ = os.Chmod(forgejoGitCredentialsPath, 0o640)
 }
 
-// revokePushCredential scopes the revoke to push-to-this-clone: it drops the git push
-// wiring but keeps FORGEJO_TOKEN for dispatch (ward#315). See agent-surface.md.
+// revokePushCredential drops this clone's push wiring; root retains its token.
+// setprivPrefix removes it from the dropped read-only agent (ward#1521).
 func (r *Runner) revokePushCredential(ctx context.Context) {
 	_ = os.Remove(forgejoGitCredentialsPath)
 	_ = r.Runner.Exec(ctx, "git", "config", "--system", "--unset-all", "credential.helper")
-	blog("read-only session: dropped this clone's push wiring; FORGEJO_TOKEN kept for dispatch-only (file/launch, no push; ward#315)")
+	blog("read-only session: dropped this clone's push wiring; Forgejo access is brokered and the dropped agent receives no FORGEJO_TOKEN (ward#1521)")
 }
 
 // grantDockerSocketAccess lets the dropped agent reach the mounted socket.
@@ -1300,10 +1305,11 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
 
 **How this is wired** (you do not set any of it up - it is ready):
 
-- A ` + "`FORGEJO_TOKEN`" + ` (the coilyco-ops bot's) is present, so ` + "`ward ops forgejo ...`" + ` and
-  the dispatcher authenticate out of the box. The token is the bot's full credential,
-  so the no-push rule below is a convention you keep, not yet a credential boundary
-  (a dispatch-only token is tracked in ward#318).
+- Forgejo access is brokered over ` + "`$WARD_BROKER_SOCK`" + `. The root bootstrap holds and
+  refreshes the bot credential; this dropped agent does **not** receive ` + "`FORGEJO_TOKEN`" + `.
+  Use the normal ` + "`ward ops forgejo ...`" + ` and dispatch commands; never attempt to retrieve,
+  print, or inject a token. If the broker reports an unrecoverable credential refresh, exit so the
+  director heartbeat can recycle this surface.
 - **PR-workflow management is native ward, not specgen** (ward#1067): ` + "`ward agent pr status <owner/repo#N>`" + `
   reads one PR head's combined CI status, ` + "`ward agent pr close <owner/repo#N> --reason TEXT`" + ` closes
   an eligible PR with explicit intent, ` + "`ward agent pr reopen <owner/repo#N>`" + ` reopens a
@@ -1674,10 +1680,16 @@ func (r *Runner) runGooseCompletionWatch(ctx context.Context, work string, launc
 // setprivPrefix builds the bash launch prefix: drop to the agent uid/gid with
 // init-groups and pin HOME (`setpriv ... env HOME=<home>`).
 func setprivPrefix(e bootstrapEnv) []string {
-	return []string{
+	prefix := []string{
 		"setpriv", "--reuid=" + e.AgentUID, "--regid=" + e.AgentGID, "--init-groups",
-		"env", "HOME=" + e.AgentHome,
+		"env",
 	}
+	if e.ReadOnly {
+		// Keep the root bootstrap/reaper environment intact, but never inherit the
+		// raw bot token into the dropped director process.
+		prefix = append(prefix, "-u", "FORGEJO_TOKEN")
+	}
+	return append(prefix, "HOME="+e.AgentHome)
 }
 
 // chownAgentTree ports the launch-time chown: hand the work tree + agent config

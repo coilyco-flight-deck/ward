@@ -43,6 +43,49 @@ func TestExecutorFileIssueHTTP(t *testing.T) {
 	}
 }
 
+func TestExecutorRefreshesRootCredentialAfterForgejo401(t *testing.T) {
+	var gotAuth []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = append(gotAuth, r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") == "token token-a" {
+			http.Error(w, "access token does not exist", http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"number": 42}`))
+	}))
+	defer srv.Close()
+
+	refreshes := 0
+	ex := newWardKdlWriteExecutor("token-a", func(context.Context) (string, error) {
+		refreshes++
+		return "token-b", nil
+	})
+	ex.baseURL = srv.URL
+	if _, err := ex.FileIssue(context.Background(), broker.Target{Owner: "coilyco", Repo: "ward"}, "title", "body"); err != nil {
+		t.Fatalf("FileIssue after refresh: %v", err)
+	}
+	if refreshes != 1 {
+		t.Errorf("credential refreshes = %d, want 1", refreshes)
+	}
+	if got, want := gotAuth, []string{"token token-a", "token token-b"}; len(got) != len(want) {
+		t.Errorf("auth attempts = %q, want %q", got, want)
+	} else if got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("auth attempts = %q, want %q", got, want)
+	}
+}
+
+func TestExecutorDispatchRefreshesCurrentRootCredential(t *testing.T) {
+	ex := newWardKdlWriteExecutor("token-a", func(context.Context) (string, error) { return "token-b", nil })
+	res, err := ex.Dispatch(context.Background(), broker.Target{Owner: "coilyco", Repo: "ward", Number: 1})
+	if err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if res.Detail != "token-b" {
+		t.Errorf("dispatch seed = %q, want refreshed token", res.Detail)
+	}
+}
+
 func TestExecutorEditIssueOmitsEmptyFields(t *testing.T) {
 	var gotBody map[string]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

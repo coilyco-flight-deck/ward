@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
@@ -20,10 +21,46 @@ import (
 // wardKdlWriteExecutor is the broker.Executor: it mutates Forgejo through ward's
 // typed core adapter, holding the bot token in memory (docs/broker.md).
 type wardKdlWriteExecutor struct {
-	// token is the root-held forgejo bot credential, seeded into FORGEJO_TOKEN.
+	// token is retained for test fixtures and one-shot direct construction. The
+	// production daemon always installs credential instead.
 	token string
+	// credential is root-held only and refreshed after an authentication rejection.
+	credential *brokerCredential
 	// baseURL is test-only; production uses forgejoBaseURL.
 	baseURL string
+}
+
+type brokerCredential struct {
+	mu      sync.RWMutex
+	token   string
+	refresh func(context.Context) (string, error)
+}
+
+func newWardKdlWriteExecutor(token string, refresh func(context.Context) (string, error)) *wardKdlWriteExecutor {
+	return &wardKdlWriteExecutor{credential: &brokerCredential{token: token, refresh: refresh}}
+}
+
+func (c *brokerCredential) current() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.token
+}
+
+func (c *brokerCredential) refreshToken(ctx context.Context) error {
+	if c == nil || c.refresh == nil {
+		return fmt.Errorf("no root credential refresh source is configured")
+	}
+	token, err := c.refresh(ctx)
+	if err != nil {
+		return err
+	}
+	if token = strings.TrimSpace(token); token == "" {
+		return fmt.Errorf("credential refresh returned an empty token")
+	}
+	c.mu.Lock()
+	c.token = token
+	c.mu.Unlock()
+	return nil
 }
 
 func (e *wardKdlWriteExecutor) client() *forgejoClient {
@@ -31,50 +68,73 @@ func (e *wardKdlWriteExecutor) client() *forgejoClient {
 	if baseURL == "" {
 		baseURL = forgejoBaseURL
 	}
-	return &forgejoClient{token: e.token, baseURL: baseURL}
+	token := e.token
+	if e.credential != nil {
+		token = e.credential.current()
+	}
+	return &forgejoClient{token: token, baseURL: baseURL}
+}
+
+// withCredentialRetry retries once after Forgejo rejects the root-held token.
+// The root broker resolves replacement credentials (ward#1521).
+func (e *wardKdlWriteExecutor) withCredentialRetry(ctx context.Context, action func(*forgejoClient) (broker.Result, error)) (broker.Result, error) {
+	result, err := action(e.client())
+	if err == nil || !isForgejoTokenRejected(err) || e.credential == nil {
+		return result, err
+	}
+	if rerr := e.credential.refreshToken(ctx); rerr != nil {
+		return broker.Result{}, fmt.Errorf("broker credential was rejected and root refresh failed; recycle the director: %w", rerr)
+	}
+	return action(e.client())
+}
+
+func isForgejoTokenRejected(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "401") && (strings.Contains(msg, "token") || strings.Contains(msg, "unauthorized"))
 }
 
 // FileIssue files a new issue under target; the JSON projection yields the
 // forge-assigned number + html_url for the broker.Result.
 func (e *wardKdlWriteExecutor) FileIssue(ctx context.Context, target broker.Target, title, body string) (broker.Result, error) {
-	out, err := e.client().doJSON(ctx, "POST",
-		[]string{"repos", target.Owner, target.Repo, "issues"}, nil,
-		map[string]string{"title": title, "body": body}, true, nil)
-	if err != nil {
-		return broker.Result{}, fmt.Errorf("broker: create issue %s/%s: %w", target.Owner, target.Repo, err)
-	}
-	return parseIssueResult(out), nil
+	return e.withCredentialRetry(ctx, func(client *forgejoClient) (broker.Result, error) {
+		out, err := client.doJSON(ctx, "POST", []string{"repos", target.Owner, target.Repo, "issues"}, nil, map[string]string{"title": title, "body": body}, true, nil)
+		if err != nil {
+			return broker.Result{}, fmt.Errorf("broker: create issue %s/%s: %w", target.Owner, target.Repo, err)
+		}
+		return parseIssueResult(out), nil
+	})
 }
 
 // EditIssue edits target's issue; an empty title/body/state leaves that field
 // untouched, per the broker.Executor contract.
 func (e *wardKdlWriteExecutor) EditIssue(ctx context.Context, target broker.Target, title, body, state string) (broker.Result, error) {
-	payload := map[string]string{}
-	if title != "" {
-		payload["title"] = title
-	}
-	if body != "" {
-		payload["body"] = body
-	}
-	if state != "" {
-		payload["state"] = state
-	}
-	segments, err := e.editTargetSegments(ctx, target)
-	if err != nil {
-		return broker.Result{}, err
-	}
-	out, err := e.client().doJSON(ctx, http.MethodPatch, segments, nil, payload, true, nil)
-	if err != nil {
-		return broker.Result{}, fmt.Errorf("broker: edit issue %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
-	}
-	return parseIssueResult(out), nil
+	return e.withCredentialRetry(ctx, func(client *forgejoClient) (broker.Result, error) {
+		payload := map[string]string{}
+		if title != "" {
+			payload["title"] = title
+		}
+		if body != "" {
+			payload["body"] = body
+		}
+		if state != "" {
+			payload["state"] = state
+		}
+		segments, err := e.editTargetSegmentsWith(ctx, client, target)
+		if err != nil {
+			return broker.Result{}, err
+		}
+		out, err := client.doJSON(ctx, http.MethodPatch, segments, nil, payload, true, nil)
+		if err != nil {
+			return broker.Result{}, fmt.Errorf("broker: edit issue %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
+		}
+		return parseIssueResult(out), nil
+	})
 }
 
-// editTargetSegments resolves whether the target number is an issue or a PR so
-// the broker can reach Forgejo's native endpoint for both without changing the wire op.
-func (e *wardKdlWriteExecutor) editTargetSegments(ctx context.Context, target broker.Target) ([]string, error) {
+// editTargetSegmentsWith selects the native issue or pull-request endpoint.
+func (e *wardKdlWriteExecutor) editTargetSegmentsWith(ctx context.Context, client *forgejoClient, target broker.Target) ([]string, error) {
 	var raw forgejoIssueRaw
-	if _, err := e.client().doJSON(ctx, http.MethodGet, []string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number)}, nil, nil, true, &raw); err != nil {
+	if _, err := client.doJSON(ctx, http.MethodGet, []string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number)}, nil, nil, true, &raw); err != nil {
 		return nil, fmt.Errorf("broker: detect issue type %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
 	}
 	if raw.PullRequest != nil {
@@ -85,60 +145,68 @@ func (e *wardKdlWriteExecutor) editTargetSegments(ctx context.Context, target br
 
 // CommentIssue posts body via Forgejo's issue-comment endpoint.
 func (e *wardKdlWriteExecutor) CommentIssue(ctx context.Context, target broker.Target, body string) (broker.Result, error) {
-	out, err := e.client().doJSON(ctx, "POST",
-		[]string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number), "comments"}, nil,
-		map[string]string{"body": body}, true, nil)
-	if err != nil {
-		return broker.Result{}, fmt.Errorf("broker: comment issue %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
-	}
-	res := parseCommentResult(out)
-	if res.Number == 0 {
-		res.Number = target.Number
-	}
-	return res, nil
+	return e.withCredentialRetry(ctx, func(client *forgejoClient) (broker.Result, error) {
+		out, err := client.doJSON(ctx, "POST", []string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number), "comments"}, nil, map[string]string{"body": body}, true, nil)
+		if err != nil {
+			return broker.Result{}, fmt.Errorf("broker: comment issue %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
+		}
+		res := parseCommentResult(out)
+		if res.Number == 0 {
+			res.Number = target.Number
+		}
+		return res, nil
+	})
 }
 
 // LabelIssue mutates target issue's label membership by mode through Forgejo.
 // cli-guard's labelInvariants already gated it fail-closed.
 func (e *wardKdlWriteExecutor) LabelIssue(ctx context.Context, target broker.Target, mode string, labels []string) (broker.Result, error) {
-	cl := e.client()
-	segments := []string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number), "labels"}
-	var out []byte
-	var err error
-	switch mode {
-	case broker.LabelAdd:
-		out, err = cl.doJSON(ctx, "POST", segments, nil, map[string][]string{"labels": labels}, true, nil)
-	case broker.LabelSet:
-		out, err = cl.doJSON(ctx, "PUT", segments, nil, map[string][]string{"labels": labels}, true, nil)
-	case broker.LabelRemove:
-		for _, label := range labels {
-			out, err = cl.doJSON(ctx, "DELETE", append(segments, label), nil, nil, true, nil)
-			if err != nil {
-				break
+	return e.withCredentialRetry(ctx, func(cl *forgejoClient) (broker.Result, error) {
+		segments := []string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number), "labels"}
+		var out []byte
+		var err error
+		switch mode {
+		case broker.LabelAdd:
+			out, err = cl.doJSON(ctx, "POST", segments, nil, map[string][]string{"labels": labels}, true, nil)
+		case broker.LabelSet:
+			out, err = cl.doJSON(ctx, "PUT", segments, nil, map[string][]string{"labels": labels}, true, nil)
+		case broker.LabelRemove:
+			for _, label := range labels {
+				out, err = cl.doJSON(ctx, "DELETE", append(segments, label), nil, nil, true, nil)
+				if err != nil {
+					break
+				}
 			}
+		default:
+			return broker.Result{}, fmt.Errorf("broker: unsupported label mode %q", mode)
 		}
-	default:
-		return broker.Result{}, fmt.Errorf("broker: unsupported label mode %q", mode)
-	}
-	if err != nil {
-		return broker.Result{}, fmt.Errorf("broker: label issue %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
-	}
-	// The label leaf returns the issue's label array, not an {number} object, so
-	// parseIssueResult falls to Detail; reuse the target number for the rendered ref.
-	res := parseIssueResult(out)
-	if res.Number == 0 {
-		res.Number = target.Number
-	}
-	return res, nil
+		if err != nil {
+			return broker.Result{}, fmt.Errorf("broker: label issue %s/%s#%d: %w", target.Owner, target.Repo, target.Number, err)
+		}
+		res := parseIssueResult(out)
+		if res.Number == 0 {
+			res.Number = target.Number
+		}
+		return res, nil
+	})
 }
 
-// Dispatch vends the seed for target - the root-held forge token on Result.Detail,
-// so a `warded #N` seeds its child env-file broker-side (ward#334; docs/broker.md).
-func (e *wardKdlWriteExecutor) Dispatch(_ context.Context, _ broker.Target) (broker.Result, error) {
-	if e.token == "" {
+// Dispatch refreshes the root-held credential before returning an in-process seed.
+// This avoids stale-token 401s on brokered director reads (ward#1521).
+func (e *wardKdlWriteExecutor) Dispatch(ctx context.Context, _ broker.Target) (broker.Result, error) {
+	if e.credential != nil {
+		if err := e.credential.refreshToken(ctx); err != nil {
+			return broker.Result{}, fmt.Errorf("broker credential refresh failed; recycle the director: %w", err)
+		}
+	}
+	token := e.token
+	if e.credential != nil {
+		token = e.credential.current()
+	}
+	if token == "" {
 		return broker.Result{}, fmt.Errorf("broker: dispatch seed unavailable: no %s held", credseed.EnvForgejoToken)
 	}
-	return broker.Result{Detail: e.token}, nil
+	return broker.Result{Detail: token}, nil
 }
 
 // parseCommentResult lifts the html_url from the `issue comment` shadow's

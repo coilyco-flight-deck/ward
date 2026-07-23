@@ -18,7 +18,7 @@ var rawForgejoTokenReads = []string{
 // Keep it in lockstep with docs/forgejo-token-audit.md (ward#239).
 var rawForgejoTokenSites = map[string]string{
 	// Resolver chokepoints - the sanctioned path every forge consumer funnels through.
-	"ops.go":       "forgejoTokenResolver: the ward ops forgejo auth provider (env, else SSM)",
+	"ops.go":       "forgejoTokenResolver: the ward ops forgejo auth provider (director broker, else env/SSM)",
 	"container.go": "resolveForgejoToken: host->container seed, broker-first then env/SSM",
 	// Root-only plumbing - runs outside the dropped-agent boundary.
 	"broker.go":              "the root daemon that holds the token and serves the write tier",
