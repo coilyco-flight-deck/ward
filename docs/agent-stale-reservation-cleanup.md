@@ -24,13 +24,13 @@ the issue thread still needs a surgical comment fix instead of a cache clear.
 ## Find the comment
 
 ```bash
-ward ops forgejo issue-comment list <owner> <repo> <issue> --query '[?contains(body, `"ward-agent-reservation"`)].{id:id,created_at:created_at}' --output json
+aguard ops forgejo issue-comment list <owner> <repo> <issue> --query '[?contains(body, `"ward-agent-reservation"`)].{id:id,created_at:created_at}' --output json
 ```
 
 ## Clear it
 
 ```bash
-ward ops forgejo issue-comment delete <owner> <repo> <comment-id>
+aguard ops forgejo issue-comment delete <owner> <repo> <comment-id>
 ```
 
 - Delete only the targeted reservation comment.

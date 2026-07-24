@@ -87,14 +87,14 @@ func TestAgentsListJSONMatchesEmbeddedFleet(t *testing.T) {
 	}
 }
 
-func TestAgentsListJSONIgnoresSelectedBundleDefaults(t *testing.T) {
+func TestAgentsListJSONIgnoresOperatorBundleDefaults(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+writeSelectedBundleFixture(t))
 	var got agentsRosterJSON
 	if err := json.Unmarshal([]byte(runAgentsList(t, "--json")), &got); err != nil {
 		t.Fatalf("emitted --json is not valid JSON: %v", err)
 	}
-	if got.Defaults.Agent != string(defaultAgentMode()) {
-		t.Fatalf("selected bundle default agent = %q, want baked %q", got.Defaults.Agent, defaultAgentMode())
+	if got.Defaults.Agent != string(modeClaude) {
+		t.Fatalf("operator bundle default agent = %q, want baked %q", got.Defaults.Agent, modeClaude)
 	}
 }
 
@@ -107,36 +107,5 @@ func TestAgentsListTableDefault(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(out), []byte("ward fleet roster")) {
 		t.Errorf("table output missing header: %q", out)
-	}
-}
-
-// TestAgentsListSurvivesExecMount is the collision-win invariant: mounting the
-// launchers onto the hand-written `agents` group leaves `list` in place beside them.
-func TestAgentsListSurvivesExecMount(t *testing.T) {
-	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
-	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
-	root := &cli.Command{
-		Name: "ward",
-		Commands: []*cli.Command{
-			{Name: "git"},
-			{Name: "ops", Commands: []*cli.Command{{Name: "forgejo"}}},
-			agentsCommand(),
-		},
-	}
-	if err := mountWardKdlExec(root, leanRunner()); err != nil {
-		t.Fatalf("mountWardKdlExec: %v", err)
-	}
-	agents := commandNamed(root.Commands, "agents")
-	if agents == nil {
-		t.Fatalf("agents group vanished; got %v", commandNames(root.Commands))
-	}
-	if commandNamed(agents.Commands, "list") == nil {
-		t.Errorf("hand-written `list` leaf clobbered by the exec mount; got %v", commandNames(agents.Commands))
-	}
-	// The launchers still graft onto the same group beside `list`.
-	for _, want := range []string{"claude", "codex"} {
-		if commandNamed(agents.Commands, want) == nil {
-			t.Errorf("exec launcher %q missing from the shared agents group; got %v", want, commandNames(agents.Commands))
-		}
 	}
 }

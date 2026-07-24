@@ -259,8 +259,8 @@ func TestDirectorDispatchQuietsSeedConsole(t *testing.T) {
 }
 
 // TestBacklogPrintDirectorPlanIncludesCLIConfig covers the print path's explicit
-// CLI/config summary and the defaults that previously vanished from the launch plan.
-func TestBacklogPrintDirectorPlanIncludesCLIConfig(t *testing.T) {
+// CLI summary and the defaults that previously vanished from the launch plan.
+func TestBacklogPrintDirectorPlanUsesBakedPolicy(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+t.TempDir())
 
 	var out bytes.Buffer
@@ -287,7 +287,7 @@ func TestBacklogPrintDirectorPlanIncludesCLIConfig(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
-		"config source:   baked native control plane",
+		"config source:   baked native policy",
 		"limit:           17",
 		"max-parallel:    4",
 		"poll-interval:   45s",
@@ -1101,7 +1101,7 @@ func TestIssueScopedDirectorRefreshStaysOnOneIssue(t *testing.T) {
 	}
 }
 
-func TestDirectorScopeSkipsBurndownReposBeforeDispatch(t *testing.T) {
+func TestDirectorScopeIgnoresOperatorBundleBurndownRules(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("WARD_CONFIG_REF", "file://"+t.TempDir())
 
@@ -1173,13 +1173,10 @@ func TestDirectorScopeSkipsBurndownReposBeforeDispatch(t *testing.T) {
 	}
 
 	if want := []string{"coilyco-flight-deck/ward", "coilyco-flight-deck/infrastructure", "coilyco-flight-deck/agentic-os"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("filtered scope = %v, want %v", got, want)
+		t.Fatalf("scope = %v, want baked-policy %v", got, want)
 	}
 	if strings.Contains(string(logs), "burndown: skipping") {
-		t.Fatalf("stderr %q unexpectedly applied an edge-bundle burndown filter", string(logs))
-	}
-	if strings.Contains(string(logs), "coilyco-bridge/deploy") {
-		t.Fatalf("stderr %q unexpectedly mentioned the unrelated repo", string(logs))
+		t.Fatalf("stderr %q applied an ignored operator bundle burndown rule", string(logs))
 	}
 }
 

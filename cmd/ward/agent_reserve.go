@@ -1029,7 +1029,7 @@ func gateRecovery(gate string) (label, recovery string) {
 			"Inspect the codex config/auth path in the container log, correct it, then re-dispatch."
 	case "model-config":
 		return "model-config pre-launch gate",
-			"Set a compatible WARD_* model value or pass the matching --config override, then re-dispatch."
+			"Update the model environment or launch flag, then re-dispatch."
 	case "bootstrap":
 		return "container bootstrap (ward install / clone / credential setup)",
 			"Read the container log for the failing bootstrap step, resolve it, then re-dispatch."

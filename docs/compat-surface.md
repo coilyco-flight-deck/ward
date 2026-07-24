@@ -14,7 +14,7 @@ States mean:
 
 ## Git platforms / forges
 
-- Forgejo - shipped. `cmd/ward/forgejo_ops.go`, `docs/ops-forgejo.md`.
+- Forgejo - shipped for Ward's native issue and PR control plane. `cmd/ward/forgejo_ops.go`.
 - GitHub - shipped for the issue-thread control plane. `cmd/ward/github_ops.go`.
   PR creation, the Forgejo-native PR workflow, PR-status merge gate, rerun,
   and open-PR backpressure remain Forgejo-only until GitHub grows matching
@@ -24,7 +24,7 @@ States mean:
 ## Issue trackers
 
 - Forgejo, GitHub, Shortcut - shipped. `cmd/ward/forgejo_ops.go`, `cmd/ward/github_ops.go`, `cmd/ward/shortcut_ops.go`.
-- Trello - not a ward tracker provider. `docs/ward-kdl-surface.md`.
+- Trello - not a Ward tracker provider.
 - Jira, Linear - not a ward provider.
 
 ## Container runtimes
@@ -35,17 +35,16 @@ States mean:
 ## Agent harnesses
 
 - Claude, Codex, Goose, Opencode - shipped. `docs/agent-harnesses.md`, `docs/agent-claude.md`, `docs/agent-codex.md`, `docs/agent-goose.md`, `docs/agent-opencode.md`.
-- Aider - shipped as a ward-kdl launcher. `docs/ward-kdl-surface.md`.
+- Aider - not a Ward harness.
 - Ollama - partial backend, not a harness. `docs/agent-harnesses.md`, `docs/agent-goose.md`, `docs/agent-opencode.md`.
 
-## Guarded ops providers authored through ward-kdl
+## AOS operator providers
 
-- Forgejo, Tailscale, Trello, GlitchTip, SigNoz - shipped spec-driven ops. `docs/ward-kdl.md`, `docs/ward-kdl-surface.md`, `docs/ops-forgejo.md`.
-- AWS, kubectl, Docker, agents, pkg - shipped exec-dialect ops. `docs/ward-kdl-surface.md`, `docs/ward-kdl-in-ward.md`.
+- Forgejo, Actions, AWS, kubectl, and Tailscale belong to `aguard ops` in the current AOS image. They are not Ward commands.
 
 ## Config and auth sources
 
-- `WARD_CONFIG_REF` - shipped. `docs/config-source.md`, `cmd/ward/configsource.go`, `cmd/ward/configref.go`.
+- Ward native policy is baked into the release. Aguard owns its own operator-spec configuration.
 - `~/.ward/fleet.local.kdl` - shipped operator-local overlay. `cmd/ward/fleetlocal.go`.
 - `WARD_GITHUB_TOKEN_SOURCE`, `env`, `gh`, `app` - shipped GitHub token path. `cmd/ward/forge.go`, `cmd/ward/github_app.go`.
 - `SHORTCUT_API_TOKEN`, `SSM` - shipped operator input and backing store. `cmd/ward/shortcut_ops.go`, `cmd/ward/container.go`, `cmd/ward/forgejo_ops.go`.

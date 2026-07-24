@@ -207,59 +207,6 @@ func TestGetPullRequestMergeabilityReportsNotFoundWithoutRaw404(t *testing.T) {
 	}
 }
 
-// TestForgejoGraftInventory is the ward#407 removal guardrail: every behavior the
-// four buildForgejoOps grafts must re-home is asserted present on the built tree.
-func TestForgejoGraftInventory(t *testing.T) {
-	dir := writeBundleFixture(t)
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	forgejo, err := buildForgejoOps()
-	if err != nil {
-		t.Fatalf("buildForgejoOps: %v", err)
-	}
-	issue := subCommandNamed(forgejo, "issue")
-	if issue == nil {
-		t.Fatal("forgejo group has no `issue` subtree")
-	}
-
-	// Graft 1 (overrideForgejoViewIssue): the lean `issue view` action.
-	if subCommandNamed(issue, "view") == nil {
-		t.Error("graft 1 gone: `issue view` leaf absent")
-	}
-	// Graft 2 (overrideForgejoCreateIssue): the --quiet machine-output flag.
-	if create := subCommandNamed(issue, "create"); create == nil {
-		t.Error("graft 2: `issue create` leaf absent")
-	} else if !hasFlagNamed(create, flagQuiet) {
-		t.Errorf("graft 2 gone: `issue create` no longer accepts --%s", flagQuiet)
-	}
-	// Graft 3 (overrideForgejoCommentIssue): --body-file re-added onto the shadow.
-	if comment := subCommandNamed(issue, "comment"); comment == nil {
-		t.Error("graft 3: `issue comment` leaf absent")
-	} else if !hasFlagNamed(comment, flagBodyFile) {
-		t.Errorf("graft 3 gone: `issue comment` no longer accepts --%s", flagBodyFile)
-	}
-	pr := subCommandNamed(forgejo, "pr")
-	if pr == nil {
-		t.Fatal("forgejo group has no `pr` subtree")
-	}
-	if subCommandNamed(pr, "edit") == nil {
-		t.Error("pr edit leaf absent")
-	}
-	actions := subCommandNamed(forgejo, "actions")
-	if actions == nil {
-		t.Fatal("graft 4: `actions` group absent")
-	}
-	if logs := subCommandNamed(actions, "logs"); logs == nil {
-		t.Error("graft 4 gone: `actions logs` leaf absent")
-	} else {
-		if !strings.Contains(logs.Usage, "/repos/{owner}/{repo}/actions/runs/{run}/jobs/{job}/attempt/{attempt}/logs") {
-			t.Errorf("actions logs usage = %q, want HTTP path shape", logs.Usage)
-		}
-		if !strings.Contains(logs.Description, "raw body") {
-			t.Errorf("actions logs description = %q, want raw-body fetch wording", logs.Description)
-		}
-	}
-}
-
 // TestForgejoGetIssueFlattensLabels pins that getIssue flattens the Forgejo
 // label objects to the name list the ceiling gate reads (agentic-os#246).
 func TestForgejoGetIssueFlattensLabels(t *testing.T) {

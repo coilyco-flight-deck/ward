@@ -14,8 +14,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// smartDefaults is ward-owned native control-plane policy data, baked into the
-// release binary and independent of runtime edge bundles.
+// smartDefaults is Ward-owned native runtime policy baked with the agent image.
+// Aguard operator configuration cannot override it at process startup.
 type smartDefaults struct {
 	agentReservationTTL           time.Duration
 	reservationRecheckDefaultMax  time.Duration
@@ -87,8 +87,8 @@ func bakedSmartDefaultsWithError() (smartDefaults, error) {
 	return cloneSmartDefaults(bakedSmartDefaultsCache.defaults), bakedSmartDefaultsCache.err
 }
 
-// currentSmartDefaults returns the native agent control-plane policy. It is
-// baked into ward so a runtime edge bundle cannot alter or block dispatch.
+// currentSmartDefaults returns Ward's native policy, independent of any
+// operator config reference.
 func currentSmartDefaults() smartDefaults {
 	defs, _ := currentSmartDefaultsWithError()
 	return defs
@@ -98,15 +98,8 @@ func currentSmartDefaultsWithError() (smartDefaults, error) {
 	return bakedSmartDefaultsWithError()
 }
 
-// smartDefaultsGuardExemptVerbs must stay reachable with the config bundle
-// absent or rolled back (ward#1067): the native PR-workflow meta verb.
-var smartDefaultsGuardExemptVerbs = map[string]bool{"pr": true}
-
 func smartDefaultsGuard(surface string) cli.BeforeFunc {
-	return func(ctx context.Context, c *cli.Command) (context.Context, error) {
-		if smartDefaultsGuardExemptVerbs[strings.TrimSpace(c.Args().First())] {
-			return ctx, nil
-		}
+	return func(ctx context.Context, _ *cli.Command) (context.Context, error) {
 		if _, err := currentSmartDefaultsWithError(); err != nil {
 			return ctx, fmt.Errorf("%s: %w", surface, err)
 		}
@@ -192,10 +185,6 @@ func parseSmartDefaultsBundle(src []byte) (smartDefaults, error) {
 		return smartDefaults{}, fmt.Errorf("smart defaults: missing top-level `repo-authority` block (fail-closed)")
 	}
 	return defs, nil
-}
-
-func parseSmartDefaults(src []byte) (smartDefaults, error) {
-	return parseSmartDefaultsBundle(src)
 }
 
 func cloneSmartDefaults(in smartDefaults) smartDefaults {

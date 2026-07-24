@@ -46,16 +46,6 @@ func TestReadOnlyPlanExportsFlag(t *testing.T) {
 	}
 }
 
-// A read-only surface plan stays on the native control plane and never passes
-// an edge config ref into the container.
-func TestReadOnlyPlanOmitsConfigRef(t *testing.T) {
-	p := sampleUpPlan()
-	p.ReadOnly = true
-	if got := p.wardEnv()[wardConfigRefEnv]; got != "" {
-		t.Fatalf("read-only plan WARD_CONFIG_REF = %q, want absent", got)
-	}
-}
-
 // The docker socket binds read-write at the same path both sides and is NOT in the
 // least-access default - only explore opts in (ward#315).
 func TestDockerSockMount(t *testing.T) {

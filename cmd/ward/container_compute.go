@@ -684,9 +684,10 @@ func resolveLaunchConfigEnv(configEntries []string, cwd, role string) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	fleet, err := bakedProfileProvider().Fleet()
+	_, provider := currentProfileSourceProvider()
+	fleet, err := provider.Fleet()
 	if err != nil {
-		return nil, fmt.Errorf("load baked fleet config: %w", err)
+		return nil, fmt.Errorf("load selected fleet config: %w", err)
 	}
 	configEnv = addHarnessConfigEnv(configEnv, fleet, role)
 	configEnv = addFleetAttributionConfigEnv(configEnv, fleet, cwd)
@@ -743,20 +744,20 @@ func validateLocalHarnessConfig(mode containerMode, model, endpoint string) erro
 	if strings.TrimSpace(model) == "" {
 		switch mode {
 		case modeGoose:
-			return fmt.Errorf("missing agent.goose.model for goose: set WARD_GOOSE_MODEL or --config agent.goose.model=<model>")
+			return fmt.Errorf("missing agent.goose.model for goose: set it in baked policy, WARD_GOOSE_MODEL, or --config agent.goose.model=<model>")
 		case modeOpencode:
-			return fmt.Errorf("missing agent.opencode.model for opencode: set WARD_OPENCODE_MODEL or --config agent.opencode.model=<model>")
+			return fmt.Errorf("missing agent.opencode.model for opencode: set it in baked policy, WARD_OPENCODE_MODEL, or --config agent.opencode.model=<model>")
 		case modeClaude, modeCodex:
 			return nil
 		}
 	}
 	if mode == modeOpencode && strings.TrimSpace(endpoint) == "" {
-		return fmt.Errorf("missing agent.opencode.endpoint for opencode: set WARD_OLLAMA_URL or --config agent.opencode.endpoint=<url>")
+		return fmt.Errorf("missing agent.opencode.endpoint for opencode: set it in baked policy, WARD_OLLAMA_URL, or --config agent.opencode.endpoint=<url>")
 	}
 	return nil
 }
 
-// addFleetAttributionConfigEnv projects the selected fleet's commit identity into
+// addFleetAttributionConfigEnv projects the baked fleet's commit identity into
 // the explicit bootstrap env vars, falling back to git config before the placeholder.
 func addFleetAttributionConfigEnv(env map[string]string, fleet fleetconfig.Fleet, cwd string) map[string]string {
 	if env == nil {

@@ -1,3 +1,4 @@
-# ward-kdl bundle
+# Ward native policy assets
 
-This directory holds the generated ward-kdl bundle used by docs and build scripts.
+This directory contains Ward's embedded native role and launch policy only.
+Operator specs moved to AOS `.specgen/aguard`; see [docs/ward-kdl.md](../../docs/ward-kdl.md).

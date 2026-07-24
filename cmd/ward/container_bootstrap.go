@@ -466,7 +466,6 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap substrate warm start")
 	r.warmSubstrate(ctx, e)
 	blog("bootstrap substrate warm done")
-	r.prepareConfigBundleCache(ctx, e)
 	blog("bootstrap context compose start")
 	r.composeContext(e)
 	if err := r.projectAgentComposeHome(ctx, e); err != nil {
@@ -1179,41 +1178,6 @@ func (r *Runner) warmSubstrateRepo(ctx context.Context, e bootstrapEnv, owner, n
 	}
 }
 
-// prepareConfigBundleCache pre-creates the per-container config-bundle dir.
-// Bootstrap runs as root, then hands it to the agent uid for writable refreshes.
-func (r *Runner) prepareConfigBundleCache(ctx context.Context, e bootstrapEnv) {
-	getenv := func(key string) string {
-		switch key {
-		case "WARD_CONTAINER":
-			return "1"
-		case "WARD_GITCACHE":
-			return e.GitCache
-		case "WARD_CONTAINER_NAME":
-			return e.Container
-		case "WARD_AGENT_UID":
-			return e.AgentUID
-		default:
-			return ""
-		}
-	}
-	dir, err := configBundleCacheRoot(getenv)
-	if err != nil {
-		blog("config-bundle cache: %v", err)
-		return
-	}
-	if os.Geteuid() == 0 {
-		owner := strings.TrimSpace(e.AgentUID) + ":" + strings.TrimSpace(e.AgentGID)
-		if owner != ":" {
-			if cerr := r.Runner.Exec(ctx, "chown", "-R", owner, dir); cerr != nil {
-				blog("config-bundle cache handoff skipped: %v", cerr)
-			} else {
-				blog("config-bundle cache handed off to %s at %s", owner, dir)
-			}
-		}
-	}
-	blog("config-bundle cache ready at %s", dir)
-}
-
 // warmSubstrate ports warm_substrate: walk the manifest and warm each repo,
 // skipping the target (clone_target owns it). Best-effort.
 func (r *Runner) warmSubstrate(ctx context.Context, e bootstrapEnv) {
@@ -1290,7 +1254,7 @@ advisors when the work should outlive the session.
 Capture-and-dispatch is an **obligation, not a "may"**. Every work item you surface -
 a bug, a missing test, a follow-up, anything worth doing - you **must**:
 
-- **File an issue** for it (` + "`ward ops forgejo issue create ...`" + `), then
+- **File an issue** for it (` + "`aguard ops forgejo issue create ...`" + `), then
 - **Dispatch a sibling headless run** to do the actual fix - ` + "`warded <owner/repo>#N`" + `
   spins up its own sealed container with its own credential and lifecycle, does its
   own implement -> commit -> merge -> push there, and never touches this clone.
@@ -1319,7 +1283,7 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
 
 - Forgejo access is brokered over ` + "`$WARD_BROKER_SOCK`" + `. The root bootstrap holds and
   refreshes the bot credential; this dropped agent does **not** receive ` + "`FORGEJO_TOKEN`" + `.
-  Use the normal ` + "`ward ops forgejo ...`" + ` and dispatch commands; never attempt to retrieve,
+  Use the normal ` + "`aguard ops forgejo ...`" + ` and dispatch commands; never attempt to retrieve,
   print, or inject a token. If the broker reports an unrecoverable credential refresh, exit so the
   director heartbeat can recycle this surface.
 - **PR-workflow management is native ward, not specgen** (ward#1067): ` + "`ward agent pr status <owner/repo#N>`" + `
@@ -1331,7 +1295,7 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   and ` + "`ward agent pr rerun <owner/repo> <run-id>`" + ` reruns one.
   These forward through the host dispatch broker on ward's compiled Forgejo client, gated
   by the embedded role x workflow permission table, so they keep working even when the
-  ` + "`ward ops forgejo`" + ` specgen surface is stripped or rolled back (infrastructure#538).
+  ` + "`aguard ops forgejo`" + ` specgen surface is stripped or rolled back (infrastructure#538).
 - Fresh director surfaces mount the host Docker socket at ` + "`/var/run/docker.sock`" + `, so
   ` + "`ward agent reap`" + ` can list and stop stale engineer containers and a dispatched
   ` + "`warded #N`" + ` can spawn its sibling container. If this live surface does not have that

@@ -9,9 +9,9 @@ The broker is the root credential relay for the read-only director surface.
   the shared director TUI.
 - The dropped director receives `WARD_BROKER_SOCK`, but never `FORGEJO_TOKEN`.
   The root bootstrap retains that value only for the broker and reaper.
-- `ward ops forgejo` resolves its in-process authentication through the broker
-  on a director surface. Write-tier operations are authorized by the broker;
-  out-of-tier mutations are refused.
+- Ward's native Forgejo control-plane adapter resolves its in-process
+  authentication through the broker on a director surface. Write-tier
+  operations are authorized by the broker; out-of-tier mutations are refused.
 
 The broker keeps the credential out of argv, logs, audit rows, doctrine, and
 the dropped agent environment. It is part of the agent surface contract, not a

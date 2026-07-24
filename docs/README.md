@@ -55,16 +55,15 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [container-substrate.md](container-substrate.md) - `/substrate` and multi-repo.
 - [demo-image.md](demo-image.md) - public demo image build.
 
-## ward-kdl
+## Aguard boundary
 
-- [ward-kdl.md](ward-kdl.md) - build-time authoring layer.
-- [ward-kdl-surface.md](ward-kdl-surface.md) - generated surface overview.
-- [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - exec mounts into `ward`.
-- [ward-kdl-authoring.md](ward-kdl-authoring.md) - author and rebuild guardfiles.
+- [ward-kdl.md](ward-kdl.md) - Ward to Aguard boundary.
+- [ward-kdl-surface.md](ward-kdl-surface.md) - Aguard operator families.
+- [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - no generated mounts in Ward.
 
-## Ops and examples
+## Examples
 
-- [ops-forgejo.md](ops-forgejo.md) - Forgejo ops in ward.
+- [ops-forgejo.md](ops-forgejo.md) - Forgejo ops in Aguard.
 - [example-repo.md](example-repo.md) - minimal managed repo.
 - [demo.md](demo.md) - runnable demo.
 

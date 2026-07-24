@@ -1,13 +1,12 @@
 # ward doctor
 
-`ward doctor` validates the resolved runtime config before a run leans on it.
+`ward doctor` validates Ward's embedded native policy before a run leans on it.
 
 ## What it checks
 
-- launch-time config source resolution.
 - smart-defaults and repo-authority policy.
-- fleet defaults when present and required roles.
-- guarded ops and exec bundle inputs.
+- baked fleet defaults and required roles.
+- native launch assets.
 - placeholder or example values that should not survive in an operating deployment.
 - `WARD_DOCTOR_ALLOW_PLACEHOLDERS=1` permits the baked ward surface to carry its
   sentinel values without failing the placeholder checks.
@@ -19,5 +18,5 @@
 
 ## See also
 
-- [config-source.md](config-source.md) - launch-time config resolution.
-- [ward-kdl.md](ward-kdl.md) - the bundle authoring layer.
+- [config-source.md](config-source.md) - native-policy boundary.
+- [ward-kdl.md](ward-kdl.md) - the Aguard boundary.

@@ -171,12 +171,11 @@ func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
 }
 
 func TestAgentIssueRefURL(t *testing.T) {
-	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98}
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 98, Forge: forgeForgejo, Tracker: trackerForgejo}
 	want := forgejoBaseURL + "/coilyco-flight-deck/ward/issues/98"
 	if got := ref.url(); got != want {
 		t.Errorf("url() = %q, want %q", got, want)
 	}
-	ref.Forge = forgeGitHub
 	ref.Tracker = trackerGitHub
 	want = githubBaseURL + "/coilyco-flight-deck/ward/issues/98"
 	if got := ref.url(); got != want {
@@ -531,7 +530,7 @@ func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
 func TestOwnerAllowed(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	r := &Runner{}
-	for _, ok := range []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck", "coilyco-gaming"} {
+	for _, ok := range []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck"} {
 		if !r.ownerAllowed(ok) {
 			t.Errorf("ownerAllowed(%q) = false, want true", ok)
 		}
@@ -1069,15 +1068,15 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 	}
 }
 
-func TestAgentHarnessIgnoresSelectedBundleDefault(t *testing.T) {
+func TestAgentHarnessIgnoresOperatorBundleDefault(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+writeSelectedBundleFixture(t))
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1"})
 	got, err := agentHarness(cmd)
 	if err != nil {
-		t.Fatalf("agentHarness with selected bundle: %v", err)
+		t.Fatalf("agentHarness with baked policy: %v", err)
 	}
-	if got != defaultAgentMode() {
-		t.Fatalf("agentHarness with selected bundle = %q, want baked %q", got, defaultAgentMode())
+	if got != modeClaude {
+		t.Fatalf("agentHarness with operator bundle = %q, want baked %q", got, modeClaude)
 	}
 }
 
@@ -1173,9 +1172,8 @@ func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
 	}
 }
 
-// TestAgentImageFlagsIgnoreSmartDefaultsBundle pins native launch defaults to
-// the embedded product data even when an edge bundle supplies image settings.
-func TestAgentImageFlagsIgnoreSmartDefaultsBundle(t *testing.T) {
+// TestAgentImageFlagsIgnoreOperatorBundleDefaults keeps launch images baked.
+func TestAgentImageFlagsIgnoreOperatorBundleDefaults(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := `smart-defaults {
     agent-image "ghcr.io/example/ward-agent"
@@ -1191,11 +1189,11 @@ repo-authority default=forgejo {
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude"})
-	if got, want := cmd.String("image"), agentImageDefault(); got != want {
-		t.Fatalf("image default = %q, want baked %q", got, want)
+	if got := cmd.String("image"); got != "forgejo.coilysiren.me/coilyco-flight-deck/ward" {
+		t.Fatalf("image default = %q, want baked Ward image", got)
 	}
-	if got, want := cmd.String("tag"), agentTagDefault(); got != want {
-		t.Fatalf("tag default = %q, want baked %q", got, want)
+	if got := cmd.String("tag"); got != "release" {
+		t.Fatalf("tag default = %q, want baked release", got)
 	}
 }
 

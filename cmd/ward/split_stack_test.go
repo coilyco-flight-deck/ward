@@ -44,7 +44,7 @@ func TestSplitStackIssueURLKeepsTrackerThroughBroker(t *testing.T) {
 	}
 }
 
-func TestSplitStackCompactRefIgnoresEdgeConfiguredTracker(t *testing.T) {
+func TestSplitStackCompactRefUsesBakedTracker(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
     repo-authority default=forgejo {
@@ -60,7 +60,7 @@ func TestSplitStackCompactRefIgnoresEdgeConfiguredTracker(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := defs.authorityForRepo("coilysiren", "inbox").Tracker; got != trackerGitHub {
-		t.Fatalf("native tracker = %s, want baked github", got)
+		t.Fatalf("baked tracker = %s, want github", got)
 	}
 
 	ref, err := parseAgentIssueRef("coilysiren/inbox#247")
@@ -68,6 +68,6 @@ func TestSplitStackCompactRefIgnoresEdgeConfiguredTracker(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ref.Tracker != trackerGitHub {
-		t.Fatalf("compact ref tracker = %s, want baked github", ref.Tracker)
+		t.Fatalf("compact ref tracker = %s, want github", ref.Tracker)
 	}
 }

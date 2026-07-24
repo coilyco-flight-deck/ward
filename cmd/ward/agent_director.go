@@ -596,8 +596,7 @@ func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string, 
 
 // wardGlobalConfig is the slice of ~/.ward/config.yaml ward reads today.
 type wardGlobalConfig struct {
-	ConfigRef string `yaml:"config-ref"`
-	Director  struct {
+	Director struct {
 		DefaultScope []string `yaml:"default-scope"`
 	} `yaml:"director"`
 	Agent struct {
@@ -1948,11 +1947,12 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	return r.emit(b.String())
 }
 
-// appendDirectorLaunchConfig renders the resolved native launch knobs. Agent
-// planning is baked into ward and does not resolve an edge config bundle.
+// appendDirectorLaunchConfig renders native launch policy. Aguard's operator
+// config is intentionally absent from this control-plane path.
 func appendDirectorLaunchConfig(b *strings.Builder, cfg backlogConfig) error {
+	src := bakedConfigSource()
 	cy := cfg.dispatch
-	fmt.Fprintln(b, "config source:   baked native control plane")
+	fmt.Fprintf(b, "config source:   %s\n", src.sourceDesc())
 	fmt.Fprintf(b, "director harness: %s (its own heartbeat one-shot + drain surface)\n", cfg.mode)
 	fmt.Fprintf(b, "limit:           %d\n", cfg.limit)
 	fmt.Fprintf(b, "max-parallel:    %d\n", cfg.maxParallel)

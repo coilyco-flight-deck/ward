@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"slices"
 
 	kdl "github.com/calico32/kdl-go"
@@ -155,51 +154,4 @@ func resolvePlaceholderSentinels(n *kdl.Node) {
 		return
 	}
 	children.Nodes = mergePlaceholderAwareChildren(nil, children.Nodes...)
-}
-
-func validateNoPlaceholderSentinels(n *kdl.Node) error {
-	if n == nil {
-		return nil
-	}
-	if path, ok := firstPlaceholderPath(n, nil); ok {
-		return fmt.Errorf("placeholder sentinel survived at %s", path)
-	}
-	return nil
-}
-
-func firstPlaceholderPath(n *kdl.Node, trail []string) (string, bool) {
-	if n == nil {
-		return "", false
-	}
-	nextTrail := append(append([]string(nil), trail...), n.Name())
-	if typ, ok := n.TypeAnnotation(); ok && typ == placeholderAnnotation {
-		return stringsJoinPath(nextTrail), true
-	}
-	for i, arg := range n.Arguments() {
-		if isPlaceholderValue(arg) {
-			return stringsJoinPath(append(nextTrail, fmt.Sprintf("arg[%d]", i))), true
-		}
-	}
-	for _, entry := range n.PropertyEntries() {
-		if isPlaceholderValue(entry.Value) {
-			return stringsJoinPath(append(nextTrail, "@"+entry.Key)), true
-		}
-	}
-	for _, child := range n.Children().Nodes {
-		if path, ok := firstPlaceholderPath(child, nextTrail); ok {
-			return path, true
-		}
-	}
-	return "", false
-}
-
-func stringsJoinPath(parts []string) string {
-	if len(parts) == 0 {
-		return ""
-	}
-	out := parts[0]
-	for _, part := range parts[1:] {
-		out += " > " + part
-	}
-	return out
 }
