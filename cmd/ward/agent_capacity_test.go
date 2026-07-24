@@ -372,7 +372,7 @@ func TestEngineerCapacityLockWaitsForVisibleContainerBeforeRelease(t *testing.T)
 	}
 }
 
-func TestEngineerContainerLimitFromBundleOverride(t *testing.T) {
+func TestEngineerContainerLimitIgnoresOperatorBundleOverride(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := canonicalSmartDefaultsBlock(t, func(defs *smartDefaults) {
 		defs.engineerContainerLimit = 15
@@ -395,22 +395,22 @@ workflow default=merge-remote-main {
 		t.Fatalf("write repos bundle: %v", err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	if got := engineerContainerLimitDefault(); got != 15 {
-		t.Fatalf("engineerContainerLimitDefault() = %d, want 15", got)
+	if got := engineerContainerLimitDefault(); got != 12 {
+		t.Fatalf("engineerContainerLimitDefault() = %d, want baked 12", got)
 	}
 
-	r, _, _ := bufRunner(engineerCountDockerStub(t, 14))
+	r, _, _ := bufRunner(engineerCountDockerStub(t, 11))
 	if err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", false); err != nil {
-		t.Fatalf("enforceEngineerContainerLimit below overridden limit: %v", err)
+		t.Fatalf("enforceEngineerContainerLimit below baked limit: %v", err)
 	}
 
-	r, _, _ = bufRunner(engineerCountDockerStub(t, 15))
+	r, _, _ = bufRunner(engineerCountDockerStub(t, 12))
 	err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", false)
 	if err == nil {
-		t.Fatal("enforceEngineerContainerLimit at overridden limit: want error, got nil")
+		t.Fatal("enforceEngineerContainerLimit at baked limit: want error, got nil")
 	}
-	if !strings.Contains(err.Error(), "limit 15") {
-		t.Fatalf("enforceEngineerContainerLimit overridden limit error = %v", err)
+	if !strings.Contains(err.Error(), "limit 12") {
+		t.Fatalf("enforceEngineerContainerLimit baked limit error = %v", err)
 	}
 }
 

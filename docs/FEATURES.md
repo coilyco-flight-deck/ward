@@ -24,7 +24,7 @@ Inventory of what `ward` ships today.
 - Read-only agent-compose bundle handoff with verified container-HOME
   projection for claude, codex, goose, and opencode. See
   [agent-compose.md](agent-compose.md).
-- Core tracker and forge adapters do not depend on generated `ward ops` leaves.
+- Core tracker and forge adapters do not depend on Aguard or generated operator leaves.
 - Launch-intent vs running-engineer split in list, dispatch-health, reap, and director.
 - Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
 - Open-PR backpressure gate.
@@ -50,14 +50,11 @@ Inventory of what `ward` ships today.
   permissions, mounts, network, and launch authority.
 - Public demo image build. See [demo-image.md](demo-image.md).
 
-## ward-kdl
+## AOS policy and Aguard boundary
 
-- The build-time authoring layer - see [ward-kdl.md](ward-kdl.md), [ward-kdl-authoring.md](ward-kdl-authoring.md), [ward-kdl-surface.md](ward-kdl-surface.md), and [ward-kdl-in-ward.md](ward-kdl-in-ward.md).
-- It embeds the shipped agent role catalog from [ward-kdl.role-definitions.kdl](../.ward/ward-kdl/ward-kdl.role-definitions.kdl).
-- It accepts `first input` as exec-guard sugar for `arg0`.
-- Embedded Forgejo surface includes raw Actions log fetch, runner-token mint, and PR edit leaves.
-- Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core agent control plane.
-- Coilyco-targeted operator surfaces fail fast when they would otherwise fall back to the baked example bundle.
+- Ward embeds the AOS-authored agent role catalog and launch policy from [ward-kdl.role-definitions.kdl](../.ward/ward-kdl/ward-kdl.role-definitions.kdl).
+- Aguard owns generated operator APIs in the AOS image: `aguard ops forgejo`, `actions`, `aws`, `kubectl`, and `tailscale`.
+- A stale or unavailable Aguard config reference cannot affect Ward's native `agent`, `container`, `exec`, help, or version paths.
 
 ## Release and docs
 

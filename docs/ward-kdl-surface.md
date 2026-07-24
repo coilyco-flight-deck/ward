@@ -1,36 +1,22 @@
 ---
-doc_goal: Keep the generated ward-kdl surface readable without the old per-area reference tree.
+doc_goal: Record the Aguard operator surface without implying Ward embeds it.
 ---
-# ward-kdl surface
+# Aguard operator surface
 
-The generated surface is the audited command set built from a guardfile.
-The old per-area Markdown references were generated output and are no longer
-committed.
+Generated operator APIs moved out of Ward. The current AOS image provides:
 
-## Families
+- `aguard ops forgejo`
+- `aguard ops actions`
+- `aguard ops aws`
+- `aguard ops kubectl`
+- `aguard ops tailscale`
 
-- `ops` - spec-driven APIs such as Forgejo.
-- `docker` - the read-only Docker inspection surface.
-- `agents` - the harness launchers.
-- `pkg` - package-directory lookups.
+Specgen builds these leaves during the AOS image build. Aguard is standalone at
+runtime: its help and execution do not invoke, brand, or configure Ward.
 
-## What matters
-
-- The generated surface is what `ward` embeds.
-- Missing verbs are compile-time omissions, not runtime accidents.
-- The release binary only carries the surfaces that were built in.
-
-## Read it like a map
-
-- `ops` is the operator-facing tree.
-- `docker` is the inspection tree.
-- `agents` is the launcher tree.
-- `pkg` is the lookup tree.
-
-The important part is not the file list, it is the fact that the surface is
-generated from the guardfile and therefore bounded before runtime.
+Ward has no generated operator command family and no runtime guardfile mount.
 
 ## See also
 
-- [ward-kdl.md](ward-kdl.md) - the build-time layer.
-- [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - the exec mounts.
+- [ward-kdl.md](ward-kdl.md) - the boundary.
+- [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - native-path isolation.

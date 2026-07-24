@@ -8,4 +8,4 @@ Ward keeps the raw `FORGEJO_TOKEN` read surface small and documented.
 
 ## See also
 
-- [ops-forgejo.md](ops-forgejo.md) - the operator surface that uses the token.
+- [broker.md](broker.md) - the native broker path that uses the token.

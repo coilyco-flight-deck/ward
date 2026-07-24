@@ -262,7 +262,7 @@ func TestBuildUpPlanDirectorUsesDictatableSuffix(t *testing.T) {
 	}
 }
 
-func TestBuildUpPlanExportsSelectedFleetAttribution(t *testing.T) {
+func TestBuildUpPlanIgnoresOperatorBundleAttribution(t *testing.T) {
 	dir := writeBundleFixture(t)
 	writeBundleFixtureFile(t, dir, bundleFixtureAgentsPath, `
 agents {
@@ -296,10 +296,14 @@ agents {
 		t.Fatalf("probe run: %v", err)
 	}
 
+	want, err := loadFleetConfig()
+	if err != nil {
+		t.Fatalf("load baked fleet config: %v", err)
+	}
 	env := got.wardEnv()
-	if env["WARD_GIT_NAME"] != "coilyco-ops" || env["WARD_GIT_EMAIL"] != "coilyco-ops@coilysiren.me" {
-		t.Fatalf("wardEnv git attribution = <%s %s>, want <coilyco-ops coilyco-ops@coilysiren.me>",
-			env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"])
+	if env["WARD_GIT_NAME"] != want.Defaults.Attribution.Name || env["WARD_GIT_EMAIL"] != want.Defaults.Attribution.Email {
+		t.Fatalf("wardEnv git attribution = <%s %s>, want baked <%s %s>",
+			env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"], want.Defaults.Attribution.Name, want.Defaults.Attribution.Email)
 	}
 }
 
@@ -673,27 +677,21 @@ func TestWardEnvCorrelationEnvelope(t *testing.T) {
 	}
 }
 
-// TestWardEnvCoilycoConfigRef exports the resolved bundle ref for a coilyco
-// checkout so repo-local `ward exec` sees the launch-selected config source.
-func TestWardEnvCoilycoConfigRef(t *testing.T) {
+// TestWardEnvDoesNotExportOperatorConfigRef keeps Aguard's edge config out of
+// native Ward containers, even for a coilyco checkout.
+func TestWardEnvDoesNotExportOperatorConfigRef(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	work := t.TempDir()
 	gitFixture(t, work, "init", "-b", "main", ".")
 	gitFixture(t, work, "commit", "--allow-empty", "-m", "seed")
-	head := gitFixture(t, work, "rev-parse", "HEAD")
-
 	probe := &cli.Command{Name: "probe"}
 	p, err := buildUpPlan(probe, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, roleEngineer, work, t.TempDir(), nil, false)
 	if err != nil {
 		t.Fatalf("buildUpPlan: %v", err)
 	}
-	want := "forgejo.coilysiren.me/coilyco-flight-deck/ward@" + head + "//.ward"
-	if got := p.ConfigRef; got != want {
-		t.Fatalf("ConfigRef = %q, want %q", got, want)
-	}
-	if got := p.wardEnv()[wardConfigRefEnv]; got != want {
-		t.Fatalf("WARD_CONFIG_REF = %q, want %q", got, want)
+	if got := p.wardEnv()[wardConfigRefEnv]; got != "" {
+		t.Fatalf("WARD_CONFIG_REF = %q, want absent", got)
 	}
 }
 

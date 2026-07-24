@@ -1,9 +1,9 @@
 ---
 doc_goal: Keep the Forgejo quiet anchor stable after the old page was collapsed.
 ---
-# ops forgejo quiet
+# Aguard Forgejo quiet output
 
-This page is the durable anchor for the terse Forgejo quiet surface.
+This historical anchor applies to the terse `aguard ops forgejo` output surface.
 
 - It keeps the low-noise output mode readable for command-line callers.
 - It is the anchor for comments about compact issue or PR lookups.

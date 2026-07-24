@@ -1101,7 +1101,7 @@ func TestIssueScopedDirectorRefreshStaysOnOneIssue(t *testing.T) {
 	}
 }
 
-func TestDirectorScopeSkipsBurndownReposBeforeDispatch(t *testing.T) {
+func TestDirectorScopeIgnoresOperatorBundleBurndownRules(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("WARD_CONFIG_REF", "file://"+t.TempDir())
 
@@ -1172,18 +1172,11 @@ func TestDirectorScopeSkipsBurndownReposBeforeDispatch(t *testing.T) {
 		t.Fatalf("read stderr pipe: %v", err)
 	}
 
-	if want := []string{"coilyco-flight-deck/ward", "coilyco-flight-deck/agentic-os"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("filtered scope = %v, want %v", got, want)
+	if want := []string{"coilyco-flight-deck/ward", "coilyco-flight-deck/infrastructure", "coilyco-flight-deck/agentic-os"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("scope = %v, want baked-policy %v", got, want)
 	}
-	for _, want := range []string{
-		"burndown: skipping coilyco-flight-deck/infrastructure (filtered)",
-	} {
-		if !strings.Contains(string(logs), want) {
-			t.Fatalf("stderr %q missing %q", string(logs), want)
-		}
-	}
-	if strings.Contains(string(logs), "coilyco-bridge/deploy") {
-		t.Fatalf("stderr %q unexpectedly mentioned the unrelated repo", string(logs))
+	if strings.Contains(string(logs), "burndown: skipping") {
+		t.Fatalf("stderr %q applied an ignored operator bundle burndown rule", string(logs))
 	}
 }
 

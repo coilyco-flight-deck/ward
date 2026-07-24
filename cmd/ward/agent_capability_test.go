@@ -7,13 +7,9 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 )
 
-// TestCapabilityGuardfilesExist pins the name constants to real files so a guardfile
-// rename that outran a constant can't silently drop a role's capability (ward#578).
-func TestCapabilityGuardfilesExist(t *testing.T) {
-	path := execAssetsDir + "/" + guardfileAWS
-	if _, err := bakedAssets.ReadFile(path); err != nil {
-		t.Errorf("capability guardfile %q does not exist at %s (%v); a rename must update the constant", guardfileAWS, path, err)
-	}
+// TestCapabilityGuardfilesStayInFleetPolicy pins the names used to derive
+// native role capabilities. The actual operator guardfiles now ship with Aguard.
+func TestCapabilityGuardfilesStayInFleetPolicy(t *testing.T) {
 	fleet, err := bakedAssets.ReadFile(fleetGeneratedKDLPath)
 	if err != nil {
 		t.Fatalf("read baked fleet config: %v", err)

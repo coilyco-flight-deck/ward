@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -15,8 +14,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// smartDefaults is ward-owned runtime policy data. It starts from the baked
-// neutral default and can be overridden by the selected config bundle.
+// smartDefaults is Ward-owned native runtime policy baked with the agent image.
+// Aguard operator configuration cannot override it at process startup.
 type smartDefaults struct {
 	agentReservationTTL           time.Duration
 	reservationRecheckDefaultMax  time.Duration
@@ -62,14 +61,6 @@ type burndownRule struct {
 	Enabled bool
 }
 
-var smartDefaultsCache struct {
-	sync.Mutex
-	ref         string
-	initialized bool
-	defaults    smartDefaults
-	err         error
-}
-
 var bakedSmartDefaultsCache struct {
 	sync.Once
 	defaults smartDefaults
@@ -96,54 +87,19 @@ func bakedSmartDefaultsWithError() (smartDefaults, error) {
 	return cloneSmartDefaults(bakedSmartDefaultsCache.defaults), bakedSmartDefaultsCache.err
 }
 
-// currentSmartDefaults returns ward's runtime policy, caching the baked parse.
+// currentSmartDefaults returns Ward's native policy, independent of any
+// operator config reference.
 func currentSmartDefaults() smartDefaults {
 	defs, _ := currentSmartDefaultsWithError()
 	return defs
 }
 
 func currentSmartDefaultsWithError() (smartDefaults, error) {
-	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
-	if ref == "" {
-		return loadCurrentSmartDefaults()
-	}
-
-	smartDefaultsCache.Lock()
-	defer smartDefaultsCache.Unlock()
-	if smartDefaultsCache.initialized && smartDefaultsCache.ref == ref {
-		return smartDefaultsCache.defaults, smartDefaultsCache.err
-	}
-
-	defs, err := loadCurrentSmartDefaults()
-	smartDefaultsCache.ref = ref
-	smartDefaultsCache.initialized = true
-	smartDefaultsCache.defaults = defs
-	smartDefaultsCache.err = err
-	return defs, err
+	return bakedSmartDefaultsWithError()
 }
-
-// loadCurrentSmartDefaults resolves the config source and parses its defaults.
-// Fail-closed values must name the serving source, not just the value.
-func loadCurrentSmartDefaults() (smartDefaults, error) {
-	defs := bakedSmartDefaults()
-	src, err := selectConfigSource()
-	if err == nil {
-		if defs, err = loadSmartDefaultsFrom(src); err != nil {
-			err = fmt.Errorf("%w [config source: %s]", err, src.sourceDesc())
-		}
-	}
-	return defs, err
-}
-
-// smartDefaultsGuardExemptVerbs must stay reachable with the config bundle
-// absent or rolled back (ward#1067): the native PR-workflow meta verb.
-var smartDefaultsGuardExemptVerbs = map[string]bool{"pr": true}
 
 func smartDefaultsGuard(surface string) cli.BeforeFunc {
-	return func(ctx context.Context, c *cli.Command) (context.Context, error) {
-		if smartDefaultsGuardExemptVerbs[strings.TrimSpace(c.Args().First())] {
-			return ctx, nil
-		}
+	return func(ctx context.Context, _ *cli.Command) (context.Context, error) {
 		if _, err := currentSmartDefaultsWithError(); err != nil {
 			return ctx, fmt.Errorf("%s: %w", surface, err)
 		}
@@ -229,10 +185,6 @@ func parseSmartDefaultsBundle(src []byte) (smartDefaults, error) {
 		return smartDefaults{}, fmt.Errorf("smart defaults: missing top-level `repo-authority` block (fail-closed)")
 	}
 	return defs, nil
-}
-
-func parseSmartDefaults(src []byte) (smartDefaults, error) {
-	return parseSmartDefaultsBundle(src)
 }
 
 func cloneSmartDefaults(in smartDefaults) smartDefaults {

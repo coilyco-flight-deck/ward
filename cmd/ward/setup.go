@@ -11,7 +11,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const setupValidatedSurfaces = "ops, exec, fleet, smart defaults"
 const setupPlaceholderScope = "example-owner/example-repo"
 const setupNextStep = "replace the placeholder scope in ~/.ward/config.yaml and restart warded"
 
@@ -29,24 +28,18 @@ type setupReport struct {
 func setupCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "setup",
-		Usage: "Bootstrap ~/.ward/config.yaml and validate runtime config surfaces.",
+		Usage: "Bootstrap ~/.ward/config.yaml and validate native runtime policy.",
 		Description: strings.Join([]string{
-			"setup is the cache warmer / config doctor for the selected runtime",
-			"config source. It pre-bakes and validates config surfaces without building or",
+			"setup validates Ward's embedded agent policy without building or",
 			"replacing the ward binary, and it is not a hidden prerequisite for normal ward",
 			"commands.",
 			"",
 			"It also creates a minimal first-run ~/.ward/config.yaml with placeholder",
 			"values when the file is missing.",
 			"",
-			"Set `config-ref` in ~/.ward/config.yaml for a durable operator-local source.",
-			"`WARD_CONFIG_REF` remains the per-launch override.",
+			"Aguard owns operator configuration and generated API surfaces.",
 			"",
-			"Point `WARD_CONFIG_REF` at the local setup output directly when you want a",
-			"file form, for example `/path/to/ward-config.kdl` or `file:///path/to/ward-config.kdl`.",
-			"",
-			"Phases: config source -> auth/credential checks (stub) -> cache warm -> surface",
-			"compile -> host integration checks (stub).",
+			"Phases: embedded policy -> launch checks -> host integration checks (stub).",
 		}, "\n"),
 		Action: func(ctx context.Context, _ *cli.Command) error {
 			report, err := runSetup(ctx)
@@ -62,8 +55,8 @@ func setupCommand() *cli.Command {
 func runSetup(ctx context.Context) (setupReport, error) {
 	_ = ctx
 	report := setupReport{
-		validatedSurfaces: []string{"ops", "exec", "fleet", "smart defaults"},
-		phasePlan:         "config source -> auth/credential checks (stub) -> cache warm -> surface compile -> host integration checks (stub)",
+		validatedSurfaces: []string{"fleet", "roles", "smart defaults", "topology"},
+		phasePlan:         "embedded policy -> launch checks -> host integration checks (stub)",
 		nextStep:          setupNextStep,
 	}
 
@@ -74,39 +67,10 @@ func runSetup(ctx context.Context) (setupReport, error) {
 	report.localConfigPath = cfgPath
 	report.localConfigCreated = created
 
-	selection, err := selectedConfigRefDetail()
-	if err != nil {
-		return report, err
-	}
-	src, err := selectConfigSourceForSelection(selection)
-	if err != nil {
-		return report, err
-	}
-
-	if selection.ref == "" {
-		report.sourceSummary = configSourceSummaryForSelection(selection, src)
-		report.resolvedSHA = "embedded"
-		report.cachePath = "embedded neutral default"
-	} else {
-		report.sourceSummary = configSourceSummaryForSelection(selection, src)
-		report.resolvedSHA = strings.TrimSpace(src.auditVersion)
-		if report.resolvedSHA == "" {
-			report.resolvedSHA = "unavailable"
-		}
-		report.cachePath = setupCachePath(selection.ref)
-	}
-
-	if strings.TrimSpace(src.desc) != "" {
-		if err := validateForgejoOpsOperational(src, false); err != nil {
-			return report, fmt.Errorf("setup surface compile: ops: %w", err)
-		}
-	}
-	if _, err := buildForgejoOpsFrom(src); err != nil {
-		return report, fmt.Errorf("setup surface compile: ops: %w", err)
-	}
-	if err := mountWardKdlExecFrom(setupCompileRoot(), src, leanRunner()); err != nil {
-		return report, fmt.Errorf("setup surface compile: exec: %w", err)
-	}
+	src := bakedConfigSource()
+	report.sourceSummary = src.sourceDesc()
+	report.resolvedSHA = "embedded"
+	report.cachePath = "embedded native policy"
 	if _, err := loadFleetConfigFrom(src); err != nil {
 		return report, fmt.Errorf("setup surface compile: fleet: %w", err)
 	}
@@ -139,82 +103,11 @@ func ensureLocalSetupConfig() (string, bool, error) {
 
 func setupLocalConfigYAML() string {
 	return strings.TrimSpace(`# ward first setup config.
-# Optional durable config bundle. WARD_CONFIG_REF overrides this per launch.
-config-ref: ""
-
 # Replace the placeholder scope before using warded director without --repo.
 director:
   default-scope:
     - `+setupPlaceholderScope+`
 `) + "\n"
-}
-
-func setupCompileRoot() *cli.Command {
-	return &cli.Command{
-		Name: "ward",
-		Commands: []*cli.Command{
-			{Name: "version"},
-			{Name: "setup"},
-			{Name: "exec"},
-			{Name: "git"},
-			{Name: "audit"},
-			{Name: "container"},
-			{Name: "agent"},
-			{Name: "agents"},
-			{Name: "ops"},
-		},
-	}
-}
-
-func setupCachePath(rawRef string) string {
-	if strings.TrimSpace(rawRef) == "" {
-		return "embedded neutral default"
-	}
-	if localPath, ok, _ := resolveLocalConfigRef(rawRef); ok {
-		return localPath
-	}
-	if dir, ok := strings.CutPrefix(rawRef, "file://"); ok {
-		return resolvePathFromInvokeCWD(dir)
-	}
-	cr, err := parseConfigRef(rawRef)
-	if err != nil {
-		return rawRef
-	}
-	root, err := configBundleCacheRoot(os.Getenv)
-	if err != nil {
-		return rawRef
-	}
-	cache := filepath.Join(root, hashConfigRef(rawRef), "work")
-	if cr.subpath != "." {
-		cache = filepath.Join(cache, cr.subpath)
-	}
-	return cache
-}
-
-func setupBundlePathOnDisk(src configSource, bundlePath string) string {
-	ref := strings.TrimSpace(src.desc)
-	if ref == "" {
-		return bundlePath
-	}
-	if localPath, ok, _ := resolveLocalConfigRef(ref); ok {
-		st, err := os.Stat(localPath)
-		if err == nil && st.IsDir() {
-			return filepath.Join(localPath, bundlePath)
-		}
-		if err == nil {
-			return localPath
-		}
-		return filepath.Join(localPath, bundlePath)
-	}
-	cachePath := setupCachePath(ref)
-	if cachePath == "" {
-		return bundlePath
-	}
-	return filepath.Join(cachePath, bundlePath)
-}
-
-func setupPlaceholderRemediation() string {
-	return "rerun ward setup after replacing the placeholder, then restart warded"
 }
 
 func printSetupReport(report setupReport) {

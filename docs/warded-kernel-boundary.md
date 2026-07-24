@@ -27,7 +27,7 @@ visible semantics:
 These are edge surfaces unless they change the kernel contract above:
 
 - generated ops leaves and other provider-specific command surfaces.
-- launch-time config bundles and KDL authoring surfaces.
+- Aguard operator configuration and spec authoring surfaces.
 - forge and tracker adapters, plus transport glue.
 - public docs that describe the kernel but do not change it.
 

@@ -9,9 +9,9 @@ The director surface is the read-only control plane for runs.
 - It can keep a backlog moving without writing implementation code.
 - It can also run against one exact issue ref or Forgejo issue URL without
   widening into the repo backlog.
-* `~/.ward/config.yaml` provides implicit repo scope and a durable `config-ref`.
-  Explicit `--repo` / `--org` and `WARD_CONFIG_REF` values override them. The
-  director does not need the current directory to be a git repo.
+* `~/.ward/config.yaml` provides implicit repo scope. Explicit `--repo` / `--org`
+  values override it. The director does not need the current directory to be a
+  git repo, and Aguard configuration cannot alter its native policy.
 - By default it prints status from the stored ledger, then opens the attached
   read-only surface without enumerating the live issue backlog. Add `--burndown`
   to run the autonomous dispatch heartbeat, or `--triage` to opt into startup issue inventory.

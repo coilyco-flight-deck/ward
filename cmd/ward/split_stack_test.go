@@ -44,7 +44,7 @@ func TestSplitStackIssueURLKeepsTrackerThroughBroker(t *testing.T) {
 	}
 }
 
-func TestSplitStackCompactRefUsesConfiguredTracker(t *testing.T) {
+func TestSplitStackCompactRefUsesBakedTracker(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
     repo-authority default=forgejo {
@@ -59,15 +59,15 @@ func TestSplitStackCompactRefUsesConfiguredTracker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := defs.authorityForRepo("coilysiren", "inbox").Tracker; got != trackerForgejo {
-		t.Fatalf("configured tracker = %s, want forgejo", got)
+	if got := defs.authorityForRepo("coilysiren", "inbox").Tracker; got != trackerGitHub {
+		t.Fatalf("baked tracker = %s, want github", got)
 	}
 
 	ref, err := parseAgentIssueRef("coilysiren/inbox#247")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ref.Tracker != trackerForgejo {
-		t.Fatalf("compact ref tracker = %s, want forgejo", ref.Tracker)
+	if ref.Tracker != trackerGitHub {
+		t.Fatalf("compact ref tracker = %s, want github", ref.Tracker)
 	}
 }

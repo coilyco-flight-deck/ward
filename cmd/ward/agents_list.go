@@ -111,12 +111,11 @@ func agentsRosterTable(f fleetconfig.Fleet) string {
 	return string(b)
 }
 
-// agentsCommand is the hand-written `ward agents` group. The exec-guardfile
-// launchers auto-mount beside `list` here (docs/ward-kdl-in-ward.md).
+// agentsCommand is Ward's hand-written read-only fleet roster group.
 func agentsCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "agents",
-		Usage: "the agent fleet: `list` the roster, or launch a harness (`ward agents claude`, ...).",
+		Usage: "the agent fleet: `list` the embedded native roster.",
 		Commands: []*cli.Command{
 			agentsListCommand(),
 		},

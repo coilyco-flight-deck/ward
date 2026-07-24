@@ -29,12 +29,12 @@ If the orchestration itself is flaky, that is a Ward product bug, not an operato
 ## What it requires
 
 - **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
-- **A Forgejo instance** for ward's own operator surface (`ward ops forgejo`). ward is **Forgejo-canonical** for ward itself: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. The agent driver follows the target repo's authority policy, so `coilysiren/*` can be GitHub-authoritative. Which Forgejo, exactly? See the note below the list.
+- **A Forgejo instance** for Ward's own issue and PR workflow. Ward is **Forgejo-canonical** for ward itself: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. The agent driver follows the target repo's authority policy, so `coilysiren/*` can be GitHub-authoritative.
 - **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/ward:release` (release refreshes it). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
 
 The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
 
-**Which Forgejo?** As shipped, ward defaults its guarded Forgejo surfaces to `forgejo.coilysiren.me` and `coily*`-owned orgs. The endpoint, token path, and owner gate are read from the selected config bundle for those edge surfaces ([`docs/config-source.md`](docs/config-source.md)), so `config-ref` in `~/.ward/config.yaml` can retarget them durably and `WARD_CONFIG_REF` can override that source for one launch. Rebuilding from source only changes the baked default bundle and embedded defaults. The forge-agnostic verb gate still runs against any repo.
+**Which Forgejo?** Ward defaults its native issue and PR adapters to `forgejo.coilysiren.me` and `coily*`-owned orgs. Aguard owns standalone operator APIs and their spec configuration inside the AOS image. The forge-agnostic verb gate still runs against any repo.
 
 When a doc or example needs a concrete GitHub repo that should actually resolve,
 use `coilysiren/example` or `https://github.com/coilysiren/example`. It is a
@@ -65,7 +65,7 @@ Install from the release channel you prefer:
 - **From source.**
   `make workspace` is the local path for ward itself. It resolves a sibling `cli-guard` checkout through `go.work`; see [docs/workspace.md](docs/workspace.md).
 
-The explicit-URL form is required because the tap lives on forgejo, not github.com. The Homebrew formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The Scoop bucket installs `ward` on Windows. The `ward-kdl` authoring binary is **not** installed - its surfaces are already embedded in `ward`. Most adopters stop at `.ward/ward.yaml`; spec authors who need `ward-kdl` build it from a ward checkout - see [ward-kdl-authoring.md](docs/ward-kdl-authoring.md).
+The explicit-URL form is required because the tap lives on forgejo, not github.com. The Homebrew formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The Scoop bucket installs `ward` on Windows. Aguard is supplied by the AOS image for container operator work, not by Ward.
 
 **Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] from `forgejo.coilysiren.me/coilyco-flight-deck/cli-guard`, so a plain `go build` needs that Forgejo host reachable and the repo public.
 
@@ -82,8 +82,8 @@ ward exec build          # run a declared dev verb through the gate
 ward exec test
 ward git commit -m ...   # concurrency-safe, audited git
 ward audit tail --follow # stream the audit log
-ward setup               # warm and validate the selected config source
-ward doctor              # validate the selected config source
+ward setup               # validate embedded native policy
+ward doctor              # validate embedded native policy
 ```
 
 The agent driver, against the repo's authoritative issue thread. `warded` is a thin symlink onto `ward agent` - read it as a protective circle, the container bounding the agent's reach, not "warded off":
@@ -105,11 +105,11 @@ A `warded` run that failed or seemed to do nothing has a single symptom-indexed 
 
 ## Three layers, told apart by when they run
 
-`ward` absorbs the operator surface from the retiring ops CLI. The pieces are easiest to keep straight by **when** each runs:
+The boundary is easiest to keep straight by **when** each layer runs:
 
 - **[cli-guard][cli-guard]** - the **engine**. The policy-and-routing framework ward consumes (pinned via go.mod). Thin consumer, not a fork.
-- **[`ward-kdl`](docs/ward-kdl.md)** - the **build-time generator**. Compiles a KDL guardfile into an audited CLI: the `ward ops <api>` REST surfaces (forgejo, aws, tailscale, ...), buildable as `ward-kdl-{read,write,admin}` tiers. Not a public install artifact - its surfaces are embedded in `ward`.
-- **`ward`** - the **run-time product**. Embeds those generated surfaces and adds the `agent` + `exec` layers. Composite control flow (the `agent` roster, `git`) stays hand-written Go.
+- **`aguard`** - the AOS-image **operator CLI**. Specgen builds its `aguard ops <api>` REST and exec surfaces, including Forgejo, Actions, AWS, kubectl, and Tailscale. It is standalone at runtime and does not invoke or configure Ward.
+- **`ward`** - the native **run-time control plane**. It provides `agent`, `container`, `exec`, reservations, reaping, and PR workflow. It embeds only the AOS-authored role and launch-policy data it needs.
 
 See [`docs/architecture.md`](docs/architecture.md).
 
@@ -121,7 +121,7 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 - **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-qa.md](docs/agent-qa.md), [agent-lifecycle.md](docs/agent-lifecycle.md), [agent-ops.md](docs/agent-ops.md).
 - **The container** - [container.md](docs/container.md), [container-lifecycle.md](docs/container-lifecycle.md) (land-or-salvage on teardown), [container-substrate.md](docs/container-substrate.md).
 - **The demo image** - [docs/demo-image.md](docs/demo-image.md).
-- **Operator surface (ward-kdl / ops)** - [ward-kdl.md](docs/ward-kdl.md), [ward-kdl-surface.md](docs/ward-kdl-surface.md), [ops-forgejo.md](docs/ops-forgejo.md).
+- **Container operator surface (Aguard)** - use `aguard ops ...` in the current AOS image. [ward-kdl.md](docs/ward-kdl.md) records the boundary migration.
 - **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [golangci.md](docs/golangci.md).
 
 ## Status

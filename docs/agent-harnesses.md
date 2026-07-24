@@ -18,7 +18,7 @@ The harness choice affects credentials, preflight shape, and context level.
 - Local harnesses trade host-side auth for a local model endpoint check.
 - `--harness` and `--agent` are equivalent spellings.
 
-Local harnesses have no Ward-owned model default. The selected config bundle,
+Local harnesses have no Ward-owned model default. The baked policy,
 environment, or `--config agent.<harness>.model=<model>` must name the model.
 Opencode also requires `agent.opencode.endpoint`, `WARD_OLLAMA_URL`, or the
 matching `--config` override because its OpenAI-compatible endpoint is local to

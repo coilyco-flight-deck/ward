@@ -37,8 +37,8 @@ The role determines what the run is trying to do. The harness determines how
 the run is authenticated and what model or CLI it talks to. The workflow
 determines where the work is allowed to land.
 
-When `WARD_CONFIG_REF` points at a bundle that defines launch defaults, those
-defaults own the harness pick before the baked fallback does.
+Ward resolves its harness and launch defaults from baked AOS-authored policy.
+An Aguard operator config reference cannot alter a native agent launch.
 
 ## What changed here
 
