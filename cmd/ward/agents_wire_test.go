@@ -148,6 +148,9 @@ func TestComposeAgentContainerCodexSurfaceTrust(t *testing.T) {
 	if err != nil {
 		t.Fatalf("surface compose did not write ~/.codex/config.toml: %v", err)
 	}
+	if want := "notice.hide_rate_limit_model_nudge = true"; !strings.Contains(string(data), want) {
+		t.Errorf("read-only Codex surface config.toml missing %q\n---\n%s", want, data)
+	}
 	for _, dir := range []string{"/workspace/agentic-os", "/workspace"} {
 		want := "[projects.\"" + dir + "\"]\ntrust_level = \"trusted\"\n"
 		if !strings.Contains(string(data), want) {

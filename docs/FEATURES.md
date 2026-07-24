@@ -20,7 +20,7 @@ Inventory of what `ward` ships today.
 - `ward agent director queue` / `status` - read-only queue view.
 - Read-only Forgejo issue-comment guard.
 - Reservation and dispatch comments clean up after release.
-- Harness install hooks for claude, codex, goose, and opencode.
+- Harness install hooks plus headless Codex model-switch nudge suppression.
 - Read-only agent-compose bundle handoff with verified container-HOME
   projection for claude, codex, goose, and opencode. See
   [agent-compose.md](agent-compose.md).

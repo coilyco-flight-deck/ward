@@ -84,6 +84,7 @@ func TestComposeConfigCheapDefaults(t *testing.T) {
 	for _, want := range []string{
 		"approval_policy = \"never\"",
 		"sandbox_mode = \"danger-full-access\"",
+		"notice.hide_rate_limit_model_nudge = true",
 		"model = \"gpt-5.4-mini\"",
 		"model_reasoning_effort = \"low\"",
 		"model_verbosity = \"low\"",

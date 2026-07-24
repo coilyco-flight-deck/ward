@@ -8,14 +8,16 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
-// ComposeConfig writes codex's approvals-off, sandbox-open config (ward#178) with
-// cheapest-by-default knobs (ward#379) + the [projects] folder-trust tables (ward#678).
+// ComposeConfig writes Codex's approvals-off, sandbox-open config with cheapest
+// defaults, a headless rate-limit nudge opt-out, and [projects] folder trust.
 func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
 	dir := filepath.Join(rc.AgentHome, ".codex")
 	_ = os.MkdirAll(dir, 0o755)
 	body := "# Written by the ward container entrypoint (ward#178): container is the boundary.\n" +
 		"approval_policy = \"never\"\n" +
 		"sandbox_mode = \"danger-full-access\"\n" +
+		"# Headless containers cannot answer Codex's optional model-switch reminder.\n" +
+		"notice.hide_rate_limit_model_nudge = true\n" +
 		"# Cheapest codex settings by default (ward#379); override with WARD_CODEX_*.\n" +
 		"model = \"" + rc.CodexModel + "\"\n" +
 		"model_reasoning_effort = \"" + rc.CodexEffort + "\"\n" +
