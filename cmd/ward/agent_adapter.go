@@ -5,7 +5,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -190,8 +189,7 @@ func defaultAgentMode() containerMode {
 	return modeClaude
 }
 
-// selectedAgentMode resolves the active bundle's default harness, falling back
-// to the baked default when the selected bundle omits one.
+// selectedAgentMode resolves the baked native control-plane default harness.
 func selectedAgentMode() (containerMode, error) {
 	fleet, err := currentFleetConfigWithError()
 	if err != nil {
@@ -199,13 +197,6 @@ func selectedAgentMode() (containerMode, error) {
 	}
 	if agent := strings.TrimSpace(fleet.Defaults.Agent); agent != "" {
 		return containerMode(agent), nil
-	}
-	if ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv)); ref != "" {
-		if baked, berr := bakedProfileProvider().Fleet(); berr == nil {
-			if agent := strings.TrimSpace(baked.Defaults.Agent); agent != "" {
-				return containerMode(agent), nil
-			}
-		}
 	}
 	if names := frontierAgentNames(); len(names) > 0 {
 		return containerMode(names[0]), nil

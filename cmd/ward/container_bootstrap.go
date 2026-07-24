@@ -148,8 +148,8 @@ func roleAgentOverride(f fleetconfig.Fleet, role, agent string) fleetconfig.Role
 // readBootstrapEnv reads + defaults the entrypoint env, erroring on a missing
 // required var (the bash `: "${X:?...}"` checks). Pure given the environment.
 func readBootstrapEnv() (bootstrapEnv, error) {
-	// The host projects the selected bundle into WARD_* values before launch.
-	// The embedded fleet remains the direct-bootstrap fallback (ward#416).
+	// Native launch values come from the embedded fleet plus explicit WARD_*
+	// overrides. Runtime edge bundles are not projected into bootstrap.
 	fleet, ferr := loadFleetConfig()
 	if ferr != nil {
 		return bootstrapEnv{}, fmt.Errorf("load embedded fleet config for bootstrap defaults: %w", ferr)

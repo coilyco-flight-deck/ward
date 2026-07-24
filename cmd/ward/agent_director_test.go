@@ -287,7 +287,7 @@ func TestBacklogPrintDirectorPlanIncludesCLIConfig(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
-		"config source:   file://",
+		"config source:   baked native control plane",
 		"limit:           17",
 		"max-parallel:    4",
 		"poll-interval:   45s",
@@ -1172,15 +1172,11 @@ func TestDirectorScopeSkipsBurndownReposBeforeDispatch(t *testing.T) {
 		t.Fatalf("read stderr pipe: %v", err)
 	}
 
-	if want := []string{"coilyco-flight-deck/ward", "coilyco-flight-deck/agentic-os"}; !reflect.DeepEqual(got, want) {
+	if want := []string{"coilyco-flight-deck/ward", "coilyco-flight-deck/infrastructure", "coilyco-flight-deck/agentic-os"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("filtered scope = %v, want %v", got, want)
 	}
-	for _, want := range []string{
-		"burndown: skipping coilyco-flight-deck/infrastructure (filtered)",
-	} {
-		if !strings.Contains(string(logs), want) {
-			t.Fatalf("stderr %q missing %q", string(logs), want)
-		}
+	if strings.Contains(string(logs), "burndown: skipping") {
+		t.Fatalf("stderr %q unexpectedly applied an edge-bundle burndown filter", string(logs))
 	}
 	if strings.Contains(string(logs), "coilyco-bridge/deploy") {
 		t.Fatalf("stderr %q unexpectedly mentioned the unrelated repo", string(logs))

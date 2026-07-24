@@ -56,7 +56,8 @@ Inventory of what `ward` ships today.
 - It embeds the shipped agent role catalog from [ward-kdl.role-definitions.kdl](../.ward/ward-kdl/ward-kdl.role-definitions.kdl).
 - It accepts `first input` as exec-guard sugar for `arg0`.
 - Embedded Forgejo surface includes raw Actions log fetch, runner-token mint, and PR edit leaves.
-- Runtime `WARD_CONFIG_REF` bundles affect edge/operator surfaces, not the core agent control plane.
+- Runtime `WARD_CONFIG_REF` bundles affect generated edge/operator surfaces,
+  not the native agent control plane.
 - Coilyco-targeted operator surfaces fail fast when they would otherwise fall back to the baked example bundle.
 
 ## Release and docs

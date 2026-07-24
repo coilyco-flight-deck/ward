@@ -1948,15 +1948,11 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	return r.emit(b.String())
 }
 
-// appendDirectorLaunchConfig renders the resolved launch knobs in the same shape the
-// pre-launch print path sees them, including the selected config source.
+// appendDirectorLaunchConfig renders the resolved native launch knobs. Agent
+// planning is baked into ward and does not resolve an edge config bundle.
 func appendDirectorLaunchConfig(b *strings.Builder, cfg backlogConfig) error {
-	src, err := selectConfigSource()
-	if err != nil {
-		return err
-	}
 	cy := cfg.dispatch
-	fmt.Fprintf(b, "config source:   %s\n", src.sourceDesc())
+	fmt.Fprintln(b, "config source:   baked native control plane")
 	fmt.Fprintf(b, "director harness: %s (its own heartbeat one-shot + drain surface)\n", cfg.mode)
 	fmt.Fprintf(b, "limit:           %d\n", cfg.limit)
 	fmt.Fprintf(b, "max-parallel:    %d\n", cfg.maxParallel)

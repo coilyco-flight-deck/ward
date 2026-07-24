@@ -349,8 +349,8 @@ workflow default="merge-remote-main" {
 	if err != nil {
 		t.Fatalf("agentWorkflow repo override: %v", err)
 	}
-	if wf != workflowPullRequestAndMerge {
-		t.Errorf("repo override workflow = %q, want pull-request-and-merge", wf)
+	if wf != workflowDirectToMain {
+		t.Errorf("repo edge-bundle override workflow = %q, want baked merge-remote-main", wf)
 	}
 
 	cli := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "remote-branch-only"})
@@ -363,12 +363,16 @@ workflow default="merge-remote-main" {
 	}
 }
 
-func TestAgentWorkflowRejectsBadConfigRef(t *testing.T) {
+func TestAgentWorkflowIgnoresBadConfigRef(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
 
 	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/agentic-os#1"})
-	if _, err := agentWorkflow(cmd, "coilyco-flight-deck/agentic-os"); err == nil {
-		t.Fatal("agentWorkflow with bad ref: want a loud config-source error")
+	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/agentic-os")
+	if err != nil {
+		t.Fatalf("agentWorkflow with bad edge config ref: %v", err)
+	}
+	if wf != defaultWorkflow {
+		t.Fatalf("agentWorkflow = %q, want baked %q", wf, defaultWorkflow)
 	}
 }
 

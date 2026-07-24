@@ -111,10 +111,14 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	}
 }
 
-func TestSmartDefaultsRejectsBadConfigRef(t *testing.T) {
+func TestSmartDefaultsIgnoreBadConfigRef(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
-	if _, err := currentSmartDefaultsWithError(); err == nil {
-		t.Fatal("currentSmartDefaultsWithError with bad ref: want a loud config-source error")
+	got, err := currentSmartDefaultsWithError()
+	if err != nil {
+		t.Fatalf("currentSmartDefaultsWithError with bad ref: %v", err)
+	}
+	if want := canonicalSmartDefaults(t); !reflect.DeepEqual(got, want) {
+		t.Fatalf("bad edge config ref changed native defaults\nwant: %#v\ngot:  %#v", want, got)
 	}
 }
 
@@ -224,9 +228,9 @@ func TestSmartDefaultsRejectsMissingRepoAuthority(t *testing.T) {
 	}
 }
 
-// TestSmartDefaultsFailureNamesTheConfigSource pins the attribution contract: a
-// fail-closed error names the serving bundle (aos#452 was undiagnosable without it).
-func TestSmartDefaultsFailureNamesTheConfigSource(t *testing.T) {
+// TestSmartDefaultsIgnoreMalformedBundle pins the native boundary: malformed
+// edge data is still diagnosable through ops, but cannot block agent defaults.
+func TestSmartDefaultsIgnoreMalformedBundle(t *testing.T) {
 	dir := t.TempDir()
 	// 1h undercuts the built-in engineer 90m limit: trips the TTL invariant.
 	if err := os.WriteFile(filepath.Join(dir, "workflow.kdl"),
@@ -240,11 +244,11 @@ func TestSmartDefaultsFailureNamesTheConfigSource(t *testing.T) {
 	ref := "file://" + filepath.ToSlash(dir)
 	t.Setenv(wardConfigRefEnv, ref)
 
-	_, err := currentSmartDefaultsWithError()
-	if err == nil || !strings.Contains(err.Error(), "must exceed role") {
-		t.Fatalf("want the reservation-TTL invariant failure, got %v", err)
+	got, err := currentSmartDefaultsWithError()
+	if err != nil {
+		t.Fatalf("currentSmartDefaultsWithError with malformed edge bundle: %v", err)
 	}
-	if !strings.Contains(err.Error(), ref) {
-		t.Errorf("error does not name the serving config source %q:\n%v", ref, err)
+	if want := canonicalSmartDefaults(t); !reflect.DeepEqual(got, want) {
+		t.Fatalf("malformed edge bundle changed native defaults\nwant: %#v\ngot:  %#v", want, got)
 	}
 }

@@ -511,9 +511,6 @@ type upPlan struct {
 	// ReadOnly marks a read-only surface session (the director's drain surface, ward#293,
 	// ward#353): exports WARD_READONLY=1. See docs/agent-surface.md.
 	ReadOnly bool
-	// ConfigRef carries the resolved config bundle ref into surface sessions so the
-	// in-container `warded` path sees the same bundle the host already selected.
-	ConfigRef string
 	// DispatchBrokerAddr, when set, exports WARD_DISPATCH_BROKER_ADDR (host.docker
 	// .internal:<port>) and flips on the --add-host wiring (ward#391).
 	DispatchBrokerAddr string
@@ -687,13 +684,9 @@ func resolveLaunchConfigEnv(configEntries []string, cwd, role string) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	_, provider, err := currentProfileSourceProvider()
+	fleet, err := bakedProfileProvider().Fleet()
 	if err != nil {
-		return nil, err
-	}
-	fleet, err := provider.Fleet()
-	if err != nil {
-		return nil, fmt.Errorf("load selected fleet config: %w", err)
+		return nil, fmt.Errorf("load baked fleet config: %w", err)
 	}
 	configEnv = addHarnessConfigEnv(configEnv, fleet, role)
 	configEnv = addFleetAttributionConfigEnv(configEnv, fleet, cwd)
@@ -750,15 +743,15 @@ func validateLocalHarnessConfig(mode containerMode, model, endpoint string) erro
 	if strings.TrimSpace(model) == "" {
 		switch mode {
 		case modeGoose:
-			return fmt.Errorf("missing agent.goose.model for goose: set it in the selected config bundle, WARD_GOOSE_MODEL, or --config agent.goose.model=<model>")
+			return fmt.Errorf("missing agent.goose.model for goose: set WARD_GOOSE_MODEL or --config agent.goose.model=<model>")
 		case modeOpencode:
-			return fmt.Errorf("missing agent.opencode.model for opencode: set it in the selected config bundle, WARD_OPENCODE_MODEL, or --config agent.opencode.model=<model>")
+			return fmt.Errorf("missing agent.opencode.model for opencode: set WARD_OPENCODE_MODEL or --config agent.opencode.model=<model>")
 		case modeClaude, modeCodex:
 			return nil
 		}
 	}
 	if mode == modeOpencode && strings.TrimSpace(endpoint) == "" {
-		return fmt.Errorf("missing agent.opencode.endpoint for opencode: set it in the selected config bundle, WARD_OLLAMA_URL, or --config agent.opencode.endpoint=<url>")
+		return fmt.Errorf("missing agent.opencode.endpoint for opencode: set WARD_OLLAMA_URL or --config agent.opencode.endpoint=<url>")
 	}
 	return nil
 }
@@ -940,11 +933,6 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	}
 	if p.ReadOnly {
 		env["WARD_READONLY"] = "1"
-	}
-	if p.ConfigRef != "" {
-		env[wardConfigRefEnv] = p.ConfigRef
-	} else if ref := launchConfigRef(p.Repo, p.HostCwd); ref != "" {
-		env[wardConfigRefEnv] = ref
 	}
 	if p.DispatchBrokerAddr != "" {
 		env[envDispatchBrokerAddr] = p.DispatchBrokerAddr

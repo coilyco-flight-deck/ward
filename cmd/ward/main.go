@@ -53,12 +53,14 @@ func run() int {
 	if initErrorReporting() {
 		defer reportPanic()
 	}
-	app := rootCommand()
+	app := rootCommandForArgs(os.Args)
 
-	// Auto-mount the exec-dialect ward-kdl guardfiles before the verb set is
-	// read, so they count as top-level verbs (ward#284). A failure is non-fatal.
-	if err := mountWardKdlExec(app, leanRunner()); err != nil {
-		fmt.Fprintln(os.Stderr, "ward: warning: ward-kdl exec mount degraded:", err)
+	// Generated guardfiles mount only for generated surfaces, never native agent
+	// control-plane paths, so stale WARD_CONFIG_REF cannot add launch noise.
+	if wardKdlRuntimeRequested(os.Args) {
+		if err := mountWardKdlExec(app, leanRunner()); err != nil {
+			fmt.Fprintln(os.Stderr, "ward: warning: ward-kdl exec mount degraded:", err)
+		}
 	}
 
 	// Unknown-verb fallback: `ward <leaf>` -> `ward exec <leaf>` for a declared
@@ -84,6 +86,19 @@ func run() int {
 }
 
 func rootCommand() *cli.Command {
+	return rootCommandWithOps(opsCommandFrom(bakedConfigSource()))
+}
+
+// Only explicit ops commands select a runtime surface. Native commands use the
+// embedded fallback and stay independent of WARD_CONFIG_REF.
+func rootCommandForArgs(args []string) *cli.Command {
+	if firstSubcommand(args) == "ops" {
+		return rootCommandWithOps(opsCommand())
+	}
+	return rootCommand()
+}
+
+func rootCommandWithOps(ops *cli.Command) *cli.Command {
 	return &cli.Command{
 		Name:    "ward",
 		Usage:   "a contributor-facing cli-guard consumer",
@@ -112,8 +127,19 @@ func rootCommand() *cli.Command {
 			containerCommand(),
 			agentCommand(),
 			agentsCommand(),
-			opsCommand(),
+			ops,
 		},
+	}
+}
+
+// Native `agent` is absent: it is hand-written and must work without an edge
+// bundle. These names are the top-level generated guardfile families.
+func wardKdlRuntimeRequested(args []string) bool {
+	switch firstSubcommand(args) {
+	case "agents", "docker", "ops", "pkg":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -174,6 +200,14 @@ func firstSubcommandIndex(args []string) int {
 		return i
 	}
 	return -1
+}
+
+func firstSubcommand(args []string) string {
+	idx := firstSubcommandIndex(args)
+	if idx < 0 {
+		return ""
+	}
+	return args[idx]
 }
 
 // maybeRewriteToExec rewrites `ward <leaf> ...` to `ward exec <leaf> ...` for a
