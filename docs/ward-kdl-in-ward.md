@@ -1,32 +1,14 @@
 ---
-doc_goal: Keep the exec-dialect auto-mount rule in one concise place after the generated reference docs were removed.
+doc_goal: State the no-mount boundary after the Ward to Aguard cutover.
 ---
-# ward-kdl in ward
+# generated surfaces in Ward
 
-Exec-dialect guardfiles can mount into `ward` at their `wrap` path.
+Generated guardfiles do not mount into Ward.
 
-- `ward-kdl docker` becomes `ward docker`.
-- `ward-kdl ops aws` becomes `ward ops aws`.
-- `ward-kdl agents claude` becomes `ward agents claude`.
+The former auto-mount resolved operator configuration during every Ward startup.
+A stale edge reference could therefore break help, `ward agent`, and other
+native paths. The cutover removes that coupling.
 
-Hand-written surfaces still win collisions.
-
-## Why it matters
-
-- it removes the one-off Go graft pattern.
-- it keeps exec guardfiles on the same audited path as the rest of ward.
-- it lets the generated surface show up under the shipped binary without a
-  second command tree.
-- it accepts `first input` as sugar for `arg0` in exec guardfile predicates, so
-  older and newer guardfiles can share the same mount path.
-
-## Collision rule
-
-If `ward` already owns a path, the hand-written command stays in place and the
-guardfile mount skips that leaf. That keeps the special cases where they belong
-and prevents the generated surface from silently overriding a deliberate
-hand-written command.
-
-## See also
-
-- [ward-kdl-surface.md](ward-kdl-surface.md) - the generated family list.
+Use `aguard ops ...` inside the current AOS image for generated operator work.
+Ward's hand-written `agent`, `container`, `exec`, `git`, and audit paths stay
+native and do not load Aguard configuration.

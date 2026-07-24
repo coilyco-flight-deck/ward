@@ -20,7 +20,7 @@ This page groups the on-demand operational surfaces around a run.
 - These surfaces route through the broker when a brokered surface exists.
 - The director view is read-only.
 - Dispatch, reservation, reaper comments, and failure reporting use typed
-  Forgejo/GitHub/GitLab/Shortcut adapters, not generated `ward ops` leaves.
+  Forgejo/GitHub/GitLab/Shortcut adapters, not generated operator leaves.
 - `list`, `logs`, `stop`, and `reap` all work against a specific run or
   container identity.
 - `dispatch-health` and `list` treat the issue thread as the reservation source of

@@ -262,7 +262,7 @@ func TestBuildUpPlanDirectorUsesDictatableSuffix(t *testing.T) {
 	}
 }
 
-func TestBuildUpPlanIgnoresSelectedFleetAttribution(t *testing.T) {
+func TestBuildUpPlanIgnoresOperatorBundleAttribution(t *testing.T) {
 	dir := writeBundleFixture(t)
 	writeBundleFixtureFile(t, dir, bundleFixtureAgentsPath, `
 agents {
@@ -296,14 +296,14 @@ agents {
 		t.Fatalf("probe run: %v", err)
 	}
 
-	want, err := resolveLaunchConfigEnv(nil, t.TempDir(), roleSession)
+	want, err := loadFleetConfig()
 	if err != nil {
-		t.Fatalf("resolve baked launch config: %v", err)
+		t.Fatalf("load baked fleet config: %v", err)
 	}
 	env := got.wardEnv()
-	if env["WARD_GIT_NAME"] != want["WARD_GIT_NAME"] || env["WARD_GIT_EMAIL"] != want["WARD_GIT_EMAIL"] {
+	if env["WARD_GIT_NAME"] != want.Defaults.Attribution.Name || env["WARD_GIT_EMAIL"] != want.Defaults.Attribution.Email {
 		t.Fatalf("wardEnv git attribution = <%s %s>, want baked <%s %s>",
-			env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"], want["WARD_GIT_NAME"], want["WARD_GIT_EMAIL"])
+			env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"], want.Defaults.Attribution.Name, want.Defaults.Attribution.Email)
 	}
 }
 
@@ -677,9 +677,9 @@ func TestWardEnvCorrelationEnvelope(t *testing.T) {
 	}
 }
 
-// TestWardEnvCoilycoOmitsConfigRef keeps native containers independent of an
-// edge bundle pinned to the host checkout.
-func TestWardEnvCoilycoOmitsConfigRef(t *testing.T) {
+// TestWardEnvDoesNotExportOperatorConfigRef keeps Aguard's edge config out of
+// native Ward containers, even for a coilyco checkout.
+func TestWardEnvDoesNotExportOperatorConfigRef(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	work := t.TempDir()

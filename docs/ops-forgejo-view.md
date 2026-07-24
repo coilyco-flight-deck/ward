@@ -1,9 +1,9 @@
 ---
 doc_goal: Keep the Forgejo view anchor stable after the old page was collapsed.
 ---
-# ops forgejo view
+# Aguard Forgejo view
 
-This page is the durable anchor for the read-only Forgejo view surface.
+This historical anchor applies to the read-only `aguard ops forgejo` view surface.
 
 - It keeps the fetch/read side of the Forgejo surface readable on its own.
 - It is the stable anchor for the source comments that mention view-only reads.

@@ -44,22 +44,29 @@ func bakedProfileProvider() ProfileProvider {
 	return newProfileProvider(bakedConfigSource())
 }
 
-// currentFleetConfigWithError resolves the native agent fleet profile from the
-// baked product data. Runtime bundles are reserved for generated edge surfaces.
+// currentProfileSourceProvider is deliberately native-only.
+// Aguard config cannot perturb Ward's agent lifecycle.
+func currentProfileSourceProvider() (configSource, ProfileProvider) {
+	src := bakedConfigSource()
+	return src, newProfileProvider(src)
+}
+
+// currentFleetConfigWithError resolves the baked AOS-authored fleet policy.
 func currentFleetConfigWithError() (fleetconfig.Fleet, error) {
-	fleet, err := bakedProfileProvider().Fleet()
+	src, provider := currentProfileSourceProvider()
+	fleet, err := provider.Fleet()
 	if err != nil {
-		return fleetconfig.Fleet{}, fmt.Errorf("baked fleet config: %w", err)
+		return fleetconfig.Fleet{}, fmt.Errorf("fleet config [config source: %s]: %w", src.sourceDesc(), err)
 	}
 	return fleet, nil
 }
 
-// currentAgentRoleCatalogWithError resolves the native role catalog from baked
-// product data, independent of WARD_CONFIG_REF.
+// currentAgentRoleCatalogWithError resolves the baked AOS-authored role catalog.
 func currentAgentRoleCatalogWithError() (agentRoleCatalog, error) {
-	cat, err := bakedProfileProvider().AgentRoles()
+	src, provider := currentProfileSourceProvider()
+	cat, err := provider.AgentRoles()
 	if err != nil {
-		return agentRoleCatalog{}, fmt.Errorf("baked agent role catalog: %w", err)
+		return agentRoleCatalog{}, fmt.Errorf("agent role catalog [config source: %s]: %w", src.sourceDesc(), err)
 	}
 	return cat, nil
 }

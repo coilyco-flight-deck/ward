@@ -29,4 +29,7 @@ repo-authority default=forgejo {
     trusted-owner coilyco-bridge
     trusted-owner coilyco-gaming
     repo "coilysiren/*" forge=github
+    repo "coilyco-flight-deck/*" forge=forgejo
+    repo "coilyco-bridge/*" forge=forgejo
+    repo "coilyco-gaming/*" forge=forgejo
 }

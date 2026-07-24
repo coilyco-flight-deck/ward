@@ -178,7 +178,7 @@ func (r *Runner) brokerForgejoAction(name string, direct cli.ActionFunc) cli.Act
 		}
 		mapped, ok := mapForgejoWriteOp(resource, verbName)
 		if !ok {
-			return fmt.Errorf("ward ops forgejo %s %s: refused - the broker serves the write tier only "+
+			return fmt.Errorf("forgejo broker %s %s: refused - the broker serves the write tier only "+
 				"(issue create / edit / comment / close / reopen, issue-label add / set / remove); %s %s is out of tier", resource, verbName, resource, verbName)
 		}
 		return r.runForgejoWriteViaBroker(ctx, cmd, session, mapped)
@@ -195,13 +195,13 @@ func (r *Runner) runForgejoWriteViaBroker(ctx context.Context, cmd *cli.Command,
 		minArgs, shape = 3, "<owner> <repo> <index>"
 	}
 	if len(args) < minArgs {
-		return fmt.Errorf("ward ops forgejo: broker route needs %s, got %d arg(s)", shape, len(args))
+		return fmt.Errorf("forgejo broker route needs %s, got %d arg(s)", shape, len(args))
 	}
 	target := broker.Target{Owner: args[0], Repo: args[1]}
 	if needNumber {
 		n, err := strconv.Atoi(args[2])
 		if err != nil {
-			return fmt.Errorf("ward ops forgejo: index %q is not a number: %w", args[2], err)
+			return fmt.Errorf("forgejo broker index %q is not a number: %w", args[2], err)
 		}
 		target.Number = n
 	}
@@ -240,11 +240,11 @@ func forgejoWritePayload(cmd *cli.Command) (title, body, state string, err error
 	}
 	raw, rerr := os.ReadFile(bodyFile) // #nosec G304 -- operator-supplied request body path, same as the direct leaf
 	if rerr != nil {
-		return "", "", "", fmt.Errorf("ward ops forgejo: read --body-file %s: %w", bodyFile, rerr)
+		return "", "", "", fmt.Errorf("forgejo broker: read --body-file %s: %w", bodyFile, rerr)
 	}
 	var obj map[string]any
 	if uerr := json.Unmarshal(raw, &obj); uerr != nil {
-		return "", "", "", fmt.Errorf("ward ops forgejo: parse --body-file %s as JSON: %w", bodyFile, uerr)
+		return "", "", "", fmt.Errorf("forgejo broker: parse --body-file %s as JSON: %w", bodyFile, uerr)
 	}
 	if title == "" {
 		title = stringField(obj, "title")
@@ -284,7 +284,7 @@ func renderBrokerResult(cmd *cli.Command, target broker.Target, res broker.Resul
 		}
 		raw, err := json.Marshal(out)
 		if err != nil {
-			return fmt.Errorf("ward ops forgejo: render broker result: %w", err)
+			return fmt.Errorf("forgejo broker: render result: %w", err)
 		}
 		fmt.Println(string(raw))
 	default:

@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// TestMain neutralizes the operator's live config env before tests run (ward#1128),
-// else WARD_CONFIG_REF gitsyncs the real bundle mid-suite. Tests use t.Setenv instead.
+// TestMain neutralizes compatibility env before tests run. Tests use t.Setenv
+// when they prove that stale operator config cannot affect native policy.
 func TestMain(m *testing.M) {
 	for _, k := range []string{
 		"WARD_CONFIG_REF", "WARD_CONFIG_TTL",
@@ -16,8 +16,8 @@ func TestMain(m *testing.M) {
 	} {
 		os.Unsetenv(k)
 	}
-	// Point the user cache dir at a throwaway so config-bundle cache writes
-	// never land in (or poison) the operator's real cache.
+	// Point the user cache dir at a throwaway so test cache writes never land in
+	// (or poison) the operator's real cache.
 	tmp, err := os.MkdirTemp("", "ward-test-cache-*")
 	if err == nil {
 		if runtime.GOOS == "windows" {

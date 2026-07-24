@@ -37,8 +37,8 @@ The role determines what the run is trying to do. The harness determines how
 the run is authenticated and what model or CLI it talks to. The workflow
 determines where the work is allowed to land.
 
-The native agent control plane uses baked launch defaults. `WARD_CONFIG_REF`
-affects generated edge/operator surfaces only, never the harness pick.
+Ward resolves its harness and launch defaults from baked AOS-authored policy.
+An Aguard operator config reference cannot alter a native agent launch.
 
 ## What changed here
 

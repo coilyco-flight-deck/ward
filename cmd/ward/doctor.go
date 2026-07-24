@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/execverb"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
 )
@@ -47,10 +46,9 @@ func (r doctorReport) failureCount() int {
 func doctorCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "doctor",
-		Usage: "Validate the resolved runtime config and exit.",
-		Description: `doctor validates the selected runtime config source, the resolved smart-defaults
-policy, the fleet/roles data, and the guarded ops/executable surfaces that the launch
-selected config controls. It is strict and exits non-zero on any failure.`,
+		Usage: "Validate embedded native policy and exit.",
+		Description: `doctor validates Ward's embedded agent policy: smart defaults,
+fleet/roles data, and native launch assets. Aguard owns operator specs.`,
 		Action: func(ctx context.Context, _ *cli.Command) error {
 			report, err := runDoctor(ctx)
 			printDoctorReport(report)
@@ -63,18 +61,9 @@ func runDoctor(ctx context.Context) (doctorReport, error) {
 	_ = ctx
 	report := doctorReport{}
 
-	selection, err := selectedConfigRefDetail()
-	if err != nil {
-		report.add("config source", err)
-		return report, err
-	}
-	allowPlaceholders := selection.ref == "" || strings.TrimSpace(os.Getenv(doctorAllowPlaceholdersEnv)) != ""
-	src, err := selectConfigSourceForSelection(selection)
-	if err != nil {
-		report.add("config source", err)
-		return report, err
-	}
-	report.sourceSummary = configSourceSummaryForSelection(selection, src)
+	allowPlaceholders := strings.TrimSpace(os.Getenv(doctorAllowPlaceholdersEnv)) != ""
+	src := bakedConfigSource()
+	report.sourceSummary = src.sourceDesc()
 
 	defs, err := loadSmartDefaultsFrom(src)
 	if err != nil {
@@ -97,18 +86,6 @@ func runDoctor(ctx context.Context) (doctorReport, error) {
 		report.add("fleet", err)
 	} else {
 		report.add("fleet", nil)
-	}
-
-	if err := validateForgejoOpsOperational(src, allowPlaceholders); err != nil {
-		report.add("ops bundle", err)
-	} else {
-		report.add("ops bundle", nil)
-	}
-
-	if err := validateExecAssetsOperational(src, allowPlaceholders); err != nil {
-		report.add("exec bundle", err)
-	} else {
-		report.add("exec bundle", nil)
 	}
 
 	if report.failed() {
@@ -213,136 +190,6 @@ func validateFleetRolesOperational(fleet fleetconfig.Fleet) error {
 	for _, role := range fleet.Roles {
 		if role.Name == "director" && len(role.Guardfiles.List) == 0 && role.Guardfiles.Prefix == "" {
 			return fmt.Errorf("fleet: role %q needs at least one guardfile binding (fail-closed)", role.Name)
-		}
-	}
-	return nil
-}
-
-func validateForgejoOpsOperational(src configSource, allowPlaceholders bool) error {
-	file, node, err := loadForgejoGuardfileNodeFrom(src)
-	if err != nil {
-		return err
-	}
-	if !allowPlaceholders {
-		if err := validateNoPlaceholderSentinels(node); err != nil {
-			return fmt.Errorf("%s: %w; %s", setupBundlePathOnDisk(src, file.path), err, setupPlaceholderRemediation())
-		}
-	}
-	if _, err := buildForgejoOpsFrom(src); err != nil {
-		return err
-	}
-	return nil
-}
-
-func validateExecAssetsOperational(src configSource, allowPlaceholders bool) error {
-	files, err := loadBundleKDLFiles(src)
-	if err != nil {
-		return fmt.Errorf("read exec guardfiles: %w", err)
-	}
-	for _, file := range files {
-		if src.execMixedDialects && !isExecDialectGuardfile(file.src) {
-			continue
-		}
-		if err := validateExecAssetOperational(file, allowPlaceholders); err != nil {
-			return err
-		}
-	}
-	return mountWardKdlExecFrom(setupCompileRoot(), src, leanRunner())
-}
-
-func validateExecAssetOperational(file bundleKDLFile, allowPlaceholders bool) error {
-	gf, err := execverb.Parse(file.src)
-	if err != nil {
-		return fmt.Errorf("parse exec guardfile %s: %w", file.path, err)
-	}
-	if err := validateExecGuardfileOperational(gf, allowPlaceholders); err != nil {
-		return fmt.Errorf("%s: %w", file.path, err)
-	}
-	return nil
-}
-
-func validateExecGuardfileOperational(gf *execverb.Guardfile, allowPlaceholders bool) error {
-	if !allowPlaceholders && containsExamplePlaceholder(gf.Bin) {
-		return fmt.Errorf("exec bin %q still looks like a placeholder", gf.Bin)
-	}
-	for _, tok := range gf.ArgvPrefix {
-		if !allowPlaceholders && containsExamplePlaceholder(tok) {
-			return fmt.Errorf("exec argv-prefix token %q still looks like a placeholder", tok)
-		}
-	}
-	if err := validateExecEnvOperational(gf, allowPlaceholders); err != nil {
-		return err
-	}
-	if err := validateExecAllowOperational(gf, allowPlaceholders); err != nil {
-		return err
-	}
-	if err := validateExecGrantsOperational(gf, allowPlaceholders); err != nil {
-		return err
-	}
-	return validateExecWhensOperational(gf, allowPlaceholders)
-}
-
-func validateExecEnvOperational(gf *execverb.Guardfile, allowPlaceholders bool) error {
-	for _, env := range gf.Env {
-		if !allowPlaceholders && containsExamplePlaceholder(env.Name) {
-			return fmt.Errorf("exec env name %q still looks like a placeholder", env.Name)
-		}
-		if !allowPlaceholders && containsExamplePlaceholder(env.Provider) {
-			return fmt.Errorf("exec env provider %q still looks like a placeholder", env.Provider)
-		}
-		if !allowPlaceholders && containsExamplePlaceholder(env.Address) {
-			return fmt.Errorf("exec env address %q still looks like a placeholder", env.Address)
-		}
-	}
-	return nil
-}
-
-func validateExecAllowOperational(gf *execverb.Guardfile, allowPlaceholders bool) error {
-	for _, allow := range gf.Allow {
-		if !allowPlaceholders && containsExamplePlaceholder(allow) {
-			return fmt.Errorf("exec allow binary %q still looks like a placeholder", allow)
-		}
-	}
-	return nil
-}
-
-func validateExecGrantsOperational(gf *execverb.Guardfile, allowPlaceholders bool) error {
-	for _, g := range gf.Grants {
-		for _, tok := range g.Subcommand {
-			if !allowPlaceholders && containsExamplePlaceholder(tok) {
-				return fmt.Errorf("exec grant subcommand %q still looks like a placeholder", tok)
-			}
-		}
-		for _, tok := range g.Argv {
-			if !allowPlaceholders && containsExamplePlaceholder(tok) {
-				return fmt.Errorf("exec grant argv token %q still looks like a placeholder", tok)
-			}
-		}
-		if !allowPlaceholders && containsExamplePlaceholder(g.Bin) {
-			return fmt.Errorf("exec grant bin %q still looks like a placeholder", g.Bin)
-		}
-	}
-	return nil
-}
-
-func validateExecWhensOperational(gf *execverb.Guardfile, allowPlaceholders bool) error {
-	for _, w := range gf.Whens {
-		for _, tok := range w.SourceCmd {
-			if !allowPlaceholders && containsExamplePlaceholder(tok) {
-				return fmt.Errorf("exec when source command %q still looks like a placeholder", tok)
-			}
-		}
-		for _, glob := range w.Patterns {
-			if !allowPlaceholders && containsExamplePlaceholder(glob) {
-				return fmt.Errorf("exec when glob %q still looks like a placeholder", glob)
-			}
-		}
-	}
-	for _, w := range gf.WrapWhens {
-		for _, glob := range w.Patterns {
-			if !allowPlaceholders && containsExamplePlaceholder(glob) {
-				return fmt.Errorf("exec wrap-when glob %q still looks like a placeholder", glob)
-			}
 		}
 	}
 	return nil

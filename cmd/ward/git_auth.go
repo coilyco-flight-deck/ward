@@ -22,8 +22,8 @@ func (r *Runner) gitForgejoAuthEnv(ctx context.Context) (map[string]string, erro
 	return forgejoExtraheaderEnv(os.Getenv("GIT_CONFIG_COUNT"), token), nil
 }
 
-// resolveForgejoGitToken resolves the token as `ward ops forgejo` does ($FORGEJO_TOKEN,
-// else SSM), swallowing errors so a token-less host falls back to git's own flow.
+// resolveForgejoGitToken resolves the token through native credential plumbing.
+// A token-less host falls back to git's own flow.
 func (r *Runner) resolveForgejoGitToken(ctx context.Context) string {
 	tok, err := r.forgejoTokenResolver(ctx, forgejoTokenSSMPath)
 	if err != nil {

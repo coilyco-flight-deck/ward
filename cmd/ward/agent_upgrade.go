@@ -60,7 +60,7 @@ func wardOutdatedNotice(current, latest string) string {
 }
 
 // fetchLatestWardTag resolves the newest ward release tag through the in-binary
-// `ward ops forgejo release list` specverb (ward#172). See docs/agent.md.
+// `aguard ops forgejo release list` command (ward#172). See docs/agent.md.
 func (r *Runner) fetchLatestWardTag(ctx context.Context) (string, bool) {
 	if r == nil || r.Runner == nil {
 		return "", false

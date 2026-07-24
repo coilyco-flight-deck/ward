@@ -69,25 +69,3 @@ func TestViewIssueProjectsLogins(t *testing.T) {
 		}
 	}
 }
-
-// TestOverrideForgejoViewIssueSwapsLeaf asserts the built forgejo tree exposes
-// `issue view` with an action installed (the lean override, not the engine leaf).
-func TestOverrideForgejoViewIssueSwapsLeaf(t *testing.T) {
-	dir := writeBundleFixture(t)
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	forgejo, err := buildForgejoOps()
-	if err != nil {
-		t.Fatalf("buildForgejoOps: %v", err)
-	}
-	issue := subCommandNamed(forgejo, "issue")
-	if issue == nil {
-		t.Fatalf("forgejo group missing issue command")
-	}
-	view := subCommandNamed(issue, "view")
-	if view == nil {
-		t.Fatalf("issue command missing view leaf")
-	}
-	if view.Action == nil {
-		t.Errorf("issue view leaf has no action after override")
-	}
-}

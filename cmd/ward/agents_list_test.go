@@ -109,34 +109,3 @@ func TestAgentsListTableDefault(t *testing.T) {
 		t.Errorf("table output missing header: %q", out)
 	}
 }
-
-// TestAgentsListSurvivesExecMount is the collision-win invariant: mounting the
-// launchers onto the hand-written `agents` group leaves `list` in place beside them.
-func TestAgentsListSurvivesExecMount(t *testing.T) {
-	t.Setenv("WARD_TARGET_OWNER", "coilysiren")
-	t.Setenv("WARD_TARGET_REPO", "coilysiren/example")
-	root := &cli.Command{
-		Name: "ward",
-		Commands: []*cli.Command{
-			{Name: "git"},
-			{Name: "ops", Commands: []*cli.Command{{Name: "forgejo"}}},
-			agentsCommand(),
-		},
-	}
-	if err := mountWardKdlExec(root, leanRunner()); err != nil {
-		t.Fatalf("mountWardKdlExec: %v", err)
-	}
-	agents := commandNamed(root.Commands, "agents")
-	if agents == nil {
-		t.Fatalf("agents group vanished; got %v", commandNames(root.Commands))
-	}
-	if commandNamed(agents.Commands, "list") == nil {
-		t.Errorf("hand-written `list` leaf clobbered by the exec mount; got %v", commandNames(agents.Commands))
-	}
-	// The launchers still graft onto the same group beside `list`.
-	for _, want := range []string{"claude", "codex"} {
-		if commandNamed(agents.Commands, want) == nil {
-			t.Errorf("exec launcher %q missing from the shared agents group; got %v", want, commandNames(agents.Commands))
-		}
-	}
-}

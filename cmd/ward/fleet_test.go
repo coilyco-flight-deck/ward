@@ -34,7 +34,6 @@ roles {
 `),
 			},
 		},
-		execDir: ".",
 	}
 
 	fleet, err := loadBundleFleetConfigFrom(src)

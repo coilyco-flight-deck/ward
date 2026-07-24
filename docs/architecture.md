@@ -3,19 +3,21 @@ doc_goal: Explain ward's three-layer split in one short page so the rest of the 
 ---
 # ward architecture
 
-`ward` is built from three layers.
+Ward and AOS divide the runtime into four layers.
 
 - `cli-guard` is the engine.
-- `ward-kdl` is the build-time authoring layer.
-- `ward` is the run-time product that embeds the generated surfaces.
+- specgen is the AOS build-time authoring layer for operator APIs.
+- `aguard` is the AOS-image operator CLI.
+- `ward` is the native agent control plane.
 
 The split is about **when** each layer runs.
 
 ## What that means
 
 - `cli-guard` owns the policy and routing framework.
-- `ward-kdl` turns a guardfile into an audited CLI surface.
-- `ward` ships the embedded surfaces plus the hand-written agent and git code.
+- specgen turns AOS guardfiles into Aguard's audited operator surface.
+- Aguard ships with the AOS image and does not depend on Ward at runtime.
+- Ward ships the hand-written agent, container, git, reservation, and dev-verb code plus its baked role and launch policy.
 
 ## See also
 

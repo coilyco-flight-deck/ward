@@ -18,7 +18,7 @@ import (
 )
 
 // forgejo_ops.go is ward's core Forgejo client. Core agent paths use this
-// direct HTTP adapter, not the runtime-selected `ward ops forgejo` KDL surface.
+// direct HTTP adapter, not a generated operator surface.
 
 // forgejoBaseURL is the Forgejo origin, used to render issue URLs and parse refs.
 var forgejoBaseURL = "https://forgejo.coilysiren.me"
@@ -1148,20 +1148,6 @@ func (raw forgejoIssueRaw) lean() leanIssue {
 		li.Assignees = append(li.Assignees, a.Login)
 	}
 	return li
-}
-
-// viewIssue fetches an issue and its comment thread, projected to the lean shape
-// (ward#225).
-func (c *forgejoClient) viewIssue(ctx context.Context, owner, repo string, number int) (*leanIssueView, error) {
-	var raw forgejoIssueRaw
-	if _, err := c.doJSON(ctx, http.MethodGet, []string{"repos", owner, repo, "issues", strconv.Itoa(number)}, nil, nil, false, &raw); err != nil {
-		return nil, fmt.Errorf("forgejo: view issue %s/%s#%d: %w", owner, repo, number, err)
-	}
-	comments, err := c.ListIssueComments(ctx, owner, repo, number)
-	if err != nil {
-		return nil, err
-	}
-	return leanView(raw, comments), nil
 }
 
 // leanView projects a raw issue plus its comment thread to the reader-facing
