@@ -42,7 +42,7 @@ Inventory of what `ward` ships today.
   [container-contract.md](container-contract.md),
   [container-lifecycle.md](container-lifecycle.md), and
   [container-substrate.md](container-substrate.md).
-- Browser computer-use is disabled for both Claude Code and Codex containers.
+- Claude in Chrome browser computer-use is disabled for Claude Code containers.
 - Public demo image build. See [demo-image.md](demo-image.md).
 
 ## ward-kdl

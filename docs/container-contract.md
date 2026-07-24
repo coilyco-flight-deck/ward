@@ -8,8 +8,8 @@ The container contract is small.
 - The workspace clone is the run's working tree.
 - The container gets only the mounts and env it needs.
 - The entrypoint controls the runtime path from launch to teardown.
-- Claude in Chrome and Codex Computer Use stay explicitly disabled in the
-  container harness baselines.
+- Claude in Chrome stays explicitly disabled in the Claude Code container
+  harness baseline.
 
 ## What the contract covers
 

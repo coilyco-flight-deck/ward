@@ -87,12 +87,13 @@ func TestComposeConfigCheapDefaults(t *testing.T) {
 		"model = \"gpt-5.4-mini\"",
 		"model_reasoning_effort = \"low\"",
 		"model_verbosity = \"low\"",
-		"[mcp_servers.\"computer-use\"]",
-		"enabled = false",
 	} {
 		if !strings.Contains(string(got), want) {
 			t.Errorf("config.toml missing %q\n---\n%s", want, got)
 		}
+	}
+	if strings.Contains(string(got), "[mcp_servers.") {
+		t.Errorf("config.toml must leave Codex MCP servers unmanaged\n---\n%s", got)
 	}
 
 	// Overrides flow straight through to the written config.

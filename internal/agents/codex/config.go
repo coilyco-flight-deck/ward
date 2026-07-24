@@ -20,8 +20,6 @@ func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
 		"model = \"" + rc.CodexModel + "\"\n" +
 		"model_reasoning_effort = \"" + rc.CodexEffort + "\"\n" +
 		"model_verbosity = \"" + rc.CodexVerbosity + "\"\n" +
-		"[mcp_servers.\"computer-use\"]\n" +
-		"enabled = false\n" +
 		trustProjectsTOML(rc)
 	out := filepath.Join(dir, "config.toml")
 	if werr := os.WriteFile(out, []byte(body), 0o644); werr != nil { // #nosec G306 -- config, not a secret
