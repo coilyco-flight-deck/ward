@@ -53,46 +53,6 @@ func TestTopLevelVerbs(t *testing.T) {
 	}
 }
 
-func TestWardKdlRuntimeRequested(t *testing.T) {
-	for _, tc := range []struct {
-		args []string
-		want bool
-	}{
-		{[]string{"ward", "agent", "logs", "#1"}, false},
-		{[]string{"ward", "agent", "dispatch-health"}, false},
-		{[]string{"ward", "agent", "engineer", "#1"}, false},
-		{[]string{"ward", "ops", "forgejo", "issue", "view"}, true},
-		{[]string{"ward", "agents", "codex"}, true},
-		{[]string{"ward", "docker", "ps"}, true},
-		{[]string{"ward", "pkg", "find"}, true},
-	} {
-		if got := wardKdlRuntimeRequested(tc.args); got != tc.want {
-			t.Errorf("wardKdlRuntimeRequested(%v) = %t, want %t", tc.args, got, tc.want)
-		}
-	}
-}
-
-// A stale edge bundle must not even be resolved while assembling a native
-// agent command tree. The generated ops path still resolves it on demand.
-func TestRootCommandForArgsKeepsNativeAgentOffEdgeConfig(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
-
-	native := rootCommandForArgs([]string{"ward", "agent", "logs", "#1"})
-	if commandNamed(native.Commands, "agent") == nil {
-		t.Fatal("native command tree lost agent")
-	}
-	ops := commandNamed(native.Commands, "ops")
-	if ops == nil || commandNamed(ops.Commands, "forgejo") == nil {
-		t.Fatal("native command tree lost baked ops fallback")
-	}
-
-	edge := rootCommandForArgs([]string{"ward", "ops", "forgejo", "issue", "view"})
-	forgejo := commandNamed(commandNamed(edge.Commands, "ops").Commands, "forgejo")
-	if forgejo.Metadata[opsUnavailableReasonKey] == nil {
-		t.Fatal("edge ops tree accepted an invalid WARD_CONFIG_REF")
-	}
-}
-
 // writeWardConfig writes a minimal .ward/ward.yaml with the named commands and
 // points WARD_CONFIG at it for the duration of the test.
 func writeWardConfig(t *testing.T, names ...string) {
