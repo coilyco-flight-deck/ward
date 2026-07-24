@@ -79,9 +79,8 @@ var runAgentCompose = func(ctx context.Context, r *Runner, args ...string) error
 	return r.Runner.Exec(ctx, "agent-compose", args...)
 }
 
-// projectAgentComposeHome verifies the opaque input, projects it through the
-// provider CLI, then composes Ward's authority-only doctrine into the selected
-// harness load point. The immutable bundle is never read or changed by Ward.
+// projectAgentComposeHome projects a verified opaque bundle through its provider,
+// then composes Ward authority into the load point without reading the bundle.
 func (r *Runner) projectAgentComposeHome(ctx context.Context, e bootstrapEnv) error {
 	bundle := strings.TrimSpace(e.AgentComposeBundle)
 	if bundle == "" {
@@ -95,9 +94,8 @@ func (r *Runner) projectAgentComposeHome(ctx context.Context, e bootstrapEnv) er
 		return fmt.Errorf("verify agent-compose bundle at %s: %w", bundle, err)
 	}
 
-	// composeContext wrote Ward's authority document and linked or copied it into
-	// the selected load point. Remove only that known Ward-owned projection so
-	// agent-compose can apply its foreign-file safety rules to the rest of HOME.
+	// Remove only composeContext's known Ward-owned projection so agent-compose
+	// can apply its foreign-file safety rules to the rest of HOME.
 	instruction := filepath.Join(e.AgentHome, instructionRel)
 	if containerMode(e.Mode) != modeOpencode {
 		if err := removeWardContextProjection(instruction, filepath.Join(e.AgentHome, "AGENTS.md")); err != nil {

@@ -21,12 +21,13 @@ var drainAgentLiterals = map[string]bool{
 }
 
 // drainGateAllowlist is the tiny set of core files that legitimately carry
-// per-agent literals: the manifest reader plus the signature/review exceptions.
+// per-agent literals: the manifest reader plus shared roster and projection switches.
 var drainGateAllowlist = map[string]bool{
-	"agent_adapter.go":   true, // manifest reader + runtime adapter projection
-	"agent_fleet.go":     true, // ward-owned frontier roster + effective merge layer
-	"agent_signature.go": true, // roster identity/signer defaults
-	"agent_review.go":    true, // review-panel roster: which families review + their availability preconditions (ward#134)
+	"agent_adapter.go":           true, // manifest reader + runtime adapter projection
+	"agent_fleet.go":             true, // ward-owned frontier roster + effective merge layer
+	"agent_signature.go":         true, // roster identity/signer defaults
+	"agent_review.go":            true, // review-panel roster: which families review + their availability preconditions (ward#134)
+	"container_agent_compose.go": true, // shared bundle layout switch before harness startup (ward#1542)
 }
 
 // TestNoPerAgentLiteralsInCore walks every core cmd/ward non-test .go file and
