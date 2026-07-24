@@ -323,7 +323,7 @@ func TestDirectorEngineerHarness(t *testing.T) {
 func TestDirectorFlagsParity(t *testing.T) {
 	cmd := agentDirectorCommand()
 	for _, want := range []string{
-		"image", "tag", "ward-source", "ward-version",
+		"image", "tag", "agent-compose-bundle", "ward-source", "ward-version",
 		"no-pull", "print", "with-repo", "override-reservation", "engineer-harness",
 	} {
 		if !commandHasFlag(cmd, want) {
@@ -398,9 +398,10 @@ func TestDirectorSurfaceArgv(t *testing.T) {
 				wardVersion:       "v1",
 				wardVersionSource: wardVersionSourceHost,
 			},
-			wardSource: "/src/ward",
-			noPull:     true,
-			withRepo:   []string{"a/b", "c/d"},
+			agentComposeBundle: "/context/director-bundle",
+			wardSource:         "/src/ward",
+			noPull:             true,
+			withRepo:           []string{"a/b", "c/d"},
 		}
 		argv := directorSurfaceArgv("coilyco-flight-deck/ward", cfg)
 		if argv[0] != directorSurfaceVerb {
@@ -411,6 +412,7 @@ func TestDirectorSurfaceArgv(t *testing.T) {
 		}
 		for _, want := range [][2]string{
 			{"--repo", "coilyco-flight-deck/ward"}, {"--image", "img"}, {"--tag", "t1"},
+			{"--agent-compose-bundle", "/context/director-bundle"},
 			{"--ward-source", "/src/ward"},
 			{"--with-repo", "a/b"}, {"--with-repo", "c/d"},
 		} {

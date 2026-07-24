@@ -80,12 +80,13 @@ type bootstrapEnv struct {
 	// (ward#580); an external (non-Forgejo) dep carries its honored clone URL (ward#612).
 	ContextRepos []catalogContextRepo
 	// Substrate config (best-effort reference-repo warming).
-	SubstrateSeed     string
-	SubstrateDest     string
-	SubstrateManifest string
-	SubstrateTTL      string
-	SubstrateSkip     bool
-	TailnetSocks5     string
+	SubstrateSeed      string
+	SubstrateDest      string
+	SubstrateManifest  string
+	SubstrateTTL       string
+	SubstrateSkip      bool
+	TailnetSocks5      string
+	AgentComposeBundle string
 }
 
 const runProvenanceFile = ".ward-run-provenance.json"
@@ -206,12 +207,13 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		WardVersionSource: envOr(envAgentVersionSource, ""),
 		WardVersion:       envOr("WARD_VERSION", ""),
 
-		SubstrateSeed:     envOr("WARD_SUBSTRATE_SEED", "/opt/substrate-seed"),
-		SubstrateDest:     envOr("WARD_SUBSTRATE_DEST", "/substrate"),
-		SubstrateManifest: envOr("WARD_SUBSTRATE_MANIFEST", "/opt/ward/preclone-repos.txt"),
-		SubstrateTTL:      envOr("WARD_SUBSTRATE_TTL", "600"),
-		SubstrateSkip:     os.Getenv("WARD_SUBSTRATE_SKIP") == "1",
-		TailnetSocks5:     os.Getenv("WARD_TS_SOCKS5"),
+		SubstrateSeed:      envOr("WARD_SUBSTRATE_SEED", "/opt/substrate-seed"),
+		SubstrateDest:      envOr("WARD_SUBSTRATE_DEST", "/substrate"),
+		SubstrateManifest:  envOr("WARD_SUBSTRATE_MANIFEST", "/opt/ward/preclone-repos.txt"),
+		SubstrateTTL:       envOr("WARD_SUBSTRATE_TTL", "600"),
+		SubstrateSkip:      os.Getenv("WARD_SUBSTRATE_SKIP") == "1",
+		TailnetSocks5:      os.Getenv("WARD_TS_SOCKS5"),
+		AgentComposeBundle: os.Getenv("WARD_AGENT_COMPOSE_BUNDLE"),
 	}
 	if e.TargetOwner == "" {
 		return e, fmt.Errorf("missing WARD_TARGET_OWNER")
@@ -467,6 +469,11 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	r.prepareConfigBundleCache(ctx, e)
 	blog("bootstrap context compose start")
 	r.composeContext(e)
+	if err := r.projectAgentComposeHome(ctx, e); err != nil {
+		blog("fatal: %v", err)
+		writeGateFailure("agent-compose", err.Error())
+		return err
+	}
 	blog("bootstrap permissions compose start")
 	r.composePermissions(e)
 	// Set the trust set here, post-warm, not in agentRunCtx (which runs pre-warm)

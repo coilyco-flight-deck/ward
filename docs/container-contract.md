@@ -16,6 +16,7 @@ The container contract is small.
 - `WARD_*` environment variables.
 - the read-only director's broker socket and its credential boundary.
 - bind mounts and read-only surfaces.
+- the optional read-only agent-compose bundle handoff.
 - the permission shape the container itself can use.
 - the per-harness context level.
 
@@ -29,6 +30,18 @@ The container contract is small.
 The contract is the boundary between the host and the run. If a value needs to
 change the container's behavior, it belongs here or in the launch docs, not in
 the repo's `.ward/ward.yaml`.
+
+## Agent-compose context bundle
+
+`--agent-compose-bundle <path>` adds one explicit, read-only context input.
+Ward validates the host path, mounts it at `/opt/agent-compose-bundle`, and
+exports only that fixed container path as `WARD_AGENT_COMPOSE_BUNDLE`.
+Container startup asks agent-compose to verify the opaque bundle and project
+the selected harness layout into the private agent HOME before launch.
+
+The bundle changes context only. It grants no authority or runtime capability.
+See [agent-compose.md](agent-compose.md) for the full ownership and failure
+contract.
 
 ## Read-only director credentials
 
@@ -49,3 +62,4 @@ for its authorized operations and rotation recovery.
 - [container.md](container.md) - the overview.
 - [container-lifecycle.md](container-lifecycle.md) - launch and teardown.
 - [container-substrate.md](container-substrate.md) - `/substrate` and multi-repo.
+- [agent-compose.md](agent-compose.md) - the optional identity bundle handoff.

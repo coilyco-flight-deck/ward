@@ -21,6 +21,9 @@ Inventory of what `ward` ships today.
 - Read-only Forgejo issue-comment guard.
 - Reservation and dispatch comments clean up after release.
 - Harness install hooks for claude, codex, goose, and opencode.
+- Read-only agent-compose bundle handoff with verified container-HOME
+  projection for claude, codex, goose, and opencode. See
+  [agent-compose.md](agent-compose.md).
 - Core tracker and forge adapters do not depend on generated `ward ops` leaves.
 - Launch-intent vs running-engineer split in list, dispatch-health, reap, and director.
 - Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
@@ -43,6 +46,8 @@ Inventory of what `ward` ships today.
   [container-lifecycle.md](container-lifecycle.md), and
   [container-substrate.md](container-substrate.md).
 - Claude in Chrome browser computer-use is disabled for Claude Code containers.
+- Optional identity bundles stay context-only. Ward retains credentials,
+  permissions, mounts, network, and launch authority.
 - Public demo image build. See [demo-image.md](demo-image.md).
 
 ## ward-kdl

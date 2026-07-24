@@ -124,16 +124,14 @@ func dictatableID() string {
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
 func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountSurfaceExtras bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
+	agentComposeBundle, err := resolveAgentComposeBundle(c.String("agent-compose-bundle"))
+	if err != nil {
+		return upPlan{}, err
+	}
 	// The container stages this host's ward version by default; --ward-version
 	// (env WARD_AGENT_VERSION) overrides it to pin a known-good release (ward#312).
-	wardVersion := strings.TrimSpace(c.String("ward-version"))
-	if wardVersion == "" {
-		wardVersion = Version
-	}
-	wardVersionSource := resolveWardVersionSource(c, wardVersion)
-	// A pin behind this host ships an older in-container reaper - the last line against
-	// lost/false-salvaged work - so refuse the downgrade unless opted in (ward#529).
-	if err := wardDowngradeGuard(wardVersion, Version, c.Bool("allow-ward-downgrade")); err != nil {
+	wardVersion, wardVersionSource, err := resolveLaunchWardVersion(c)
+	if err != nil {
 		return upPlan{}, err
 	}
 	// Host/cloud capability is the role's guardfile set (ward#578; docs/agent-flags.md),
@@ -180,34 +178,55 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// containers use a short dictatable id suffix instead of the machine id.
 	machine := randHex()
 	return upPlan{
-		Image:             imageRef(c.String("image"), c.String("tag")),
-		Name:              containerRoleName(role, mode, repo, 0, containerNameSuffix(role, machine)),
-		Role:              role,
-		ConfigRole:        role,
-		ConfigRef:         launchConfigRef(repo, cwd),
-		Machine:           machine,
-		Repo:              repo,
-		Mode:              mode,
-		Branch:            c.String("branch"),
-		ForgejoBase:       forgejoBaseURL,
-		HostCwd:           cwd,
-		AWSHome:           awsHome,
-		Mounts:            appendSurfaceMounts(leastAccessMounts(cwd, mountOpts{AssetsDir: assetsDir, AWSHome: awsHome, WardSource: wardSrc, AgentLogsDir: agentLogs}), mountSurfaceExtras),
-		Interactive:       !c.Bool("detach"),
-		TTY:               !c.Bool("detach") && terminalAttached(),
-		WardVersion:       wardVersion,
-		WardVersionSource: wardVersionSource,
-		WardFromSource:    wardSrc != "",
-		MemoryLimit:       memoryLimit,
-		MemorySwap:        memorySwap,
-		AgentArgs:         agentArgs,
-		ExtraRepos:        extra,
-		HostNet:           hostNet,
-		TSSidecar:         tsSidecar,
-		SkipPreflight:     c.Bool("skip-preflight") || c.Bool("no-preflight"),
-		SkipSmokeTest:     smokeTestSkipped(c),
-		ConfigEnv:         configEnv,
+		Image:       imageRef(c.String("image"), c.String("tag")),
+		Name:        containerRoleName(role, mode, repo, 0, containerNameSuffix(role, machine)),
+		Role:        role,
+		ConfigRole:  role,
+		ConfigRef:   launchConfigRef(repo, cwd),
+		Machine:     machine,
+		Repo:        repo,
+		Mode:        mode,
+		Branch:      c.String("branch"),
+		ForgejoBase: forgejoBaseURL,
+		HostCwd:     cwd,
+		AWSHome:     awsHome,
+		Mounts: appendSurfaceMounts(leastAccessMounts(cwd, mountOpts{
+			AssetsDir:          assetsDir,
+			AWSHome:            awsHome,
+			WardSource:         wardSrc,
+			AgentLogsDir:       agentLogs,
+			AgentComposeBundle: agentComposeBundle,
+		}), mountSurfaceExtras),
+		Interactive:        !c.Bool("detach"),
+		TTY:                !c.Bool("detach") && terminalAttached(),
+		WardVersion:        wardVersion,
+		WardVersionSource:  wardVersionSource,
+		WardFromSource:     wardSrc != "",
+		MemoryLimit:        memoryLimit,
+		MemorySwap:         memorySwap,
+		AgentArgs:          agentArgs,
+		ExtraRepos:         extra,
+		HostNet:            hostNet,
+		TSSidecar:          tsSidecar,
+		SkipPreflight:      c.Bool("skip-preflight") || c.Bool("no-preflight"),
+		SkipSmokeTest:      smokeTestSkipped(c),
+		ConfigEnv:          configEnv,
+		AgentComposeBundle: agentComposeBundle,
 	}, nil
+}
+
+func resolveLaunchWardVersion(c *cli.Command) (string, string, error) {
+	wardVersion := strings.TrimSpace(c.String("ward-version"))
+	if wardVersion == "" {
+		wardVersion = Version
+	}
+	wardVersionSource := resolveWardVersionSource(c, wardVersion)
+	// A pin behind this host ships an older in-container reaper - the last line against
+	// lost/false-salvaged work - so refuse the downgrade unless opted in (ward#529).
+	if err := wardDowngradeGuard(wardVersion, Version, c.Bool("allow-ward-downgrade")); err != nil {
+		return "", "", err
+	}
+	return wardVersion, wardVersionSource, nil
 }
 
 func launchConfigRef(repo targetRepo, cwd string) string {

@@ -849,6 +849,7 @@ func agentImageFlags() []cli.Flag {
 	flags := []cli.Flag{
 		&cli.StringFlag{Name: "image", Value: agentImageDefault(), Hidden: true, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
 		&cli.StringFlag{Name: "tag", Value: agentTagDefault(), Hidden: true, Sources: cli.EnvVars(envAgentTag), Usage: "image tag; per-run pinning (env: WARD_AGENT_TAG)"},
+		&cli.StringFlag{Name: "agent-compose-bundle", Usage: "mount an already-materialized agent-compose bundle read-only and project it into the selected harness home"},
 		&cli.StringFlag{Name: "ward-source", Hidden: true, Usage: "development-only: mount a local ward checkout and build ward from it instead of downloading the release"},
 		&cli.StringFlag{Name: "ward-version", Hidden: true, Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container stages (default: this host's packaged Linux binary; env: WARD_AGENT_VERSION)"},
 		&cli.BoolFlag{Name: "allow-ward-downgrade", Hidden: true, Usage: "permit a --ward-version pin older than this host's ward (ships an older in-container reaper; ward#529)"},
@@ -2373,6 +2374,9 @@ func (r *Runner) beatPullHeartbeat(w io.Writer, label, image string) func() {
 // createAgentContainer fires `docker run`: interactive streams to the terminal;
 // detached swallows the lone container-id hash docker echoes (ward#306).
 func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile string) error {
+	if err := agentComposeDispatchGuard(inContainer(), plan); err != nil {
+		return err
+	}
 	// Fail fast at this shared launch chokepoint when docker is snap-confined and
 	// cannot reach ward's staged host paths, not at a raw exit-125 (ward#557, doc).
 	if bin := snapDockerBin(exec.LookPath); bin != "" {
