@@ -42,8 +42,6 @@ Inventory of what `ward` ships today.
   [container-contract.md](container-contract.md),
   [container-lifecycle.md](container-lifecycle.md), and
   [container-substrate.md](container-substrate.md).
-- Native MCP convergence - Ward stages the operator's generic mcporter
-  inventory and projects it into each harness during container bootstrap.
 - Browser computer-use is disabled for both Claude Code and Codex containers.
 - Public demo image build. See [demo-image.md](demo-image.md).
 

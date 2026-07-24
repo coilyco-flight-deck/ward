@@ -8,8 +8,6 @@ The container contract is small.
 - The workspace clone is the run's working tree.
 - The container gets only the mounts and env it needs.
 - The entrypoint controls the runtime path from launch to teardown.
-- Ward stages `~/.mcporter/mcporter.json` when present, then `agent-compose`
-  projects that shared inventory into every supported native harness registry.
 - Claude in Chrome and Codex Computer Use stay explicitly disabled in the
   container harness baselines.
 

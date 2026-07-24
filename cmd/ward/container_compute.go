@@ -43,8 +43,6 @@ var (
 	containerWardAssets     = "/opt/ward"
 	containerEntrypointPath = mustContainerDefault("container-entrypoint-path")
 	containerEntrypointRel  = "entrypoint.sh"
-	containerMcporterRel    = "mcporter.json"
-	containerMcporterPath   = containerWardAssets + "/" + containerMcporterRel
 
 	// containerWardSrcMount is where --ward-source mounts a ward checkout, so
 	// the host stages the ward binary from it instead of downloading the release.
@@ -222,7 +220,7 @@ func parseSubstrateManifest(data string) ([]substrateRepo, error) {
 }
 
 // containerMode selects the agent harness and how much operating context the
-// container composes (progressively less, mirroring agent-compose slices).
+// container composes.
 type containerMode string
 
 // container roles lead the name + the ward.role label (ward#364). director is a host

@@ -694,30 +694,7 @@ func writeContainerAssets(ctx context.Context, r *Runner, wardSource, wardVersio
 		cleanup()
 		return "", func() {}, err
 	}
-	if err := stageMcporterInventory(
-		filepath.Join(homeDir(), ".mcporter", "mcporter.json"),
-		filepath.Join(dir, containerMcporterRel),
-	); err != nil {
-		cleanup()
-		return "", func() {}, err
-	}
 	return dir, cleanup, nil
-}
-
-// stageMcporterInventory carries the host's generic mcporter inventory across the
-// container boundary. The in-container projector decides the harness encodings.
-func stageMcporterInventory(source, target string) error {
-	data, err := os.ReadFile(source) // #nosec G304 -- fixed file below the operator's home
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("ward container: read mcporter inventory: %w", err)
-	}
-	if err := os.WriteFile(target, data, 0o600); err != nil {
-		return fmt.Errorf("ward container: stage mcporter inventory: %w", err)
-	}
-	return nil
 }
 
 func (r *Runner) sweepStaleContainerAssets(ctx context.Context, dir string) {

@@ -797,33 +797,6 @@ func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 	}
 }
 
-func TestWriteContainerAssetsStagesMcporterInventory(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	source := filepath.Join(home, ".mcporter", "mcporter.json")
-	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
-		t.Fatalf("mkdir mcporter config: %v", err)
-	}
-	const inventory = `{"imports":[],"mcpServers":{"forge":{"baseUrl":"http://example.test/mcp"}}}`
-	if err := os.WriteFile(source, []byte(inventory), 0o600); err != nil {
-		t.Fatalf("write mcporter inventory: %v", err)
-	}
-	stubContainerBootstrapStage(t)
-
-	dir, cleanup, err := writeContainerAssets(context.Background(), nil, "", "")
-	if err != nil {
-		t.Fatalf("writeContainerAssets: %v", err)
-	}
-	defer cleanup()
-	got, err := os.ReadFile(filepath.Join(dir, containerMcporterRel))
-	if err != nil {
-		t.Fatalf("read staged mcporter inventory: %v", err)
-	}
-	if string(got) != inventory {
-		t.Fatalf("staged mcporter inventory = %q, want %q", got, inventory)
-	}
-}
-
 func TestPackagedWardBootstrapCandidates(t *testing.T) {
 	t.Run("linux copies itself", func(t *testing.T) {
 		exe := filepath.Join(t.TempDir(), "bin", "ward")
