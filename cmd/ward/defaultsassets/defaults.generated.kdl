@@ -25,5 +25,8 @@ smart-defaults {
 }
 repo-authority default=forgejo {
     trusted-owner coilysiren
+    trusted-owner coilyco-flight-deck
+    trusted-owner coilyco-bridge
+    trusted-owner coilyco-gaming
     repo "coilysiren/*" forge=github
 }

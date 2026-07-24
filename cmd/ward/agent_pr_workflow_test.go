@@ -789,7 +789,7 @@ func TestPRWorkflowMergeExecUsesRepoDefaultStyle(t *testing.T) {
 
 // TestPRWorkflowMergeExecUsesSmartDefaultStyle pins the KDL override path when
 // no explicit --style is passed.
-func TestPRWorkflowMergeExecUsesSmartDefaultStyle(t *testing.T) {
+func TestPRWorkflowMergeExecIgnoresEdgeSmartDefaultStyle(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := `defaults {
     pr-merge-style "squash"
@@ -823,10 +823,10 @@ func TestPRWorkflowMergeExecUsesSmartDefaultStyle(t *testing.T) {
 	defer srv.Close()
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
 	if _, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, ""); err != nil {
-		t.Fatalf("prWorkflowMergeExec smart-default style: %v", err)
+		t.Fatalf("prWorkflowMergeExec baked-default style: %v", err)
 	}
-	if fake.mergeDo != "squash" {
-		t.Fatalf("merge do = %q, want squash", fake.mergeDo)
+	if fake.mergeDo != "merge" {
+		t.Fatalf("merge do = %q, want baked merge", fake.mergeDo)
 	}
 }
 

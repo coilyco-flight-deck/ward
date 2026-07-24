@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -15,8 +14,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// smartDefaults is ward-owned runtime policy data. It starts from the baked
-// neutral default and can be overridden by the selected config bundle.
+// smartDefaults is ward-owned native control-plane policy data, baked into the
+// release binary and independent of runtime edge bundles.
 type smartDefaults struct {
 	agentReservationTTL           time.Duration
 	reservationRecheckDefaultMax  time.Duration
@@ -62,14 +61,6 @@ type burndownRule struct {
 	Enabled bool
 }
 
-var smartDefaultsCache struct {
-	sync.Mutex
-	ref         string
-	initialized bool
-	defaults    smartDefaults
-	err         error
-}
-
 var bakedSmartDefaultsCache struct {
 	sync.Once
 	defaults smartDefaults
@@ -96,43 +87,15 @@ func bakedSmartDefaultsWithError() (smartDefaults, error) {
 	return cloneSmartDefaults(bakedSmartDefaultsCache.defaults), bakedSmartDefaultsCache.err
 }
 
-// currentSmartDefaults returns ward's runtime policy, caching the baked parse.
+// currentSmartDefaults returns the native agent control-plane policy. It is
+// baked into ward so a runtime edge bundle cannot alter or block dispatch.
 func currentSmartDefaults() smartDefaults {
 	defs, _ := currentSmartDefaultsWithError()
 	return defs
 }
 
 func currentSmartDefaultsWithError() (smartDefaults, error) {
-	ref := strings.TrimSpace(os.Getenv(wardConfigRefEnv))
-	if ref == "" {
-		return loadCurrentSmartDefaults()
-	}
-
-	smartDefaultsCache.Lock()
-	defer smartDefaultsCache.Unlock()
-	if smartDefaultsCache.initialized && smartDefaultsCache.ref == ref {
-		return smartDefaultsCache.defaults, smartDefaultsCache.err
-	}
-
-	defs, err := loadCurrentSmartDefaults()
-	smartDefaultsCache.ref = ref
-	smartDefaultsCache.initialized = true
-	smartDefaultsCache.defaults = defs
-	smartDefaultsCache.err = err
-	return defs, err
-}
-
-// loadCurrentSmartDefaults resolves the config source and parses its defaults.
-// Fail-closed values must name the serving source, not just the value.
-func loadCurrentSmartDefaults() (smartDefaults, error) {
-	defs := bakedSmartDefaults()
-	src, err := selectConfigSource()
-	if err == nil {
-		if defs, err = loadSmartDefaultsFrom(src); err != nil {
-			err = fmt.Errorf("%w [config source: %s]", err, src.sourceDesc())
-		}
-	}
-	return defs, err
+	return bakedSmartDefaultsWithError()
 }
 
 // smartDefaultsGuardExemptVerbs must stay reachable with the config bundle

@@ -305,18 +305,6 @@ func bundleFileConfigSource(file string) configSource {
 	}
 }
 
-// sourceDesc renders the selected source for error text: the raw ref plus the
-// resolved bundle sha when one exists, else the baked default.
-func (s configSource) sourceDesc() string {
-	if strings.TrimSpace(s.desc) == "" {
-		return "baked neutral defaults"
-	}
-	if v := strings.TrimSpace(s.auditVersion); v != "" {
-		return s.desc + " (bundle " + v + ")"
-	}
-	return s.desc
-}
-
 func selectedConfigRef() (string, error) {
 	selection, err := selectedConfigRefDetail()
 	return selection.ref, err

@@ -185,7 +185,7 @@ func TestOpsForgejoUnavailableNestedHelpReportsMountFailure(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
 
-	cmd := rootCommand()
+	cmd := rootCommandForArgs([]string{"ward", "ops", "forgejo", "issue", "list", "--help"})
 	err := cmd.Run(context.Background(), []string{"ward", "ops", "forgejo", "issue", "list", "--help"})
 	if err == nil {
 		t.Fatal("nested help on an unavailable surface returned nil")

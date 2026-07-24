@@ -35,16 +35,42 @@ func init() {
 // opsCommand is the `ops` umbrella: operator verbs run by cli-guard's specverb
 // runtime. A build error (bad WARD_CONFIG_REF included) degrades to an error leaf.
 func opsCommand() *cli.Command {
-	forgejo, err := buildForgejoOps()
+	selection, err := selectedConfigRefDetail()
 	if err != nil {
-		forgejo = &cli.Command{
-			Name:     "forgejo",
-			Usage:    "guarded Forgejo REST surface (unavailable)",
-			Metadata: map[string]any{opsUnavailableReasonKey: err},
-			Action: func(context.Context, *cli.Command) error {
-				return forgejoUnavailableError(err)
-			},
-		}
+		return unavailableOpsCommand(err)
+	}
+	src, err := selectConfigSourceForSelection(selection)
+	if err != nil {
+		return unavailableOpsCommand(err)
+	}
+	return opsCommandFrom(src, configSourceSummaryForSelection(selection, src))
+}
+
+// opsCommandFrom builds the umbrella from the supplied source. Native trees use
+// baked data, while explicit `ward ops` selects a runtime bundle.
+func opsCommandFrom(src configSource, descriptions ...string) *cli.Command {
+	forgejo, err := buildForgejoOpsFrom(src)
+	if err != nil {
+		return unavailableOpsCommand(err)
+	}
+	if len(descriptions) > 0 && strings.TrimSpace(descriptions[0]) != "" {
+		forgejo.Description = descriptions[0] + "\n\n" + strings.TrimSpace(forgejo.Description)
+	}
+	return &cli.Command{
+		Name:     "ops",
+		Usage:    "operator verbs routed through the ward-kdl guardfile runtime",
+		Commands: []*cli.Command{forgejo},
+	}
+}
+
+func unavailableOpsCommand(err error) *cli.Command {
+	forgejo := &cli.Command{
+		Name:     "forgejo",
+		Usage:    "guarded Forgejo REST surface (unavailable)",
+		Metadata: map[string]any{opsUnavailableReasonKey: err},
+		Action: func(context.Context, *cli.Command) error {
+			return forgejoUnavailableError(err)
+		},
 	}
 	return &cli.Command{
 		Name:     "ops",

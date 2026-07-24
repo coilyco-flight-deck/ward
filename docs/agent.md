@@ -37,8 +37,8 @@ The role determines what the run is trying to do. The harness determines how
 the run is authenticated and what model or CLI it talks to. The workflow
 determines where the work is allowed to land.
 
-When `WARD_CONFIG_REF` points at a bundle that defines launch defaults, those
-defaults own the harness pick before the baked fallback does.
+The native agent control plane uses baked launch defaults. `WARD_CONFIG_REF`
+affects generated edge/operator surfaces only, never the harness pick.
 
 ## What changed here
 

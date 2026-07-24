@@ -129,30 +129,11 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 		cleanupAssets()
 		return upPlan{}, func() {}, err
 	}
-	if readOnly {
-		configRef, err := r.directorSurfaceConfigRef(repo, cwd)
-		if err != nil {
-			cleanupAssets()
-			return upPlan{}, func() {}, err
-		}
-		plan.ConfigRef = configRef
-	}
 	plan.ReadOnly = readOnly
 	// The broker's host:port + token are set later in attachHostDispatchBroker,
 	// once the TCP listener binds and its ephemeral port is known (ward#391).
 
 	return plan, cleanupAssets, nil
-}
-
-func (r *Runner) directorSurfaceConfigRef(repo targetRepo, cwd string) (string, error) {
-	ref, err := coilycoConfigRefFromTargetRepo(repo, cwd)
-	if err != nil {
-		return "", fmt.Errorf("ward agent %s: resolve config ref for %s: %w", directorSurfaceVerb, repo.slug(), err)
-	}
-	if ref != "" {
-		return ref, nil
-	}
-	return "", nil
 }
 
 func (r *Runner) attachHostDispatchBroker(ctx context.Context, plan *upPlan, readOnly bool, label string) (func(), error) {

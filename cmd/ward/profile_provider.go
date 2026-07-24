@@ -40,42 +40,26 @@ func newProfileProvider(src configSource) ProfileProvider {
 	return &configProfileProvider{src: src}
 }
 
-func currentProfileSourceProvider() (configSource, ProfileProvider, error) {
-	src, err := selectConfigSource()
-	if err != nil {
-		return configSource{}, nil, err
-	}
-	return src, newProfileProvider(src), nil
-}
-
 func bakedProfileProvider() ProfileProvider {
 	return newProfileProvider(bakedConfigSource())
 }
 
-// currentFleetConfigWithError resolves the active fleet config from the selected
-// bundle when one exists, else the baked default.
+// currentFleetConfigWithError resolves the native agent fleet profile from the
+// baked product data. Runtime bundles are reserved for generated edge surfaces.
 func currentFleetConfigWithError() (fleetconfig.Fleet, error) {
-	src, provider, err := currentProfileSourceProvider()
+	fleet, err := bakedProfileProvider().Fleet()
 	if err != nil {
-		return fleetconfig.Fleet{}, err
-	}
-	fleet, err := provider.Fleet()
-	if err != nil {
-		return fleetconfig.Fleet{}, fmt.Errorf("fleet config [config source: %s]: %w", src.sourceDesc(), err)
+		return fleetconfig.Fleet{}, fmt.Errorf("baked fleet config: %w", err)
 	}
 	return fleet, nil
 }
 
-// currentAgentRoleCatalogWithError resolves the active role catalog from the
-// selected bundle when one exists, else the baked default.
+// currentAgentRoleCatalogWithError resolves the native role catalog from baked
+// product data, independent of WARD_CONFIG_REF.
 func currentAgentRoleCatalogWithError() (agentRoleCatalog, error) {
-	src, provider, err := currentProfileSourceProvider()
+	cat, err := bakedProfileProvider().AgentRoles()
 	if err != nil {
-		return agentRoleCatalog{}, err
-	}
-	cat, err := provider.AgentRoles()
-	if err != nil {
-		return agentRoleCatalog{}, fmt.Errorf("agent role catalog [config source: %s]: %w", src.sourceDesc(), err)
+		return agentRoleCatalog{}, fmt.Errorf("baked agent role catalog: %w", err)
 	}
 	return cat, nil
 }

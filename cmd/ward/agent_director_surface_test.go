@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,35 +46,13 @@ func TestReadOnlyPlanExportsFlag(t *testing.T) {
 	}
 }
 
-// A read-only surface plan threads a resolved WARD_CONFIG_REF into the container
-// env so in-container `warded` uses the same bundle the host already selected.
-func TestReadOnlyPlanExportsConfigRef(t *testing.T) {
+// A read-only surface plan stays on the native control plane and never passes
+// an edge config ref into the container.
+func TestReadOnlyPlanOmitsConfigRef(t *testing.T) {
 	p := sampleUpPlan()
 	p.ReadOnly = true
-	p.ConfigRef = "forgejo.coilysiren.me/coilyco-flight-deck/agentic-os@abc123//.ward"
-	if got := p.wardEnv()[wardConfigRefEnv]; got != p.ConfigRef {
-		t.Fatalf("read-only plan WARD_CONFIG_REF = %q, want %q", got, p.ConfigRef)
-	}
-}
-
-// The director surface reconstructs the target repo's bundle ref from the current
-// HEAD so the read-only container keeps the launch-time config source.
-func TestDirectorSurfaceConfigRefUsesCurrentHead(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	work := t.TempDir()
-	gitFixture(t, work, "init", "-b", "main", ".")
-	gitFixture(t, work, "commit", "--allow-empty", "-m", "seed")
-	head := gitFixture(t, work, "rev-parse", "HEAD")
-
-	r := leanRunner()
-	got, err := r.directorSurfaceConfigRef(targetRepo{Owner: "coilyco-flight-deck", Name: "agentic-os"}, work)
-	if err != nil {
-		t.Fatalf("directorSurfaceConfigRef: %v", err)
-	}
-	want := fmt.Sprintf("%s/coilyco-flight-deck/agentic-os@%s//.ward", forgejoCanonicalHost(), head)
-	if got != want {
-		t.Fatalf("directorSurfaceConfigRef = %q, want %q", got, want)
+	if got := p.wardEnv()[wardConfigRefEnv]; got != "" {
+		t.Fatalf("read-only plan WARD_CONFIG_REF = %q, want absent", got)
 	}
 }
 

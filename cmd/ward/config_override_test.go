@@ -169,7 +169,7 @@ func TestAddHarnessConfigEnvPrecedence(t *testing.T) {
 	}
 }
 
-func TestResolveLaunchConfigEnvProjectsSelectedDirectorCodexOverlay(t *testing.T) {
+func TestResolveLaunchConfigEnvIgnoresSelectedDirectorCodexOverlay(t *testing.T) {
 	dir := writeBundleFixture(t)
 	rolesPath := filepath.Join(dir, bundleFixtureRolesPath)
 	body, err := os.ReadFile(rolesPath)
@@ -187,13 +187,13 @@ func TestResolveLaunchConfigEnvProjectsSelectedDirectorCodexOverlay(t *testing.T
 
 	env, err := resolveLaunchConfigEnv(nil, "", roleDirector)
 	if err != nil {
-		t.Fatalf("resolveLaunchConfigEnv from selected bundle: %v", err)
+		t.Fatalf("resolveLaunchConfigEnv with selected edge bundle: %v", err)
 	}
-	if got := env["WARD_CODEX_MODEL"]; got != "selected-director-model" {
-		t.Fatalf("projected Codex model = %q, want selected-director-model", got)
+	if got := env["WARD_CODEX_MODEL"]; got != "gpt-5.5" {
+		t.Fatalf("projected Codex model = %q, want baked gpt-5.5", got)
 	}
-	if got := env["WARD_CODEX_REASONING_EFFORT"]; got != "xhigh" {
-		t.Fatalf("projected Codex effort = %q, want xhigh", got)
+	if got := env["WARD_CODEX_REASONING_EFFORT"]; got != "high" {
+		t.Fatalf("projected Codex effort = %q, want baked high", got)
 	}
 
 	for key, value := range env {
@@ -207,10 +207,10 @@ func TestResolveLaunchConfigEnvProjectsSelectedDirectorCodexOverlay(t *testing.T
 	t.Setenv("WARD_ROLE", roleDirector)
 	bootstrap, err := readBootstrapEnv()
 	if err != nil {
-		t.Fatalf("readBootstrapEnv with projected selected bundle: %v", err)
+		t.Fatalf("readBootstrapEnv with baked native config: %v", err)
 	}
-	if bootstrap.CodexModel != "selected-director-model" || bootstrap.CodexEffort != "xhigh" {
-		t.Fatalf("bootstrap Codex config = %q/%q, want selected-director-model/xhigh", bootstrap.CodexModel, bootstrap.CodexEffort)
+	if bootstrap.CodexModel != "gpt-5.5" || bootstrap.CodexEffort != "high" {
+		t.Fatalf("bootstrap Codex config = %q/%q, want baked gpt-5.5/high", bootstrap.CodexModel, bootstrap.CodexEffort)
 	}
 }
 
