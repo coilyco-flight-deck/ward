@@ -139,15 +139,15 @@ func TestAgentRoleDefinitionsFromFleetAppliesOverlay(t *testing.T) {
 	}
 }
 
-func TestAgentRoleDefinitionsUseSelectedBundleCatalog(t *testing.T) {
+func TestAgentRoleDefinitionsIgnoreOperatorBundleCatalog(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+writeSelectedBundleFixture(t))
 	defs, err := agentRoleDefinitions()
 	if err != nil {
 		t.Fatalf("agentRoleDefinitions: %v", err)
 	}
 	for _, role := range []string{roleEngineer, roleDirector, "qa"} {
-		if got := defs[role].DefaultHarness; got != string(modeCodex) {
-			t.Fatalf("role %q default harness = %q, want %q", role, got, modeCodex)
+		if got := defs[role].DefaultHarness; got != string(modeClaude) {
+			t.Fatalf("role %q default harness = %q, want baked %q", role, got, modeClaude)
 		}
 	}
 }
