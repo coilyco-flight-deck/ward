@@ -312,7 +312,7 @@ func TestWorkflowEnvAndLabels(t *testing.T) {
 	}
 }
 
-func TestAgentWorkflowSmartDefaults(t *testing.T) {
+func TestAgentWorkflowIgnoresOperatorBundleDefaults(t *testing.T) {
 	dir := t.TempDir()
 	defaultsBody := `defaults {
 }
@@ -350,7 +350,7 @@ workflow default="merge-remote-main" {
 		t.Fatalf("agentWorkflow repo override: %v", err)
 	}
 	if wf != workflowDirectToMain {
-		t.Errorf("repo edge-bundle override workflow = %q, want baked merge-remote-main", wf)
+		t.Errorf("repo workflow = %q, want baked merge-remote-main", wf)
 	}
 
 	cli := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "remote-branch-only"})
@@ -363,16 +363,16 @@ workflow default="merge-remote-main" {
 	}
 }
 
-func TestAgentWorkflowIgnoresBadConfigRef(t *testing.T) {
+func TestAgentWorkflowIgnoresBadOperatorConfigRef(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
 
 	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/agentic-os#1"})
-	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/agentic-os")
+	got, err := agentWorkflow(cmd, "coilyco-flight-deck/agentic-os")
 	if err != nil {
-		t.Fatalf("agentWorkflow with bad edge config ref: %v", err)
+		t.Fatalf("agentWorkflow with bad operator ref: %v", err)
 	}
-	if wf != defaultWorkflow {
-		t.Fatalf("agentWorkflow = %q, want baked %q", wf, defaultWorkflow)
+	if got != workflowDirectToMain {
+		t.Fatalf("agentWorkflow with bad operator ref = %q, want baked merge-remote-main", got)
 	}
 }
 

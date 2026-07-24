@@ -169,7 +169,7 @@ func TestAddHarnessConfigEnvPrecedence(t *testing.T) {
 	}
 }
 
-func TestResolveLaunchConfigEnvIgnoresSelectedDirectorCodexOverlay(t *testing.T) {
+func TestResolveLaunchConfigEnvIgnoresOperatorDirectorCodexOverlay(t *testing.T) {
 	dir := writeBundleFixture(t)
 	rolesPath := filepath.Join(dir, bundleFixtureRolesPath)
 	body, err := os.ReadFile(rolesPath)
@@ -187,7 +187,7 @@ func TestResolveLaunchConfigEnvIgnoresSelectedDirectorCodexOverlay(t *testing.T)
 
 	env, err := resolveLaunchConfigEnv(nil, "", roleDirector)
 	if err != nil {
-		t.Fatalf("resolveLaunchConfigEnv with selected edge bundle: %v", err)
+		t.Fatalf("resolveLaunchConfigEnv from baked policy: %v", err)
 	}
 	if got := env["WARD_CODEX_MODEL"]; got != "gpt-5.5" {
 		t.Fatalf("projected Codex model = %q, want baked gpt-5.5", got)
@@ -207,7 +207,7 @@ func TestResolveLaunchConfigEnvIgnoresSelectedDirectorCodexOverlay(t *testing.T)
 	t.Setenv("WARD_ROLE", roleDirector)
 	bootstrap, err := readBootstrapEnv()
 	if err != nil {
-		t.Fatalf("readBootstrapEnv with baked native config: %v", err)
+		t.Fatalf("readBootstrapEnv with baked policy: %v", err)
 	}
 	if bootstrap.CodexModel != "gpt-5.5" || bootstrap.CodexEffort != "high" {
 		t.Fatalf("bootstrap Codex config = %q/%q, want baked gpt-5.5/high", bootstrap.CodexModel, bootstrap.CodexEffort)

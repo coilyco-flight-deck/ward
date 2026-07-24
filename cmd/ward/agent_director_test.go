@@ -259,8 +259,8 @@ func TestDirectorDispatchQuietsSeedConsole(t *testing.T) {
 }
 
 // TestBacklogPrintDirectorPlanIncludesCLIConfig covers the print path's explicit
-// CLI/config summary and the defaults that previously vanished from the launch plan.
-func TestBacklogPrintDirectorPlanIncludesCLIConfig(t *testing.T) {
+// CLI summary and the defaults that previously vanished from the launch plan.
+func TestBacklogPrintDirectorPlanUsesBakedPolicy(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+t.TempDir())
 
 	var out bytes.Buffer
@@ -287,7 +287,7 @@ func TestBacklogPrintDirectorPlanIncludesCLIConfig(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
-		"config source:   file://",
+		"config source:   baked native policy",
 		"limit:           17",
 		"max-parallel:    4",
 		"poll-interval:   45s",
