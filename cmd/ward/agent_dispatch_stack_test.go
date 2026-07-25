@@ -28,8 +28,8 @@ func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
 		},
 	}
 	stack := directorStack{
-		Project:    "ward-director-coilyco-flight-deck-ward-codex",
-		BrokerName: "ward-director-coilyco-flight-deck-ward-codex-broker",
+		Project:    "ward-coilyco-flight-deck-codex",
+		BrokerName: "ward-coilyco-flight-deck-codex-broker",
 	}
 	body, err := renderDirectorStackCompose(plan, stack, `X:\tmp\ward.env`, `X:\home\.ward`)
 	if err != nil {
@@ -131,10 +131,55 @@ func TestResolveDirectorStackIsStable(t *testing.T) {
 	if first != second {
 		t.Fatalf("director stack changed: %#v != %#v", first, second)
 	}
+	if first.Project != "ward-coilyco-flight-deck-codex" {
+		t.Fatalf("director stack project = %q", first.Project)
+	}
 	if filepath.Base(first.ComposePath) != directorStackFile ||
 		filepath.Base(first.EnvPath) != directorStackEnvFile ||
 		filepath.Base(first.AssetsDir) != directorStackAssets {
 		t.Fatalf("unexpected persistent paths: %#v", first)
+	}
+}
+
+func TestDirectorStackProjectName(t *testing.T) {
+	tests := []struct {
+		name string
+		repo targetRepo
+		mode containerMode
+		want string
+	}{
+		{
+			name: "ward repo omits redundant product name",
+			repo: targetRepo{Owner: "coilyco-flight-deck", Name: "ward"},
+			mode: modeCodex,
+			want: "ward-coilyco-flight-deck-codex",
+		},
+		{
+			name: "other repo keeps repository name",
+			repo: targetRepo{Owner: "coilyco-flight-deck", Name: "agentic-os"},
+			mode: modeClaude,
+			want: "ward-coilyco-flight-deck-agentic-os-claude",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := directorStackProjectName(tt.repo, tt.mode); got != tt.want {
+				t.Fatalf("directorStackProjectName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDirectorStackProjectNameCapsLength(t *testing.T) {
+	project := directorStackProjectName(targetRepo{
+		Owner: strings.Repeat("owner", 10),
+		Name:  strings.Repeat("repo", 10),
+	}, modeCodex)
+	if len(project) > directorStackMaxName {
+		t.Fatalf("project length = %d, want <= %d", len(project), directorStackMaxName)
+	}
+	if strings.HasSuffix(project, "-") {
+		t.Fatalf("project has trailing separator: %q", project)
 	}
 }
 

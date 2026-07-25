@@ -16,6 +16,7 @@ const (
 	directorStackFile    = "compose.yaml"
 	directorStackEnvFile = "launch.env"
 	directorStackAssets  = "assets"
+	directorStackMaxName = 55
 )
 
 type directorStack struct {
@@ -76,10 +77,7 @@ func resolveDirectorStack(repo targetRepo, mode containerMode) (directorStack, e
 	if err != nil {
 		return directorStack{}, err
 	}
-	project := config.SanitizeSlug("ward-director-" + repo.slug() + "-" + string(mode))
-	if len(project) > 55 {
-		project = strings.TrimRight(project[:55], "-")
-	}
+	project := directorStackProjectName(repo, mode)
 	dir := filepath.Join(global, directorStacksSubdir, project)
 	return directorStack{
 		Project:     project,
@@ -89,6 +87,19 @@ func resolveDirectorStack(repo targetRepo, mode containerMode) (directorStack, e
 		AssetsDir:   filepath.Join(dir, directorStackAssets),
 		BrokerName:  project + "-broker",
 	}, nil
+}
+
+func directorStackProjectName(repo targetRepo, mode containerMode) string {
+	parts := []string{"ward", repo.Owner}
+	if !strings.EqualFold(repo.Name, "ward") {
+		parts = append(parts, repo.Name)
+	}
+	parts = append(parts, string(mode))
+	project := config.SanitizeSlug(strings.Join(parts, "-"))
+	if len(project) > directorStackMaxName {
+		project = strings.TrimRight(project[:directorStackMaxName], "-")
+	}
+	return project
 }
 
 func prepareDirectorStackAssets(ctx context.Context, repo targetRepo, mode containerMode, wardSource, wardVersion string) (directorStack, error) {
