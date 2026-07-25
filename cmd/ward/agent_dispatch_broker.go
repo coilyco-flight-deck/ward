@@ -402,12 +402,14 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 				restore()
 				restored = true
 			}
-			dispatchFailedDispatchLaunchStartHook()
-			r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, resultErr)
+			// Persist the terminal artifact before announcing the failure, so its
+			// durable summary cannot still say in-progress during recovery.
 			if !finalized {
 				finalizeDispatchArtifact(paths, req, paths.ConsolePath, resultErr)
 				finalized = true
 			}
+			dispatchFailedDispatchLaunchStartHook()
+			r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, resultErr)
 		}
 		if !restored {
 			restore()
@@ -468,12 +470,14 @@ func (r *Runner) finishDispatchBrokerLaunchFailure(ctx context.Context, req disp
 		restore()
 		*restored = true
 	}
+	// Finalize the durable failure record before visible recovery work, so its
+	// summary cannot say in-progress during recovery.
+	finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
+	*finalized = true
 	if notify {
 		dispatchFailedDispatchLaunchStartHook()
 		r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, err)
 	}
-	finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
-	*finalized = true
 }
 
 func dispatchBrokerPanicError(stage string, p any) error {

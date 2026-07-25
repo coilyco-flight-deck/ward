@@ -2389,6 +2389,40 @@ func TestStartHostDispatchBrokerRequestDetachesBeforeEngineerVisibility(t *testi
 	}
 }
 
+// waitForDispatchArtifactSummary synchronizes assertions with the durable
+// terminal artifact, not an earlier recovery milestone in the detached worker.
+func waitForDispatchArtifactSummary(t *testing.T, summaryPath string, wants ...string) string {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	poll := time.NewTicker(10 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		summary, err := os.ReadFile(summaryPath) // #nosec G304 -- test-owned artifact path
+		if err == nil {
+			body := string(summary)
+			ready := true
+			for _, want := range wants {
+				if !strings.Contains(body, want) {
+					ready = false
+					break
+				}
+			}
+			if ready {
+				return body
+			}
+		}
+		select {
+		case <-deadline.C:
+			if err != nil {
+				t.Fatalf("read dispatch summary: %v", err)
+			}
+			t.Fatalf("dispatch summary did not reach terminal state %q:\n%s", wants, summary)
+		case <-poll.C:
+		}
+	}
+}
+
 func TestStartHostDispatchBrokerRequestReportsMissingEngineerVisibilityAsynchronously(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
@@ -2439,12 +2473,11 @@ func TestStartHostDispatchBrokerRequestReportsMissingEngineerVisibilityAsynchron
 	case <-time.After(2 * time.Second):
 		t.Fatal("missing engineer visibility never finalized its artifact")
 	}
-	summary, readErr := os.ReadFile(filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile)) // #nosec G304 -- test-owned artifact path
-	if readErr != nil {
-		t.Fatalf("read dispatch summary: %v", readErr)
-	}
+	summary := waitForDispatchArtifactSummary(t,
+		filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile),
+		"outcome: failed-before-container", "ward agent list")
 	for _, want := range []string{"outcome: failed-before-container", "ward agent list"} {
-		if !strings.Contains(string(summary), want) {
+		if !strings.Contains(summary, want) {
 			t.Fatalf("dispatch summary missing %q:\n%s", want, summary)
 		}
 	}
@@ -2523,11 +2556,10 @@ func TestStartHostDispatchBrokerRequestReportsCrossOwnerVisibilityCollisionAsync
 	case <-time.After(2 * time.Second):
 		t.Fatal("cross-owner visibility collision never finalized its artifact")
 	}
-	summary, readErr := os.ReadFile(filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile)) // #nosec G304 -- test-owned artifact path
-	if readErr != nil {
-		t.Fatalf("read dispatch summary: %v", readErr)
-	}
-	if !strings.Contains(string(summary), "ward agent list") {
+	summary := waitForDispatchArtifactSummary(t,
+		filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile),
+		"outcome: failed-before-container", "ward agent list")
+	if !strings.Contains(summary, "ward agent list") {
 		t.Fatalf("dispatch summary = %q, want the director-surface follow-up command", summary)
 	}
 }
