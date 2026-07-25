@@ -907,7 +907,7 @@ func TestForwardAgentDispatchToHostBrokerReportsUnreachableBroker(t *testing.T) 
 	for _, want := range []string{
 		"address source: WARD_DISPATCH_BROKER_ADDR=" + addr,
 		"connection: dial tcp",
-		"remediation: exit this director surface and start a fresh `warded director ...` session",
+		"remediation: retry after the broker service restarts; if it stays unavailable, exit this director surface and start a fresh `warded director ...` stack",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("diagnostic %q missing %q", err, want)
@@ -1127,8 +1127,8 @@ func TestProbeHostDispatchBrokerReportsTimeout(t *testing.T) {
 	for _, want := range []string{
 		"ward dispatch broker: broker-timeout",
 		"address source: WARD_DISPATCH_BROKER_ADDR=host.docker.internal:54321",
-		"connection: timed out dialing TCP after 250ms",
-		"remediation: exit this director surface and start a fresh `warded director ...` session",
+		"connection: timed out dialing broker after 250ms",
+		"remediation: retry after the broker service restarts; if it stays unavailable, exit this director surface and start a fresh `warded director ...` stack",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("timeout diagnostic %q missing %q", err, want)
@@ -2392,10 +2392,20 @@ func TestStartHostDispatchBrokerRequestReportsMissingEngineerVisibilityAsynchron
 	dispatchBrokerVisibilityTimeout = 75 * time.Millisecond
 	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
 	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool {
-		close(recoveryStarted)
+		select {
+		case <-recoveryStarted:
+		default:
+			close(recoveryStarted)
+		}
 		return true
 	}
-	dispatchStdioRestoreHook = func() { close(finished) }
+	dispatchStdioRestoreHook = func() {
+		select {
+		case <-finished:
+		default:
+			close(finished)
+		}
+	}
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
 
 	req := dispatchBrokerRequest{
@@ -2475,10 +2485,20 @@ func TestStartHostDispatchBrokerRequestReportsCrossOwnerVisibilityCollisionAsync
 	dispatchBrokerVisibilityTimeout = 75 * time.Millisecond
 	dispatchBrokerVisibilityPoll = 10 * time.Millisecond
 	dispatchFailedDispatchLaunchHook = func(dispatchBrokerRequest, string, error) bool {
-		close(recoveryStarted)
+		select {
+		case <-recoveryStarted:
+		default:
+			close(recoveryStarted)
+		}
 		return true
 	}
-	dispatchStdioRestoreHook = func() { close(finished) }
+	dispatchStdioRestoreHook = func() {
+		select {
+		case <-finished:
+		default:
+			close(finished)
+		}
+	}
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error { return nil }
 
 	req := dispatchBrokerRequest{

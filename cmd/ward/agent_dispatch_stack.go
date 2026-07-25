@@ -105,9 +105,8 @@ func prepareDirectorStackAssets(ctx context.Context, repo targetRepo, mode conta
 	return stack, nil
 }
 
-// normalizeDirectorStackNetwork moves a Linux host-network director onto the
-// project plus ward-tailnet networks. Compose service DNS and network_mode=host
-// are mutually exclusive.
+// normalizeDirectorStackNetwork moves a Linux host-network director onto the project
+// and ward-tailnet networks because Compose service DNS and network_mode=host conflict.
 func normalizeDirectorStackNetwork(plan *upPlan) {
 	if plan != nil && plan.HostNet {
 		plan.HostNet = false
