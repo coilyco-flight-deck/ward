@@ -4,12 +4,10 @@ doc_goal: Make ward's agent surface understandable from one entry page after the
 # ward agent
 
 `ward agent` is the guarded execution layer for coding agents.
-
 It launches an ephemeral container, runs the selected role through the chosen
 harness, and lands work through the selected workflow.
 
 ## Public face
-
 `warded` is the symlinked entrypoint. It rewrites to `ward agent`.
 
 ## What it covers
@@ -23,7 +21,6 @@ harness, and lands work through the selected workflow.
 - the check-placement matrix in [agent-check-placement.md](agent-check-placement.md).
 
 ## Mental model
-
 Think of `ward agent` as a small pipeline:
 
 1. resolve the issue or freeform prompt.
@@ -36,7 +33,6 @@ Think of `ward agent` as a small pipeline:
 The role determines what the run is trying to do. The harness determines how
 the run is authenticated and what model or CLI it talks to. The workflow
 determines where the work is allowed to land.
-
 Ward resolves its harness and launch defaults from baked AOS-authored policy.
 An Aguard operator config reference cannot alter a native agent launch.
 
@@ -58,6 +54,7 @@ The old issue-slice pages are gone. The durable follow-on docs are:
 ```bash
 warded #98
 warded engineer #98
+warded engineer freeform smoke test
 warded director --repo owner/name # open the read-only surface
 warded director --burndown --repo owner/name # autonomously drain headless work
 warded director owner/name#98
@@ -66,6 +63,9 @@ warded director owner/name#98
 The bare ref form defaults to `engineer`. The ref can be a bare `#N`, a full
 `owner/repo#N`, a full Forgejo issue URL, or, for `director`, an issue-scoped
 positional ref.
+
+Freeform engineer text files an issue first, then carries that issue through
+the detached run.
 
 The director has no separate interactive subcommand. Start `warded director --repo owner/name` from a terminal to open the read-only session from the stored ledger. Add `--burndown` only when the command should autonomously dispatch queued headless work or enumerate the live backlog. During a full burndown lane, press Enter during the sleep offer to open the same session.
 
