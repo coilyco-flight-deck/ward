@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -19,7 +18,7 @@ import (
 func (r *Runner) agentHostCtx(ctx context.Context) agentsapi.HostCtx {
 	return agentsapi.HostCtx{
 		Ctx:  ctx,
-		GOOS: runtime.GOOS,
+		GOOS: launchHostGOOS(),
 		Home: homeDir(),
 		Exec: r.Runner,
 		Log:  blog,

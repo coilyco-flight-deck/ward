@@ -11,7 +11,7 @@ This page groups the on-demand operational surfaces around a run.
 - `ward agent list` - show running engineers, active launch intents, cleanup-needed records, and capacity when the limit is known.
 - `ward agent logs` - read one run's logs or the newest dispatch artifact.
 - `ward agent stop` - stop a running engineer or clear a confirmed stale
-  issue-ref launch through the host broker.
+  issue-ref launch through the supervised Compose broker.
 - `ward agent reap` - stop wedged engineer containers by idle policy and clear stale prelaunch reservations that never became visible.
 - `ward agent reservations clear` - clear the disposable reservation cache directory wholesale.
 

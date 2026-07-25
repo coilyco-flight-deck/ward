@@ -177,7 +177,7 @@ func (r *Runner) forwardAgentListToHostBroker(ctx context.Context, addr string, 
 
 // sendDispatchBrokerListRequest sends a list request and returns the body stream.
 func sendDispatchBrokerListRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (io.ReadCloser, error) {
-	conn, err := dispatchBrokerDialContext(ctx, "tcp", addr)
+	conn, err := dialDispatchBroker(ctx, addr)
 	if err != nil {
 		return nil, dispatchBrokerDialDiagnostic(addr, err)
 	}

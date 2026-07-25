@@ -208,6 +208,7 @@ func (r *Runner) captureQAResearch(ctx context.Context, c *cli.Command, mode con
 		return "", fmt.Errorf("%s: %w", label, err)
 	}
 	plan = qaResearchPlan(plan, ref)
+	plan.DispatchRequestID = strings.TrimSpace(os.Getenv(envDispatchRequestID))
 
 	if err := r.prelaunchDispatch(ctx, c, plan, label); err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
@@ -224,6 +225,9 @@ func (r *Runner) captureQAResearch(ctx context.Context, c *cli.Command, mode con
 	fmt.Fprintf(os.Stderr, "%s: inspecting %s at %s depth in a fresh container (dig up to %s)...\n\n", label, ref, level.Name, level.Timeout)
 	rctx, cancel := context.WithTimeout(ctx, level.Timeout+containerInspectionSetupTime)
 	defer cancel()
+	if inContainer() {
+		return r.captureQAResearchFromBroker(rctx, plan, envFile, label)
+	}
 	out, cerr := r.captureDockerSilenced(rctx, dockerCreateArgv(plan, envFile)...)
 	read := strings.TrimSpace(out)
 	if read != "" {
@@ -231,6 +235,30 @@ func (r *Runner) captureQAResearch(ctx context.Context, c *cli.Command, mode con
 	}
 	if cerr != nil {
 		return read, cerr
+	}
+	return read, nil
+}
+
+func (r *Runner) captureQAResearchFromBroker(ctx context.Context, plan upPlan, envFile, label string) (string, error) {
+	plan.Capture = false
+	plan.Interactive = false
+	if err := r.createDetachedViaCopy(ctx, plan, envFile); err != nil {
+		return "", err
+	}
+	exit, waitErr := r.captureDockerSilenced(ctx, "wait", plan.Name)
+	out, logsErr := r.captureDockerSilenced(ctx, "logs", plan.Name)
+	read := strings.TrimSpace(out)
+	if read != "" {
+		fmt.Fprintf(os.Stderr, "%s\n\n", read)
+	}
+	if waitErr != nil {
+		return read, waitErr
+	}
+	if logsErr != nil {
+		return read, logsErr
+	}
+	if strings.TrimSpace(exit) != "0" {
+		return read, fmt.Errorf("%s: QA container exited %s", label, strings.TrimSpace(exit))
 	}
 	return read, nil
 }

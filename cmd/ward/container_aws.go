@@ -93,8 +93,37 @@ func (r *Runner) resolveLaunchCreds(ctx context.Context, plan *upPlan, mode cont
 	return append(creds, r.resolveAWSInjectCreds(ctx, plan)...)
 }
 
-// resolveAWSInjectCreds runs on the launching host (a broker-forwarded dispatch re-runs
-// this path host-side; ward#586). See docs/agent-aws-creds.md for the export/fallback.
+// resolveDirectorStackCreds host-resolves every harness before broker launch.
+// Child launches reuse those channels without access to host credential stores.
+func (r *Runner) resolveDirectorStackCreds(ctx context.Context, plan *upPlan, directorMode containerMode) []agentsapi.EnvLine {
+	modes := make([]containerMode, 0, len(agentModes))
+	modes = append(modes, directorMode)
+	for _, mode := range agentModes {
+		if mode != directorMode {
+			modes = append(modes, mode)
+		}
+	}
+
+	seen := make(map[string]bool)
+	creds := make([]agentsapi.EnvLine, 0, len(modes))
+	appendUnique := func(lines []agentsapi.EnvLine) {
+		for _, line := range lines {
+			if line.Key == "" || seen[line.Key] {
+				continue
+			}
+			seen[line.Key] = true
+			creds = append(creds, line)
+		}
+	}
+	for _, mode := range modes {
+		appendUnique(r.resolveAgentCreds(ctx, mode))
+	}
+	appendUnique(r.resolveAWSInjectCreds(ctx, plan))
+	return creds
+}
+
+// resolveAWSInjectCreds lets broker children reuse inherited AWS via CLI export
+// (ward#586). See docs/agent-aws-creds.md for the export/fallback.
 func (r *Runner) resolveAWSInjectCreds(ctx context.Context, plan *upPlan) []agentsapi.EnvLine {
 	if plan.AWSHome == "" {
 		return nil // aws capability off - nothing to inject

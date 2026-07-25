@@ -33,7 +33,9 @@ See [agent-human-feedback.md](agent-human-feedback.md).
 
 ## Where it runs
 
-- On a read-only director surface, each verb forwards through the host dispatch broker, and host ward re-checks the permission gate before touching the forge.
+- On a read-only director surface, each verb forwards through the supervised
+  dispatch broker, and broker Ward re-checks the permission gate before touching
+  the forge.
 - Everywhere else (host, engineer container), the verb runs in-process against the Forgejo API.
 
 The status, wait, and log follow-up object is documented in

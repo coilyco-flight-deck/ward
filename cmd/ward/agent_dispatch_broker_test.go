@@ -918,10 +918,10 @@ func TestForwardAgentDispatchToHostBrokerReportsUnreachableBroker(t *testing.T) 
 func TestDispatchBrokerForwardedLineIncludesLogPathWhenAvailable(t *testing.T) {
 	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex", "--ward-version", "v0.569.0"}, "/tmp/ward/dispatch.log")
 	for _, want := range []string{
-		"ward dispatch broker: accepted `ward agent engineer coilyco-flight-deck/ward#378 --harness codex --ward-version v0.569.0`; host Ward launch started",
+		"ward dispatch broker: accepted `ward agent engineer coilyco-flight-deck/ward#378 --harness codex --ward-version v0.569.0`; broker Ward launch started",
 		"(effective ward v0.569.0)",
 		"(container visibility and engineer harness startup are pending)",
-		"(run output on the host at /tmp/ward/dispatch.log)",
+		"(broker artifact /tmp/ward/dispatch.log; inspect with `ward agent logs coilyco-flight-deck/ward#378`)",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("forwarded line = %q, want %q", got, want)
@@ -932,7 +932,7 @@ func TestDispatchBrokerForwardedLineIncludesLogPathWhenAvailable(t *testing.T) {
 func TestDispatchBrokerForwardedLineFallsBackToLookupCommandWhenPathMissing(t *testing.T) {
 	got := dispatchBrokerForwardedLine([]string{"engineer", "coilyco-flight-deck/ward#902", "--harness", "codex", "--ward-version", "v0.569.0"}, "")
 	for _, want := range []string{
-		"ward dispatch broker: accepted `ward agent engineer coilyco-flight-deck/ward#902 --harness codex --ward-version v0.569.0`; host Ward launch started",
+		"ward dispatch broker: accepted `ward agent engineer coilyco-flight-deck/ward#902 --harness codex --ward-version v0.569.0`; broker Ward launch started",
 		"(effective ward v0.569.0)",
 		"(container visibility and engineer harness startup are pending)",
 		"dispatch log path unavailable yet",
@@ -1263,17 +1263,16 @@ func TestSendDispatchBrokerLaunchRequestWaitsForResponse(t *testing.T) {
 	}
 }
 
-// TestSendDispatchBrokerLaunchRequestReportsDroppedResponse keeps a dropped launch
-// response structured and proves the broker listener still answers the next request.
-func TestSendDispatchBrokerLaunchRequestReportsDroppedResponse(t *testing.T) {
+// TestSendDispatchBrokerLaunchRequestRetriesDroppedResponse proves an automatic
+// retry reuses the original request id, so the broker can return one accepted run.
+func TestSendDispatchBrokerLaunchRequestRetriesDroppedResponse(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen broker: %v", err)
 	}
 	defer ln.Close()
 
-	firstSeen := make(chan struct{})
-	secondSeen := make(chan struct{})
+	requestIDs := make(chan string, 2)
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -1285,7 +1284,7 @@ func TestSendDispatchBrokerLaunchRequestReportsDroppedResponse(t *testing.T) {
 			if err := json.NewDecoder(conn).Decode(&req); err != nil {
 				return
 			}
-			close(firstSeen)
+			requestIDs <- req.RequestID
 		}()
 		conn, err = ln.Accept()
 		if err != nil {
@@ -1297,79 +1296,28 @@ func TestSendDispatchBrokerLaunchRequestReportsDroppedResponse(t *testing.T) {
 			if err := json.NewDecoder(conn).Decode(&req); err != nil {
 				return
 			}
-			close(secondSeen)
+			requestIDs <- req.RequestID
 			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
 		}()
 	}()
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	firstDone := make(chan struct {
-		logPath string
-		err     error
-	}, 1)
-	go func() {
-		logPath, err := sendDispatchBrokerLaunchRequest(ctx, ln.Addr().String(), dispatchBrokerRequest{
-			Role:      "engineer",
-			Argv:      []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex"},
-			Requester: "director-codex-host",
-			Token:     "nonce-eof",
-		})
-		firstDone <- struct {
-			logPath string
-			err     error
-		}{logPath: logPath, err: err}
-	}()
-
-	select {
-	case <-firstSeen:
-	case <-time.After(2 * time.Second):
-		t.Fatal("broker never received the dropped-response request")
+	logPath, err := sendDispatchBrokerLaunchRequest(ctx, ln.Addr().String(), dispatchBrokerRequest{
+		Role:      "engineer",
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#378", "--harness", "codex"},
+		Requester: "director-codex-host",
+		Token:     "nonce-eof",
+	})
+	if err != nil {
+		t.Fatalf("retry launch request: %v", err)
 	}
-	select {
-	case got := <-firstDone:
-		if got.err == nil {
-			t.Fatal("dropped-response launch unexpectedly succeeded")
-		}
-		if !strings.Contains(got.err.Error(), "host-side command exited before writing a response") {
-			t.Fatalf("error = %v, want the structured dropped-response message", got.err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("dropped-response launch never returned")
+	if logPath != "/tmp/ward/dispatch.log" {
+		t.Fatalf("log path = %q, want the accepted broker response", logPath)
 	}
-
-	secondDone := make(chan struct {
-		logPath string
-		err     error
-	}, 1)
-	go func() {
-		logPath, err := sendDispatchBrokerLaunchRequest(ctx, ln.Addr().String(), dispatchBrokerRequest{
-			Role:      "qa",
-			Argv:      []string{"qa", "coilyco-flight-deck/ward#379", "--harness", "codex"},
-			Requester: "director-codex-host",
-			Token:     "nonce-eof",
-		})
-		secondDone <- struct {
-			logPath string
-			err     error
-		}{logPath: logPath, err: err}
-	}()
-
-	select {
-	case <-secondSeen:
-	case <-time.After(2 * time.Second):
-		t.Fatal("broker did not answer a follow-up request after the dropped response")
-	}
-	select {
-	case got := <-secondDone:
-		if got.err != nil {
-			t.Fatalf("follow-up launch request: %v", got.err)
-		}
-		if got.logPath != "/tmp/ward/dispatch.log" {
-			t.Fatalf("follow-up log path = %q, want the broker response", got.logPath)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("follow-up launch never returned after the broker responded")
+	first, second := <-requestIDs, <-requestIDs
+	if first == "" || first != second {
+		t.Fatalf("retry request ids = %q and %q, want one stable non-empty id", first, second)
 	}
 }
 
@@ -1659,11 +1607,11 @@ func TestRunHostDispatchBrokerRequestDetachesAfterHostLaunchStarts(t *testing.T)
 	}
 	logText := string(body)
 	for _, want := range []string{
-		"ward dispatch broker: this log captures the host wrapper only",
+		"ward dispatch broker: this log captures the broker wrapper only",
 		"ward agent logs coilyco-flight-deck/ward#795",
 		"broker accepted launch request",
-		"host Ward launch started; broker response detaches before container visibility and engineer harness start",
-		"host launch completed; container visibility was confirmed, but engineer harness startup remains in-container",
+		"broker Ward launch started; response detaches before container visibility and engineer harness start",
+		"broker launch completed; container visibility was confirmed, but engineer harness startup remains in-container",
 	} {
 		if !strings.Contains(logText, want) {
 			t.Errorf("dispatch log missing %q\n%s", want, logText)
@@ -2371,7 +2319,7 @@ func TestStartHostDispatchBrokerRequestDetachesBeforeEngineerVisibility(t *testi
 	select {
 	case <-launchEntered:
 	case <-time.After(2 * time.Second):
-		t.Fatal("host Ward launch never began")
+		t.Fatal("broker Ward launch never began")
 	}
 	select {
 	case err := <-result:

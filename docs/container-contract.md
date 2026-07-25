@@ -14,7 +14,7 @@ The container contract is small.
 ## What the contract covers
 
 - `WARD_*` environment variables.
-- the read-only director's broker socket and its credential boundary.
+- the read-only director's Compose broker address and its credential boundary.
 - bind mounts and read-only surfaces.
 - the optional read-only agent-compose bundle handoff.
 - the permission shape the container itself can use.

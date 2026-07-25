@@ -1,0 +1,273 @@
+package main
+
+import (
+	"context"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
+	t.Setenv(envHostGOOS, "windows")
+	plan := upPlan{
+		Image:               "example.invalid/dev-base:test",
+		Name:                "director-codex-ab45",
+		Role:                roleDirector,
+		ConfigRole:          roleDirector,
+		Repo:                targetRepo{Owner: "coilyco-flight-deck", Name: "ward"},
+		Mode:                modeCodex,
+		ForgejoBase:         forgejoBaseURL,
+		ReadOnly:            true,
+		TSSidecar:           true,
+		DispatchBrokerToken: "must-not-enter-compose",
+		Mounts: []mountSpec{
+			{Source: `X:\projects\coilyco-flight-deck\ward`, Target: containerContextMount, ReadOnly: true},
+			{Source: containerGitcacheVol, Target: containerGitcacheMnt, Volume: true},
+			dockerSockMount(),
+		},
+	}
+	stack := directorStack{
+		Project:    "ward-director-coilyco-flight-deck-ward-codex",
+		BrokerName: "ward-director-coilyco-flight-deck-ward-codex-broker",
+	}
+	body, err := renderDirectorStackCompose(plan, stack, `X:\tmp\ward.env`, `X:\home\.ward`)
+	if err != nil {
+		t.Fatalf("renderDirectorStackCompose: %v", err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		"broker:",
+		"director:",
+		"restart: unless-stopped",
+		"WARD_CONTAINER_SERVICE: dispatch-broker",
+		"WARD_DISPATCH_BROKER_LISTEN: 0.0.0.0:7420",
+		"WARD_DISPATCH_BROKER_ADDR: broker:7420",
+		"WARD_HOST_GOOS: windows",
+		"source: X:\\projects\\coilyco-flight-deck\\ward",
+		"target: /root/.ward",
+		"ward-tailnet",
+		"dispatch-broker-probe",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("compose output missing %q\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, plan.DispatchBrokerToken) {
+		t.Fatal("Compose output contains the broker token")
+	}
+	if strings.Contains(text, "network_mode: host") {
+		t.Fatal("Compose director cannot use host networking with broker service DNS")
+	}
+}
+
+func TestNormalizeDirectorStackNetworkPreservesComposeDNS(t *testing.T) {
+	plan := upPlan{HostNet: true}
+	normalizeDirectorStackNetwork(&plan)
+	if plan.HostNet || !plan.TSSidecar {
+		t.Fatalf("normalized plan = HostNet %t TSSidecar %t, want false/true", plan.HostNet, plan.TSSidecar)
+	}
+}
+
+func TestLaunchHostGOOSUsesInjectedHostIdentity(t *testing.T) {
+	t.Setenv(envHostGOOS, "darwin")
+	if got := launchHostGOOS(); got != "darwin" {
+		t.Fatalf("launchHostGOOS = %q, want darwin", got)
+	}
+}
+
+func TestDirectorStackCredsCarryEveryHarnessIntoBroker(t *testing.T) {
+	t.Setenv(claudeCredsEnvKey, "claude-credential")
+	t.Setenv(codexAuthEnvKey, "codex-credential")
+	t.Setenv(gooseOllamaHostEnvKey, "goose-endpoint")
+
+	creds := (&Runner{}).resolveDirectorStackCreds(t.Context(), &upPlan{}, modeCodex)
+	wants := map[string]string{
+		claudeCredsEnvKey:     "claude-credential",
+		codexAuthEnvKey:       "codex-credential",
+		gooseOllamaHostEnvKey: "goose-endpoint",
+	}
+	seen := make(map[string]int)
+	for _, line := range creds {
+		if want, ok := wants[line.Key]; ok {
+			seen[line.Key]++
+			if line.Value != want {
+				t.Errorf("%s = %q, want %q", line.Key, line.Value, want)
+			}
+		}
+	}
+	for key := range wants {
+		if seen[key] != 1 {
+			t.Errorf("%s count = %d, want 1 in %+v", key, seen[key], creds)
+		}
+	}
+}
+
+func TestDirectorExitCommandLeavesBrokerSupervised(t *testing.T) {
+	plan := upPlan{Name: "director-codex-ab45"}
+	stack := directorStack{Project: "ward-director-ward-codex", ComposePath: "/state/compose.yaml"}
+	up, run := directorStackComposeArgs(plan, stack)
+	if strings.Join(up, " ") != "compose -p ward-director-ward-codex -f /state/compose.yaml up -d --wait broker" {
+		t.Fatalf("broker up args = %v", up)
+	}
+	if strings.Contains(strings.Join(run, " "), "down") || !strings.Contains(strings.Join(run, " "), "run --rm --no-deps") {
+		t.Fatalf("director run args couple broker cleanup: %v", run)
+	}
+}
+
+func TestResolveDirectorStackIsStable(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
+	first, err := resolveDirectorStack(repo, modeCodex)
+	if err != nil {
+		t.Fatalf("resolveDirectorStack first: %v", err)
+	}
+	second, err := resolveDirectorStack(repo, modeCodex)
+	if err != nil {
+		t.Fatalf("resolveDirectorStack second: %v", err)
+	}
+	if first != second {
+		t.Fatalf("director stack changed: %#v != %#v", first, second)
+	}
+	if filepath.Base(first.ComposePath) != directorStackFile ||
+		filepath.Base(first.EnvPath) != directorStackEnvFile ||
+		filepath.Base(first.AssetsDir) != directorStackAssets {
+		t.Fatalf("unexpected persistent paths: %#v", first)
+	}
+}
+
+func TestClassifyDispatchReconcileNeverBlindlyDuplicates(t *testing.T) {
+	journal := dispatchRequestJournal{RequestID: strings.Repeat("a", 32)}
+	tests := []struct {
+		name       string
+		phase      string
+		containers []dispatchContainerState
+		resume     string
+		outcome    string
+		wantErr    bool
+	}{
+		{name: "accepted before create replays", phase: dispatchPhaseAccepted},
+		{name: "creating with no container replays", phase: dispatchPhaseCreating},
+		{name: "created container resumes same id", phase: dispatchPhaseCreated, containers: []dispatchContainerState{{ID: "one", State: "created"}}, resume: "one"},
+		{name: "starting running adopts", phase: dispatchPhaseStarting, containers: []dispatchContainerState{{ID: "one", State: "running"}}, outcome: dispatchOutcomeLaunched},
+		{name: "visible exited terminalizes", phase: dispatchPhaseVisible, containers: []dispatchContainerState{{ID: "one", State: "exited"}}, outcome: dispatchOutcomeFailed, wantErr: true},
+		{name: "starting without container is ambiguous", phase: dispatchPhaseStarting, outcome: dispatchOutcomeInterrupted, wantErr: true},
+		{name: "multiple matching containers blocks readiness", phase: dispatchPhaseCreating, containers: []dispatchContainerState{{ID: "one"}, {ID: "two"}}, wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			journal.Phase = tc.phase
+			got := classifyDispatchReconcile(journal, tc.containers)
+			if got.ResumeContainer != tc.resume || got.TerminalOutcome != tc.outcome || (got.Err != nil) != tc.wantErr {
+				t.Fatalf("decision = %#v, want resume=%q outcome=%q err=%t", got, tc.resume, tc.outcome, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestDispatchArtifactPathIsStablePerRequest(t *testing.T) {
+	req := dispatchBrokerRequest{
+		Requester: "director-codex-ab45",
+		Role:      roleEngineer,
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1562"},
+	}
+	first := newDispatchArtifactPaths(req, time.Unix(1, 0), strings.Repeat("b", 32))
+	second := newDispatchArtifactPaths(req, time.Unix(2, 0), strings.Repeat("b", 32))
+	if first.Dir != second.Dir || first.ConsolePath != second.ConsolePath {
+		t.Fatalf("same request id produced different artifacts: %s != %s", first.Dir, second.Dir)
+	}
+}
+
+func TestDispatchFingerprintExcludesTokenButIncludesLaunchShape(t *testing.T) {
+	base := dispatchBrokerRequest{
+		RequestID: strings.Repeat("c", 32),
+		Role:      roleEngineer,
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1562"},
+		Token:     "first-secret",
+	}
+	first, err := dispatchRequestFingerprint(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Token = "second-secret"
+	second, err := dispatchRequestFingerprint(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("transport token changed the semantic request fingerprint")
+	}
+	base.Argv = append(base.Argv, "--no-pull")
+	third, err := dispatchRequestFingerprint(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == third {
+		t.Fatal("launch arguments did not change the semantic request fingerprint")
+	}
+}
+
+func TestReservationRequestMarkerMakesRecoveryIdempotent(t *testing.T) {
+	requestID := strings.Repeat("e", 32)
+	comments := []issueComment{{Body: "visible\n" + reservationRequestMarker(requestID)}}
+	if !reservationRequestAlreadyHeld(comments, requestID) {
+		t.Fatal("same dispatch request did not reacquire its remote reservation")
+	}
+	if reservationRequestAlreadyHeld(comments, strings.Repeat("f", 32)) {
+		t.Fatal("different dispatch request reused a foreign reservation")
+	}
+}
+
+func TestAcceptedRequestIDLaunchesExactlyOnce(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(envDispatchJournalDir, filepath.Join(home, "journals"))
+
+	original := dispatchBrokerLaunch
+	t.Cleanup(func() { dispatchBrokerLaunch = original })
+	launched := make(chan struct{}, 2)
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	dispatchBrokerLaunch = func(_ context.Context, _ dispatchBrokerRequest) error {
+		launched <- struct{}{}
+		<-release
+		close(finished)
+		return nil
+	}
+
+	req := dispatchBrokerRequest{
+		RequestID: strings.Repeat("d", 32),
+		Role:      roleQA,
+		Argv:      []string{"qa", "coilyco-flight-deck/ward#1562", "--harness", "codex"},
+	}
+	firstPath, err := (&Runner{}).startHostDispatchBrokerRequest(t.Context(), req)
+	if err != nil {
+		t.Fatalf("first accepted request: %v", err)
+	}
+	select {
+	case <-launched:
+	case <-time.After(2 * time.Second):
+		t.Fatal("accepted request never launched")
+	}
+	secondPath, err := (&Runner{}).startHostDispatchBrokerRequest(t.Context(), req)
+	if err != nil {
+		t.Fatalf("duplicate accepted request: %v", err)
+	}
+	if firstPath != secondPath {
+		t.Fatalf("duplicate request returned different artifacts: %q != %q", firstPath, secondPath)
+	}
+	select {
+	case <-launched:
+		t.Fatal("duplicate request launched a second worker")
+	default:
+	}
+	close(release)
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("accepted launch did not finish")
+	}
+}

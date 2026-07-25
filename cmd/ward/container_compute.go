@@ -511,12 +511,14 @@ type upPlan struct {
 	// ReadOnly marks a read-only surface session (the director's drain surface, ward#293,
 	// ward#353): exports WARD_READONLY=1. See docs/agent-surface.md.
 	ReadOnly bool
-	// DispatchBrokerAddr, when set, exports WARD_DISPATCH_BROKER_ADDR (host.docker
-	// .internal:<port>) and flips on the --add-host wiring (ward#391).
+	// DispatchBrokerAddr, when set, exports WARD_DISPATCH_BROKER_ADDR.
 	DispatchBrokerAddr string
 	// DispatchBrokerToken exports WARD_DISPATCH_BROKER_TOKEN, the per-launch secret
-	// the surface echoes back so the host broker authenticates the dial.
+	// the surface echoes back so the broker service authenticates the dial.
 	DispatchBrokerToken string
+	// DispatchRequestID is the broker-minted idempotency key carried as an env
+	// value and Docker label on the sibling container.
+	DispatchRequestID string
 	// HostNet joins the container to the host network (--network=host) so a run
 	// inherits the host's tailnet route (--host-net, ward#330). docs/agent-host-net.md.
 	HostNet bool
@@ -901,6 +903,7 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		"WARD_MIRROR_NAME":    p.Repo.mirrorName(),
 		"WARD_VERSION":        p.WardVersion,
 		"WARD_VERSION_SOURCE": wardVersionLaunchLabel(p.WardVersion, p.WardVersionSource),
+		envHostGOOS:           launchHostGOOS(),
 		// Substrate (reference repos warmed regardless of target). The entrypoint
 		// has matching fallback defaults, so these keep the contract one-sourced.
 		"WARD_SUBSTRATE_SEED":     envOrBundleOr("WARD_SUBSTRATE_SEED", topo.SubstrateSeed, containerSubstrateSeed),
@@ -938,6 +941,9 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	if p.DispatchBrokerAddr != "" {
 		env[envDispatchBrokerAddr] = p.DispatchBrokerAddr
 		env[envDispatchBrokerToken] = p.DispatchBrokerToken
+	}
+	if p.DispatchRequestID != "" {
+		env[envDispatchRequestID] = p.DispatchRequestID
 	}
 	if p.TSSidecar {
 		// Per-connection proxy (never a host-wide ALL_PROXY), the box dialed by name;
@@ -1007,6 +1013,9 @@ func (p upPlan) labels() []string {
 	if p.Issue > 0 {
 		out = append(out, fmt.Sprintf("%s=%d", labelIssue, p.Issue))
 	}
+	if p.DispatchRequestID != "" {
+		out = append(out, labelDispatchRequest+"="+p.DispatchRequestID)
+	}
 	// A non-default landing policy is stamped so poll/reaper/sweep can see it
 	// without reading the container env (ward#508); merge-remote-main stays unlabeled.
 	if !p.Workflow.landsOnMain() {
@@ -1044,7 +1053,7 @@ func dockerArgvHead(verb string, p upPlan) []string {
 	}
 	// Map host.docker.internal to the host gateway so the surface's broker dial
 	// works on Linux too; --network=host already resolves it, so skip it there.
-	if p.DispatchBrokerAddr != "" && !p.HostNet {
+	if strings.HasPrefix(p.DispatchBrokerAddr, containerHostGateway+":") && !p.HostNet {
 		argv = append(argv, "--add-host", containerHostGateway+":host-gateway")
 	}
 	return argv

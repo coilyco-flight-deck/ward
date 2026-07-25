@@ -5,7 +5,8 @@ doc_goal: Define the launch-check placement matrix so broker-time and pre-flight
 
 This page names the current placement of the launch guards that matter to a queued dispatch.
 
-`broker-time` here means the request has reached the host-side dispatch gate.
+`broker-time` here means the request has reached the independently supervised
+dispatch service.
 `pre-flight` here means the launch is still being checked before the detached container starts real work.
 
 ## Matrix

@@ -24,6 +24,9 @@ die() { log "fatal: $*"; exit 1; }
 
 main() {
   install_ward
+  if [[ "${WARD_CONTAINER_SERVICE:-}" == "dispatch-broker" ]]; then
+    exec /usr/local/bin/ward container dispatch-broker
+  fi
   exec /usr/local/bin/ward container bootstrap "$@"
 }
 

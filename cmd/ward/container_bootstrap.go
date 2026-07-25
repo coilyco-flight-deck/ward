@@ -1293,7 +1293,7 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   state, ` + "`ward agent pr merge <owner/repo#N>`" + ` merges an eligible PR (head-pinned,
   checks-green-gated), ` + "`ward agent pr runs <owner/repo>`" + ` lists Actions runs with conclusions,
   and ` + "`ward agent pr rerun <owner/repo> <run-id>`" + ` reruns one.
-  These forward through the host dispatch broker on ward's compiled Forgejo client, gated
+  These forward through the supervised dispatch broker on ward's compiled Forgejo client, gated
   by the embedded role x workflow permission table, so they keep working even when the
   ` + "`aguard ops forgejo`" + ` specgen surface is stripped or rolled back (infrastructure#538).
 - Fresh director surfaces mount the host Docker socket at ` + "`/var/run/docker.sock`" + `, so

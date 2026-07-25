@@ -72,19 +72,28 @@ in-container entrypoint, not by hand. See docs/agent.md for the contributor surf
 			containerSubstrateInventoryCommand(),
 			containerSubstrateCatalogCommand(),
 			containerBrokerCommand(),
+			containerDispatchBrokerCommand(),
+			containerDispatchBrokerProbeCommand(),
 			containerForwardCommand(),
 			containerDrainExitCommand(),
 		},
 	}
 }
 
-// gooseOllamaHostEnvKey carries the base64'd tower Ollama endpoint goose binds,
-// resolved host-side (goose is not a CredentialProvider); ward#425.
-const gooseOllamaHostEnvKey = "WARD_GOOSE_OLLAMA_HOST_B64"
+// Credential bootstrap channels are host-resolved and inherited by a persistent
+// broker, so child launches never need host credential files or keychains.
+const (
+	claudeCredsEnvKey     = "WARD_CLAUDE_CREDS_B64"
+	codexAuthEnvKey       = "WARD_CODEX_AUTH_B64"
+	gooseOllamaHostEnvKey = "WARD_GOOSE_OLLAMA_HOST_B64"
+)
 
 // resolveAgentCreds resolves the host-side credential env-file lines a mode needs
 // through the drained CredentialProvider seam (goose's Ollama host aside; ward#425).
 func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []agentsapi.EnvLine {
+	if inherited := inheritedAgentCredential(mode); inherited != nil {
+		return inherited
+	}
 	if agent, ok := agents.Lookup(string(mode)); ok {
 		if cp, ok := agent.(agentsapi.CredentialProvider); ok {
 			return cp.ResolveCreds(r.agentHostCtx(ctx))
@@ -94,6 +103,27 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []ag
 		if host := r.resolveOllamaHost(ctx); host != "" {
 			return []agentsapi.EnvLine{{Key: gooseOllamaHostEnvKey, Value: base64.StdEncoding.EncodeToString([]byte(host))}}
 		}
+	}
+	return nil
+}
+
+func inheritedAgentCredential(mode containerMode) []agentsapi.EnvLine {
+	key := ""
+	switch mode {
+	case modeClaude:
+		key = claudeCredsEnvKey
+	case modeCodex:
+		key = codexAuthEnvKey
+	case modeGoose:
+		key = gooseOllamaHostEnvKey
+	case modeOpencode:
+		return nil
+	}
+	if key == "" {
+		return nil
+	}
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return []agentsapi.EnvLine{{Key: key, Value: value}}
 	}
 	return nil
 }
@@ -137,7 +167,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// Host/cloud capability is the role's guardfile set (ward#578; docs/agent-flags.md),
 	// resolved to the mechanisms ward composes; a tailnet grant implies the ~/.aws mount.
 	capab := resolveCapabilityWithOptOut(role, c.Bool("no-tailnet"))
-	hostNet, tsSidecar := resolveTailnetMechanism(runtime.GOOS, capab.tailnet)
+	hostNet, tsSidecar := resolveTailnetMechanism(launchHostGOOS(), capab.tailnet)
 	awsHome := ""
 	if capab.aws {
 		awsHome = filepath.Join(homeDir(), ".aws")
@@ -263,7 +293,7 @@ func (r *Runner) maybeWarnHostNet(plan upPlan) {
 	if !plan.HostNet {
 		return
 	}
-	if msg, warn := hostNetTailnetWarning(runtime.GOOS, localHasTailscale0()); warn {
+	if msg, warn := hostNetTailnetWarning(launchHostGOOS(), localHasTailscale0()); warn {
 		w := r.Runner.Stderr
 		if w == nil {
 			w = os.Stderr
@@ -448,10 +478,14 @@ func writeAgentCredEnvLines(f *os.File, cleanup func(), creds []agentsapi.EnvLin
 // launchEnvFilePrefix is the temp-name prefix for the docker --env-file; a shared
 // const so the stale-orphan sweep can recognize leftovers written by launchStagingDir.
 const launchEnvFilePrefix = "ward-forgejo-env-"
+const envLaunchStagingDir = "WARD_LAUNCH_STAGING_DIR"
 
 // launchStagingDir is the $HOME-else-$TMPDIR dir a snap docker can reach for both
 // the --env-file and the assets bind-mount (ward#569, ward#574; docs/container-env.md).
 func launchStagingDir() string {
+	if dir := strings.TrimSpace(os.Getenv(envLaunchStagingDir)); dir != "" {
+		return dir
+	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return os.TempDir()
@@ -670,6 +704,19 @@ func writeContainerAssets(ctx context.Context, r *Runner, wardSource, wardVersio
 		return "", func() {}, fmt.Errorf("ward container: create assets dir: %w", err)
 	}
 	cleanup = func() { _ = os.RemoveAll(dir) }
+	if err := writeContainerAssetsAt(ctx, dir, wardSource, wardVersion); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	return dir, cleanup, nil
+}
+
+// writeContainerAssetsAt refreshes a caller-owned assets directory. Director
+// stacks use it for assets that must outlive the invoking terminal process.
+func writeContainerAssetsAt(ctx context.Context, dir, wardSource, wardVersion string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("ward container: create assets dir: %w", err)
+	}
 	files := []struct {
 		name string
 		mode os.FileMode
@@ -686,19 +733,13 @@ func writeContainerAssets(ctx context.Context, r *Runner, wardSource, wardVersio
 		}
 		data, rerr := containerAssets.ReadFile(path)
 		if rerr != nil {
-			cleanup()
-			return "", func() {}, fmt.Errorf("ward container: read embedded %s: %w", f.name, rerr)
+			return fmt.Errorf("ward container: read embedded %s: %w", f.name, rerr)
 		}
 		if werr := os.WriteFile(filepath.Join(dir, f.name), data, f.mode); werr != nil {
-			cleanup()
-			return "", func() {}, fmt.Errorf("ward container: write %s: %w", f.name, werr)
+			return fmt.Errorf("ward container: write %s: %w", f.name, werr)
 		}
 	}
-	if err := stageWardBootstrapBinary(ctx, dir, wardSource, wardVersion); err != nil {
-		cleanup()
-		return "", func() {}, err
-	}
-	return dir, cleanup, nil
+	return stageWardBootstrapBinary(ctx, dir, wardSource, wardVersion)
 }
 
 func (r *Runner) sweepStaleContainerAssets(ctx context.Context, dir string) {

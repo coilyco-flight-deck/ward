@@ -104,7 +104,7 @@ func agentLogsCommand() *cli.Command {
 		Name:      "logs",
 		Usage:     "Read one engineer's run logs through the dispatch broker - director-surface, source-reported, tail/follow aware.",
 		ArgsUsage: "<owner/repo#N | #N | container-name>",
-		Description: `logs reads one engineer run's console output through the host dispatch broker when a
+		Description: `logs reads one engineer run's console output through the supervised dispatch broker when a
 director surface is attached, or host-side otherwise. It resolves the target the same
 way ` + "`ward agent stop`" + ` does: issue ref or container name. When a live engineer
 container is present it prefers ` + "`docker logs`" + `, and when that container has been
@@ -130,8 +130,8 @@ or the redacted sibling. The chosen source is printed before the body streams.
 	}
 }
 
-// runAgentLogs resolves the target and streams its logs either directly or through
-// the host dispatch broker.
+// runAgentLogs resolves the target and streams its logs directly or through the
+// supervised dispatch broker.
 func (r *Runner) runAgentLogs(ctx context.Context, c *cli.Command) error {
 	arg := strings.TrimSpace(c.Args().First())
 	if arg == "" {

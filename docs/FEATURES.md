@@ -29,7 +29,9 @@ Inventory of what `ward` ships today.
 - Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
 - Open-PR backpressure gate.
 - Issue-scoped director dispatch.
-- Dispatch broker. See [agent-dispatch-broker.md](agent-dispatch-broker.md).
+- Independently supervised Compose dispatch broker with durable request IDs,
+  restart reconciliation, and sibling engineer/QA launch isolation. See
+  [agent-dispatch-broker.md](agent-dispatch-broker.md).
 - PR-workflow tools with KDL defaults. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR lifecycle close/reopen/recovery tools.
 - PR repair classification.

@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
+
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
 	"github.com/urfave/cli/v3"
 )
@@ -66,12 +68,13 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 	if err != nil {
 		return err
 	}
-	// The session always runs attached and ephemeral, so its assets clean up on return.
+	// Writable scratch sessions remain ephemeral. Read-only director stacks keep
+	// their assets under ~/.ward so the broker can outlive this process.
 	defer cleanupAssets()
 
 	if c.Bool("print") {
 		if readOnly {
-			plan.DispatchBrokerAddr = containerHostGateway + ":<port>"
+			plan.DispatchBrokerAddr = dispatchBrokerServiceAddress
 			plan.DispatchBrokerToken = "<dispatch-broker-token>"
 		}
 		return printScratchPlan(c, plan, readOnly)
@@ -82,12 +85,12 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 	if err := r.prelaunchDispatch(ctx, c, plan, label); err != nil {
 		return err
 	}
-	cleanupBroker, err := r.attachHostDispatchBroker(ctx, &plan, readOnly, label)
-	if err != nil {
-		return err
+	var launchCreds []agentsapi.EnvLine
+	if readOnly {
+		launchCreds = r.resolveDirectorStackCreds(ctx, &plan, mode)
+	} else {
+		launchCreds = r.resolveLaunchCreds(ctx, &plan, mode)
 	}
-	defer cleanupBroker()
-	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
 	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
 	if err != nil {
 		return err
@@ -103,6 +106,13 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		access = "read-only"
 	}
 	fmt.Fprintf(os.Stderr, "%s: opening an interactive %s %s session on %s in a fresh container...\n\n", label, access, lookupAgent(mode).Record().Binary, plan.Repo.slug())
+	if readOnly {
+		stack, serr := resolveDirectorStack(plan.Repo, plan.Mode)
+		if serr != nil {
+			return fmt.Errorf("%s: resolve director stack: %w", label, serr)
+		}
+		return r.runDirectorStack(ctx, plan, stack, envFile)
+	}
 	return r.createAgentContainer(ctx, plan, envFile)
 }
 
@@ -118,9 +128,20 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	if !r.ownerAllowed(repo.Owner) {
 		return upPlan{}, func() {}, r.untrustedOwnerErr(label, repo.Owner)
 	}
-	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
-	if err != nil {
-		return upPlan{}, func() {}, err
+	var assetsDir string
+	var cleanupAssets func()
+	if readOnly {
+		stack, serr := prepareDirectorStackAssets(ctx, repo, mode, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+		if serr != nil {
+			return upPlan{}, func() {}, serr
+		}
+		assetsDir = stack.AssetsDir
+		cleanupAssets = func() {}
+	} else {
+		assetsDir, cleanupAssets, err = writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+		if err != nil {
+			return upPlan{}, func() {}, err
+		}
 	}
 	// No seed: empty AgentArgs is the bare interactive bring-up (a plain agent REPL). The
 	// read-only surface opts into the host agent-log drain mount (ward#525).
@@ -130,29 +151,12 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 		return upPlan{}, func() {}, err
 	}
 	plan.ReadOnly = readOnly
-	// The broker's host:port + token are set later in attachHostDispatchBroker,
-	// once the TCP listener binds and its ephemeral port is known (ward#391).
+	if readOnly {
+		normalizeDirectorStackNetwork(&plan)
+		plan.DispatchBrokerAddr = dispatchBrokerServiceAddress
+	}
 
 	return plan, cleanupAssets, nil
-}
-
-func (r *Runner) attachHostDispatchBroker(ctx context.Context, plan *upPlan, readOnly bool, label string) (func(), error) {
-	if !readOnly {
-		return func() {}, nil
-	}
-	bctx, cancel := context.WithCancel(ctx)
-	addr, token, cleanup, err := r.startHostDispatchBroker(bctx, plan.Name)
-	if err != nil {
-		cancel()
-		return func() {}, err
-	}
-	plan.DispatchBrokerAddr = addr
-	plan.DispatchBrokerToken = token
-	fmt.Fprintf(os.Stderr, "%s: host dispatch broker ready for %s at %s\n", label, plan.Name, addr)
-	return func() {
-		cancel()
-		cleanup()
-	}, nil
 }
 
 // printScratchPlan renders the resolved repo + docker plan without cloning or firing
@@ -164,7 +168,7 @@ func printScratchPlan(c *cli.Command, p upPlan, readOnly bool) error {
 	}
 	access := "writable"
 	if readOnly {
-		access = "read-only (this clone's push wiring revoked; host dispatch broker reachable over TCP)"
+		access = "read-only (this clone's push wiring revoked; supervised broker reachable at " + dispatchBrokerServiceAddress + ")"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(p.Mode, directorSurfaceVerb))
@@ -173,9 +177,20 @@ func printScratchPlan(c *cli.Command, p upPlan, readOnly bool) error {
 	fmt.Fprintf(&b, "repo:   %s\n", p.Repo.slug())
 	fmt.Fprintf(&b, "name:   %s\n", p.Name)
 	if c.Bool("no-pull") {
-		fmt.Fprintf(&b, "# pull skipped (--no-pull); image: %s\n", p.Image)
+		fmt.Fprintf(&b, "# pull skipped (--no-pull). image: %s\n", p.Image)
 	} else {
 		fmt.Fprintf(&b, "docker pull %s\n", p.Image)
+	}
+	if readOnly {
+		stack, err := resolveDirectorStack(p.Repo, p.Mode)
+		if err != nil {
+			return err
+		}
+		up, run := directorStackComposeArgs(p, stack)
+		fmt.Fprintf(&b, "docker %s\n", strings.Join(up, " "))
+		fmt.Fprintf(&b, "docker %s\n", strings.Join(run, " "))
+		_, err = io.WriteString(out, b.String())
+		return err
 	}
 	fmt.Fprintf(&b, "docker %s\n", strings.Join(dockerCreateArgv(p, "<ward-forgejo-token-envfile>"), " "))
 	_, err := io.WriteString(out, b.String())

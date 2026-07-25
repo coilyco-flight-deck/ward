@@ -27,14 +27,14 @@ issue and dispatched against it can halt the run instead of commenting a correct
 and hoping it notices.
 
 It runs only from a director read-only surface (the dispatch broker addr is set):
-the request is forwarded to host ward, which resolves the target through the same
+the request is forwarded to broker Ward, which resolves the target through the same
 stoppability check the real stop path uses and ` + "`docker stop`" + `s it via the same
 graceful path reap uses. For an issue ref whose local launch-confirmation window has
 elapsed with no running container, stop clears the stale issue reservation and local
 cache instead. ` + "`--print`" + ` previews either action. Off a surface it errors, like a
 ref-mode dispatch does.
 
-Stop-only, engineer-only. The host broker refuses any container that is not
+Stop-only, engineer-only. The broker service refuses any container that is not
 ward.role=engineer (director / qa / session are never stopped), and refuses a
 ref that matches zero or more than one engineer rather than guessing.
 
@@ -58,8 +58,8 @@ See docs/agent-stop.md.`,
 	}
 }
 
-// runAgentStop resolves the target ref/name and forwards a stop request through the
-// host dispatch broker (ward#627); --print resolves + shows the target, running nothing.
+// runAgentStop resolves the target and forwards it through the supervised broker
+// (ward#627). --print resolves and shows the target, running nothing.
 func (r *Runner) runAgentStop(ctx context.Context, c *cli.Command) error {
 	arg := strings.TrimSpace(c.Args().First())
 	if arg == "" {

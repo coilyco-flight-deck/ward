@@ -29,7 +29,7 @@ func TestDispatchDockerStateBlocked(t *testing.T) {
 			name:        "container, no client, no broker",
 			state:       dispatchDockerState{inContainer: true, dockerOnPath: false},
 			wantBlocked: true,
-			wantSubstr:  "no host dispatch broker is attached",
+			wantSubstr:  "no dispatch broker service is attached",
 		},
 		{
 			name:        "container, no client, broker attached but not read-only",

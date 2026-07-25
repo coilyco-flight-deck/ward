@@ -86,7 +86,11 @@ func (r *Runner) spawnDrainWaiter(name string) {
 		fmt.Fprintf(os.Stderr, "ward container: could not spawn a drain-on-exit waiter for %s (%v); the keep-10 sweep will drain it later\n", name, serr)
 		return
 	}
-	// Release so this process doesn't hold the child as a zombie once it returns.
-	_ = cmd.Process.Release()
+	if os.Getenv(envPersistentDispatchBroker) == "1" {
+		// The long-lived broker must reap this child after docker wait returns.
+		go func() { _ = cmd.Wait() }()
+	} else {
+		_ = cmd.Process.Release()
+	}
 	fmt.Fprintf(os.Stderr, "ward container: spawned drain-on-exit waiter for %s (pid %d)\n", name, cmd.Process.Pid)
 }

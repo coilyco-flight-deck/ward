@@ -796,8 +796,8 @@ func (r *Runner) resolveAgentPRRepo(ctx context.Context, label, arg string) (own
 	return owner, name, nil
 }
 
-// prWorkflowForwarded relays the verb through the host dispatch broker when the
-// session is a read-only surface with one attached; handled=false runs direct.
+// prWorkflowForwarded relays the verb through the supervised broker when the
+// session is a read-only surface with one attached. handled=false runs direct.
 func prWorkflowForwarded(ctx context.Context, r *Runner, req dispatchBrokerRequest) (bool, error) {
 	addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr))
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {

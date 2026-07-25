@@ -1858,7 +1858,7 @@ func snapDockerRemediation(path string) string {
 		"ward container: docker on PATH is the snap package (%s), which runs the docker CLI under a "+
 			"private /tmp and connects only snap's `home` interface (non-hidden $HOME files). Ward must "+
 			"hand docker several host paths that snap docker cannot reach - the --env-file, the -v "+
-			"assets/context bind mounts, the clone bind, and the broker socket - so a container launch "+
+			"assets/context bind mounts, the clone bind, and the broker endpoint - so a container launch "+
 			"dies mid-run at `docker run` with exit 125 (\"open ...: no such file\"). Snap docker cannot "+
 			"expose /tmp or dot-dirs to close this, so the fix is a native docker: install docker-ce from "+
 			"Docker's apt repo (https://docs.docker.com/engine/install/) and put /usr/bin/docker ahead of "+
@@ -1895,17 +1895,17 @@ func (s dispatchDockerState) blocked() (bool, string) {
 	var detail string
 	switch {
 	case s.brokerAddr != "" && !s.readOnly:
-		detail = "a host dispatch broker is attached but WARD_READONLY is unset, so the broker forward was skipped and dispatch fell through to a docker client that is not installed"
+		detail = "a supervised dispatch broker is attached but WARD_READONLY is unset, so the broker forward was skipped and dispatch fell through to a docker client that is not installed"
 	case s.brokerAddr != "":
 		if err := probeHostDispatchBroker(context.Background(), s.brokerAddr); err == nil {
-			detail = "the host dispatch broker forward did not fire for this dispatch and no docker client is installed to fall back to"
+			detail = "the supervised dispatch broker forward did not fire for this dispatch and no docker client is installed to fall back to"
 		} else {
-			detail = "the advertised host dispatch broker at " + s.brokerAddr + " is unreachable, and no docker client is installed to fall back to"
+			detail = "the advertised dispatch broker service at " + s.brokerAddr + " is unreachable, and no docker client is installed to fall back to"
 		}
 	default:
-		detail = "no host dispatch broker is attached (WARD_DISPATCH_BROKER_ADDR unset) and the image carries no docker client, so neither dispatch path is available"
+		detail = "no dispatch broker service is attached (WARD_DISPATCH_BROKER_ADDR unset) and the image carries no docker client, so neither dispatch path is available"
 	}
-	return true, fmt.Sprintf("%s - %s. A director surface container dispatches over the host broker; a plain container needs a docker client in the image. See docs/agent-surface.md", base, detail)
+	return true, fmt.Sprintf("%s - %s. A director surface container dispatches over its supervised broker service. A plain container needs a docker client in the image. See docs/agent-surface.md", base, detail)
 }
 
 // preflightVerdict is ward's read of the agent's pre-flight self-assessment.
@@ -2082,6 +2082,7 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, branc
 	plan.Headless = true
 	plan.Interactive = false
 	plan.TTY = false
+	plan.DispatchRequestID = strings.TrimSpace(os.Getenv(envDispatchRequestID))
 	return plan, nil
 }
 
@@ -2237,6 +2238,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	}); err != nil {
 		return err
 	}
+	if err := checkpointDispatchJournal(dispatchPhaseReserved, ""); err != nil {
+		return fmt.Errorf("%s: persist reserved dispatch phase: %w", label, err)
+	}
 	// Arm a rollback: a launch that fails before the container is confirmed up must retract
 	// BOTH reservation halves, not orphan the hold + forge road-block (ward#570, docs).
 	launched := false
@@ -2294,9 +2298,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	launched = true
 	// Spawn the detached drain-on-exit waiter so the run drains the moment it exits,
 	// not only at keep-10 eviction (ward#510; docs/agent-observability.md).
-	if !inContainer() {
-		// In-container dispatch skips it - the waiter would die with its own reaped
-		// container - and leans on the next sweep's idempotent drain instead.
+	if !inContainer() || os.Getenv(envPersistentDispatchBroker) == "1" {
+		// A persistent broker survives its child waiter. Ephemeral in-container
+		// dispatch still relies on the next sweep's idempotent drain.
 		r.spawnDrainWaiter(plan.Name)
 	}
 	if partialLaunch != nil {
@@ -2407,14 +2411,58 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 // createDetachedViaCopy creates the sibling with volume mounts only, `docker cp`s the
 // host-bind sources in, then starts it - host-path-independent dispatch (ward#323).
 func (r *Runner) createDetachedViaCopy(ctx context.Context, plan upPlan, envFile string) error {
+	id, err := r.prepareDetachedSibling(ctx, plan, envFile)
+	if err != nil {
+		return err
+	}
+	if err := r.copyDetachedSiblingBinds(ctx, plan, id); err != nil {
+		return err
+	}
+	if err := checkpointDispatchJournal(dispatchPhasePrepared, id); err != nil {
+		return fmt.Errorf("ward container: persist prepared phase: %w", err)
+	}
+	if err := checkpointDispatchJournal(dispatchPhaseStarting, id); err != nil {
+		return fmt.Errorf("ward container: persist starting phase: %w", err)
+	}
+	return r.runDockerSilenced(ctx, false, "start", id)
+}
+
+func (r *Runner) prepareDetachedSibling(ctx context.Context, plan upPlan, envFile string) (string, error) {
+	if id := strings.TrimSpace(os.Getenv(envDispatchResumeContainer)); id != "" {
+		return id, r.validateDispatchRecoveryContainer(ctx, id)
+	}
+	if err := checkpointDispatchJournal(dispatchPhaseCreating, ""); err != nil {
+		return "", fmt.Errorf("ward container: persist creating phase: %w", err)
+	}
 	out, err := r.captureDockerSilenced(ctx, dockerCreateNoBindsArgv(plan, envFile)...)
 	if err != nil {
-		return fmt.Errorf("ward container: create sibling: %w", err)
+		return "", fmt.Errorf("ward container: create sibling: %w", err)
 	}
 	id := strings.TrimSpace(out)
 	if id == "" {
-		return fmt.Errorf("ward container: docker create returned no container id")
+		return "", fmt.Errorf("ward container: docker create returned no container id")
 	}
+	if err := checkpointDispatchJournal(dispatchPhaseCreated, id); err != nil {
+		return "", fmt.Errorf("ward container: persist created phase: %w", err)
+	}
+	return id, nil
+}
+
+func (r *Runner) validateDispatchRecoveryContainer(ctx context.Context, id string) error {
+	requestID := strings.TrimSpace(os.Getenv(envDispatchRequestID))
+	got, err := r.dockerCapture(ctx, "inspect", "--format",
+		`{{index .Config.Labels "`+labelDispatchRequest+`"}}`, id)
+	if err != nil {
+		return fmt.Errorf("ward container: inspect recovery container %s: %w", id, err)
+	}
+	if strings.TrimSpace(string(got)) != requestID {
+		return fmt.Errorf("ward container: recovery container %s does not carry %s=%s",
+			id, labelDispatchRequest, requestID)
+	}
+	return nil
+}
+
+func (r *Runner) copyDetachedSiblingBinds(ctx context.Context, plan upPlan, id string) error {
 	for _, m := range hostBindMounts(plan) {
 		if !pathExists(m.Source) {
 			continue // an unset optional bind has no source to copy
@@ -2423,7 +2471,7 @@ func (r *Runner) createDetachedViaCopy(ctx context.Context, plan upPlan, envFile
 			return fmt.Errorf("ward container: docker cp %s -> %s: %w", m.Source, m.Target, cerr)
 		}
 	}
-	return r.runDockerSilenced(ctx, false, "start", id)
+	return nil
 }
 
 // captureDockerSilenced runs docker capturing stdout (the created container id) with

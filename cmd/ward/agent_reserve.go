@@ -123,8 +123,8 @@ const agentReservationReleaseMarker = "<!-- ward-agent-reservation-released -->"
 // carries so an orphaned run reads as "needs re-dispatch", not benign (ward#595).
 const agentNeedsRedispatchMarker = "<!-- ward-needs-redispatch -->"
 
-// dispatchLaunchReservationReleases keeps the local launch-intent cleanup hook long
-// enough for the host broker to clear a failed prelaunch immediately.
+// dispatchLaunchReservationReleases keeps the cleanup hook long enough for the
+// supervised broker to clear a failed prelaunch immediately.
 var dispatchLaunchReservationReleases sync.Map // ref string -> func()
 
 type dispatchLaunchReservationTrackingKey struct{}
@@ -168,6 +168,7 @@ type agentReservation struct {
 	Branch    string    `json:"branch"`
 	Host      string    `json:"host"`
 	PID       int       `json:"pid"`
+	RequestID string    `json:"request_id,omitempty"`
 	At        time.Time `json:"at"`
 }
 
@@ -414,6 +415,7 @@ func (r *Runner) acquireLocalReservation(_ context.Context, label string, mode c
 		Branch:    branch,
 		Host:      hostname(),
 		PID:       os.Getpid(),
+		RequestID: strings.TrimSpace(os.Getenv(envDispatchRequestID)),
 		At:        now,
 	}
 	if err := writeAgentReservation(path, res); err != nil {
@@ -467,6 +469,7 @@ type agentReservationIdentity struct {
 	Branch    string
 	Host      string
 	PID       int
+	RequestID string
 }
 
 func agentReservationIdentityOf(res agentReservation) agentReservationIdentity {
@@ -479,6 +482,7 @@ func agentReservationIdentityOf(res agentReservation) agentReservationIdentity {
 		Branch:    res.Branch,
 		Host:      res.Host,
 		PID:       res.PID,
+		RequestID: res.RequestID,
 	}
 }
 
@@ -525,6 +529,19 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 	}
 	var partialLaunch error
 	ttl := agentReservationTTL()
+	requestID := ""
+	if seedCtx != nil {
+		requestID = strings.TrimSpace(seedCtx.RequestID)
+	}
+	if requestID != "" {
+		comments, lerr := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+		if lerr == nil && reservationRequestAlreadyHeld(comments, requestID) {
+			fmt.Fprintf(os.Stderr, "%s: reservation request %s already holds %s. Reusing it during broker recovery\n",
+				label, requestID, ref)
+			r.lockReservedIssue(ctx, cl, label, ref)
+			return func() { r.releaseRemoteReservation(ctx, cl, label, mode, ref, container) }, nil, nil
+		}
+	}
 	if !override {
 		comments, lerr := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 		if lerr != nil {
@@ -832,6 +849,7 @@ type reservationSeedContext struct {
 	Included     []reservationThreadEntry // comments fed to the pre-flight read
 	Stripped     []reservationThreadEntry // comments ward stripped (its own automation)
 	DispatchedAt time.Time
+	RequestID    string
 }
 
 // reservationThreadEntry is one comment's non-secret identity (author + timestamp)
@@ -853,6 +871,7 @@ func buildReservationSeedContext(w resolvedWork, plan upPlan, now time.Time) *re
 		Workflow:     w.Workflow,
 		Reservation:  "held",
 		DispatchedAt: now,
+		RequestID:    plan.DispatchRequestID,
 	}
 	for _, c := range w.Comments {
 		entry := reservationThreadEntry{Author: strings.TrimSpace(c.User.Login), At: c.CreatedAt}
@@ -872,10 +891,27 @@ func (sc *reservationSeedContext) render() string {
 		return ""
 	}
 	var b strings.Builder
+	if sc.RequestID != "" {
+		fmt.Fprintf(&b, "\n\n%s", reservationRequestMarker(sc.RequestID))
+	}
 	b.WriteString("\n\n<details><summary>run seed context — what this run is carrying (ward#609)</summary>\n\n")
 	b.WriteString(sc.body())
 	b.WriteString("\n</details>\n")
 	return b.String()
+}
+
+func reservationRequestMarker(requestID string) string {
+	return "<!-- ward-dispatch-request:" + strings.TrimSpace(requestID) + " -->"
+}
+
+func reservationRequestAlreadyHeld(comments []issueComment, requestID string) bool {
+	marker := reservationRequestMarker(requestID)
+	for _, comment := range comments {
+		if strings.Contains(comment.Body, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // body renders the seed context without the surrounding details wrapper so the

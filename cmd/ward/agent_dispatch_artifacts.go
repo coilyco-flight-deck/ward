@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -71,12 +73,11 @@ func newDispatchArtifactPaths(req dispatchBrokerRequest, now time.Time, requestI
 	requesterMode := containerModeFromContainerName(requester)
 	harness := dispatchBrokerRequestHarness(req)
 	wardVersion := dispatchBrokerWardVersion(req.Argv)
-	stamp := now.UTC().Format("20060102T150405Z")
 	slug := config.SanitizeSlug(emptyDefault(requester, "unknown") + "-" + emptyDefault(argRef(req.Argv), "missing-ref"))
 	if requestID == "" {
 		requestID = newDispatchBrokerRequestID()
 	}
-	name := fmt.Sprintf("%s-%s-%s", stamp, requestID, slug)
+	name := fmt.Sprintf("%s-%s", requestID, slug)
 	dir := filepath.Join(agentLogsDir(), dispatchArtifactsSubdir, name)
 	redactedDir := filepath.Join(agentLogsRedactedDir(), dispatchArtifactsSubdir, name)
 	return dispatchArtifactPaths{
@@ -334,7 +335,11 @@ func argIssue(argv []string) string {
 }
 
 func newDispatchBrokerRequestID() string {
-	return fmt.Sprintf("%x", time.Now().UnixNano())
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(raw[:])
 }
 
 // openDispatchLog preserves the old test seam while the artifact now lives in a
