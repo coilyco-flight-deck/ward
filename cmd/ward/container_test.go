@@ -747,6 +747,42 @@ func TestLaunchStagingDirFallsBackToTmp(t *testing.T) {
 	}
 }
 
+func TestWriteContainerAssetsCreatesMissingLaunchStagingDir(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "missing", "launch-staging")
+	t.Setenv(envLaunchStagingDir, root)
+	stubContainerBootstrapStage(t)
+
+	dir, cleanup, err := writeContainerAssets(context.Background(), nil, "", "")
+	if err != nil {
+		t.Fatalf("writeContainerAssets: %v", err)
+	}
+	defer cleanup()
+	if filepath.Dir(dir) != root {
+		t.Fatalf("assets dir parent = %q, want %q", filepath.Dir(dir), root)
+	}
+	if info, statErr := os.Stat(root); statErr != nil {
+		t.Fatalf("launch staging directory missing: %v", statErr)
+	} else if !info.IsDir() {
+		t.Fatalf("launch staging path is not a directory: %q", root)
+	}
+}
+
+func TestWriteContainerAssetsReportsLaunchStagingCreationFailure(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(root, []byte("blocked"), 0o600); err != nil {
+		t.Fatalf("seed blocked staging path: %v", err)
+	}
+	t.Setenv(envLaunchStagingDir, root)
+
+	_, _, err := writeContainerAssets(context.Background(), nil, "", "")
+	if err == nil {
+		t.Fatal("writeContainerAssets unexpectedly accepted a file as the staging root")
+	}
+	if !strings.Contains(err.Error(), "ward container: create launch staging dir:") {
+		t.Fatalf("writeContainerAssets error = %q, want launch-staging context", err)
+	}
+}
+
 func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 	// The assets bind-mount source is daemon-resolved, so it must land under $HOME
 	// (never /tmp) for a snap docker daemon to see it at `docker run` (ward#574).

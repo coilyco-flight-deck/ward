@@ -408,7 +408,10 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg
 	}
 	// Land the env-file where the docker CLI can read it at `docker run`: a snap
 	// docker's private /tmp hides a /tmp path (ward#569; docs/container-env.md).
-	dir := launchStagingDir()
+	dir, err := ensureLaunchStagingDir()
+	if err != nil {
+		return "", func() {}, err
+	}
 	sweepStaleLaunchEnvFiles(dir)
 	f, err := os.CreateTemp(dir, launchEnvFilePrefix+"*")
 	if err != nil {
@@ -491,6 +494,14 @@ func launchStagingDir() string {
 		return os.TempDir()
 	}
 	return home
+}
+
+func ensureLaunchStagingDir() (string, error) {
+	dir := launchStagingDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("ward container: create launch staging dir: %w", err)
+	}
+	return dir, nil
 }
 
 // sweepStaleLaunchEnvFiles best-effort removes past-TTL env-file orphans in dir;
@@ -695,7 +706,10 @@ func (r *Runner) clearExitedContainer(ctx context.Context, name string) {
 // writeContainerAssets materializes the embedded entrypoint + doctrine and stages
 // the matching ward binary into a per-run dir under launchStagingDir.
 func writeContainerAssets(ctx context.Context, r *Runner, wardSource, wardVersion string) (dir string, cleanup func(), err error) {
-	root := launchStagingDir()
+	root, err := ensureLaunchStagingDir()
+	if err != nil {
+		return "", func() {}, err
+	}
 	if r != nil {
 		r.sweepStaleContainerAssets(ctx, root)
 	}
