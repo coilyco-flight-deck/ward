@@ -25,7 +25,7 @@ jobs:
   release:
     runs-on: docker
     container:
-      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     timeout-minutes: 10
     outputs:
       tag: ${{ steps.tag.outputs.new_tag }}
@@ -159,7 +159,7 @@ jobs:
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
     container:
-      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     env:
       TAG: ${{ needs.release.outputs.tag }}
       DRAFT_TAG: draft-${{ github.sha }}
@@ -410,7 +410,7 @@ jobs:
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
     container:
-      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     env:
       TAG: ${{ needs.release.outputs.tag }}
       FORGEJO_BASE_URL: https://forgejo.coilysiren.me
@@ -660,7 +660,7 @@ jobs:
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: docker
     container:
-      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     env:
       TAG: ${{ needs.release.outputs.tag }}
       FORGEJO_BASE_URL: https://forgejo.coilysiren.me

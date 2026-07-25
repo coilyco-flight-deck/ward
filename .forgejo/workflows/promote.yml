@@ -37,7 +37,7 @@ jobs:
     runs-on: docker
     timeout-minutes: 30
     container:
-      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:lang-go-latest
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     steps:
       - name: checkout
         run: |
@@ -161,7 +161,7 @@ jobs:
             echo "::error::REGISTRY_TOKEN not set; cannot publish the ward:release image alias" >&2
             exit 1
           fi
-          SOURCE_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:latest \
+          SOURCE_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release \
           TARGET_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/ward:release \
           SOURCE_TOKEN="$SOURCE_TOKEN" \
           TARGET_USER="$TARGET_USER" \

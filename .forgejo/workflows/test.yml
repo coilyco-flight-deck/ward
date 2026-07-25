@@ -18,7 +18,7 @@ jobs:
     runs-on: docker
     timeout-minutes: 10
     container:
-      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:lang-go-latest
+      image: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     steps:
       - name: checkout
         run: |
