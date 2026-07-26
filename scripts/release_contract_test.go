@@ -52,6 +52,10 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		"SOURCE_TOKEN: ${{ github.token }}",
 		"TARGET_USER: coilyco-ops",
 		"TARGET_TOKEN: ${{ secrets.REGISTRY_TOKEN }}",
+		"AOS_SPECS_TAG: v",
+		"ward-specs-${AOS_SPECS_TAG}.tar.gz",
+		"make bake-aos-policy",
+		"failed sha256 verification",
 	} {
 		if !strings.Contains(promote, want) {
 			t.Fatalf("promote workflow should mention %q:\n%s", want, promote)

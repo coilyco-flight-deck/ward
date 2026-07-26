@@ -13,6 +13,12 @@ commands:
   test:
     run: make test
     description: Run the unit test suite.
+  test-policy-bake:
+    run: go test ./cmd/ward-policy-bake
+    description: Run the AOS native-policy materializer tests.
+  test-release-contract:
+    run: go test ./scripts -run TestReleasePipelineUsesDraftArtifacts
+    description: Run the focused release-pipeline contract test.
   pre-commit:
     run: pre-commit run --all-files
     description: Run the repository pre-commit suite across every tracked file.
@@ -34,6 +40,9 @@ commands:
   sync-fleet-assets:
     run: make sync-fleet-assets
     description: Mirror the canonical fleet KDL into the embedded generated asset.
+  bake-aos-policy:
+    run: make bake-aos-policy
+    description: Materialize an extracted AOS ward-specs bundle into the native fleet asset.
   tidy:
     run: make tidy
     description: go mod tidy.

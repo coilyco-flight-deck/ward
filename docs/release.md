@@ -6,8 +6,9 @@ doc_goal: Keep the release pipeline as a short user-facing reference after the d
 Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1117)).
 
 - `promote.yml` gates every `main` push (vet, test, lint), builds the binary
-  matrix once, publishes it as a commit-scoped draft release, and only then
-  fast-forwards the `release` branch with `CI_RELEASE_TOKEN`.
+  matrix once from the pinned AOS native-policy bundle, publishes it as a
+  commit-scoped draft release, and only then fast-forwards the `release`
+  branch with `CI_RELEASE_TOKEN`.
 - `release.yml` consumes the promoted `release` sha, retags the already-built
   draft assets to the public version, and updates install channels under a
   no-cancel concurrency queue: promoted shas release in sequence, never
@@ -42,6 +43,10 @@ Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.c
   fetch timeout in the shared actions repo cannot block release setup.
 - the published binaries are built once on `main` and then retagged on
   `release`.
+- the native agent policy is materialized from the pinned, checksummed AOS
+  `ward-specs` asset before cross-compilation. Ward combines its `agents.kdl`
+  and `roles.kdl` into the embedded fleet asset and rejects missing or example
+  attribution.
 - Ward publishes immutable version tags and checksums, not moving `release` or
   `latest` aliases.
 - the Scoop bucket bump is best-effort: if the write token is absent or the
