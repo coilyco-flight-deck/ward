@@ -91,8 +91,6 @@ jobs:
           TAG: ${{ steps.tag.outputs.new_tag }}
           FORGEJO_API: https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward
           GO_VERSION: "1.26.4"
-          AOS_SPECS_TAG: v0.257.0
-          AOS_RELEASE_BASE: https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os/releases/download
           TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -133,25 +131,6 @@ jobs:
             echo "go mod download attempt ${attempt} failed/timed out; retrying in 5s" >&2
             sleep 5
           done
-          if [ -z "${AOS_SPECS_TAG:-}" ]; then
-            echo "::error::AOS_SPECS_TAG is blank; refusing to build native policy without its AOS source" >&2
-            exit 1
-          fi
-          asset="ward-specs-${AOS_SPECS_TAG}.tar.gz"
-          asset_url="${AOS_RELEASE_BASE}/${AOS_SPECS_TAG}/${asset}"
-          policy_work="$(mktemp -d)"
-          curl -fsSL --max-time 120 "${asset_url}" -o "${policy_work}/${asset}"
-          curl -fsSL --max-time 60 "${asset_url}.sha256" -o "${policy_work}/${asset}.sha256"
-          want="$(tr -d '[:space:]' < "${policy_work}/${asset}.sha256")"
-          got="$(sha256sum "${policy_work}/${asset}" | awk '{print $1}')"
-          if ! printf '%s' "$want" | grep -Eq '^[0-9a-f]{64}$' || [ "$want" != "$got" ]; then
-            echo "::error::${asset} failed sha256 verification; refusing to bake unverified AOS policy" >&2
-            exit 1
-          fi
-          mkdir -p "${policy_work}/bundle"
-          tar -xzf "${policy_work}/${asset}" -C "${policy_work}/bundle"
-          AOS_POLICY_BUNDLE="${policy_work}/bundle" make bake-aos-policy
-          echo "baked native policy from verified ${asset}"
           for os in linux darwin windows; do
             for arch in amd64 arm64; do
               ext=""

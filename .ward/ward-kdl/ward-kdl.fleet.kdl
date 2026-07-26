@@ -7,11 +7,9 @@
 // (cmd/ward/fleet.go via pkg/fleetconfig), legibly partitioned from the
 // permission dialect (aos#310 §6, ward#415).
 //
-// This file is the neutral source-build fallback. `make sync-fleet-assets`
-// copies it to cmd/ward/fleetassets/fleet.generated.kdl for go:embed (which
-// cannot reach this sibling dir); fleetassets_test.go fails the build on drift.
-// Release promotion replaces the generated copy with the pinned AOS agents
-// and roles policy before cross-compilation.
+// This file is the single hand-edited source. `make sync-fleet-assets` copies
+// it to cmd/ward/fleetassets/fleet.generated.kdl for go:embed (which cannot
+// reach this sibling dir); fleetassets_test.go fails the build on drift.
 //
 // The frontier launch shapes are ward-owned built-ins in cmd/ward/agent_fleet.go.
 // This bundle is the sparse override layer plus role tuning, not the product

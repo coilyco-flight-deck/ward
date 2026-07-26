@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint lint-refs lint-workflows tidy cover install sync-fleet-assets sync-topology-assets sync-defaults-assets sync-role-assets bake-aos-policy workspace agent-roster agent-flags demo-image
+.PHONY: help build test vet lint lint-refs lint-workflows tidy cover install sync-fleet-assets sync-topology-assets sync-defaults-assets sync-role-assets workspace agent-roster agent-flags demo-image
 
 # Go directive for a generated go.work, kept in lockstep with go.mod's `go` line.
 GO_VERSION := $(shell awk '/^go [0-9]/ {print $$2; exit}' go.mod)
@@ -31,12 +31,6 @@ sync-fleet-assets: ## Mirror the dialect-2 ward-kdl.fleet.kdl into cmd/ward for 
 	# fleetassets_test.go fails the build on drift, so re-sync after every change.
 	@mkdir -p ./cmd/ward/fleetassets
 	cp ./.ward/ward-kdl/ward-kdl.fleet.kdl ./cmd/ward/fleetassets/fleet.generated.kdl
-
-AOS_POLICY_OUTPUT ?= ./cmd/ward/fleetassets/fleet.generated.kdl
-
-bake-aos-policy: ## Materialize a verified AOS ward-specs bundle into Ward's native fleet asset.
-	@test -n "$(AOS_POLICY_BUNDLE)" || { echo "AOS_POLICY_BUNDLE is required" >&2; exit 1; }
-	go run ./cmd/ward-policy-bake --bundle "$(AOS_POLICY_BUNDLE)" --output "$(AOS_POLICY_OUTPUT)"
 
 sync-defaults-assets: ## Mirror the canonical smart-defaults KDL into cmd/ward for embedding (ward#679).
 	# The smart-defaults bundle carries baked native runtime policy knobs. go:embed
