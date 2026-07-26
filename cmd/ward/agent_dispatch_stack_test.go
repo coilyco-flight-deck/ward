@@ -39,6 +39,7 @@ func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
 	for _, want := range []string{
 		"broker:",
 		"director:",
+		"container_name: director-codex-ab45",
 		"restart: unless-stopped",
 		"WARD_CONTAINER_SERVICE: dispatch-broker",
 		"WARD_DISPATCH_BROKER_LISTEN: 0.0.0.0:7420",
@@ -104,14 +105,26 @@ func TestDirectorStackCredsCarryEveryHarnessIntoBroker(t *testing.T) {
 }
 
 func TestDirectorExitCommandLeavesBrokerSupervised(t *testing.T) {
-	plan := upPlan{Name: "director-codex-ab45"}
 	stack := directorStack{Project: "ward-director-ward-codex", ComposePath: "/state/compose.yaml"}
-	up, run := directorStackComposeArgs(plan, stack)
-	if strings.Join(up, " ") != "compose -p ward-director-ward-codex -f /state/compose.yaml up -d --wait broker" {
-		t.Fatalf("broker up args = %v", up)
+	commands := directorStackComposeArgs(stack)
+	if got := strings.Join(commands.BrokerUp, " "); got != "compose -p ward-director-ward-codex -f /state/compose.yaml up -d --wait broker" {
+		t.Fatalf("broker up args = %v", commands.BrokerUp)
 	}
-	if strings.Contains(strings.Join(run, " "), "down") || !strings.Contains(strings.Join(run, " "), "run --rm --no-deps") {
-		t.Fatalf("director run args couple broker cleanup: %v", run)
+	if got := strings.Join(commands.DirectorUp, " "); got != "compose -p ward-director-ward-codex -f /state/compose.yaml up -d --no-deps director" {
+		t.Fatalf("director up args = %v", commands.DirectorUp)
+	}
+	if got := strings.Join(commands.DirectorAttach, " "); got != "compose -p ward-director-ward-codex -f /state/compose.yaml attach director" {
+		t.Fatalf("director attach args = %v", commands.DirectorAttach)
+	}
+	remove := strings.Join(commands.DirectorRemove, " ")
+	if remove != "compose -p ward-director-ward-codex -f /state/compose.yaml rm -f -s director" ||
+		strings.Contains(remove, "down") || strings.Contains(remove, "broker") {
+		t.Fatalf("director removal couples broker cleanup: %v", commands.DirectorRemove)
+	}
+	for _, argv := range [][]string{commands.DirectorUp, commands.DirectorAttach, commands.DirectorRemove} {
+		if strings.Contains(strings.Join(argv, " "), " run ") {
+			t.Fatalf("director lifecycle still uses a Compose one-off: %v", argv)
+		}
 	}
 }
 

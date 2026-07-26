@@ -6,7 +6,9 @@ doc_goal: Describe the independently supervised broker that accepts durable dire
 `ward agent` and `warded` can forward a launch through the supervised dispatch broker
 when the run is read-only or otherwise brokered. A director stack starts the
 broker as a long-lived Compose service at `broker:7420`, then starts the
-director as an attached one-off service on the same project network.
+director as a regular Compose service on the same project network and attaches
+the terminal to it. Docker Desktop therefore groups both services under the
+same Compose application.
 
 ## Contract
 
@@ -16,7 +18,8 @@ director as an attached one-off service on the same project network.
 - The brokered launch output reports the effective ward version it will use.
 - The reservation seed context records that same effective version.
 - Docker supervises the broker with `restart: unless-stopped`. Closing the
-  director, its terminal, or its Compose client does not run `compose down`.
+  director or its terminal removes only the director service. Ward does not run
+  `compose down`, so the broker remains supervised.
 - The broker persists token-stripped accepted requests and artifacts under
   `~/.ward`, which is mounted into the broker independently of its container
   writable layer.

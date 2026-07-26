@@ -186,9 +186,11 @@ func printScratchPlan(c *cli.Command, p upPlan, readOnly bool) error {
 		if err != nil {
 			return err
 		}
-		up, run := directorStackComposeArgs(p, stack)
-		fmt.Fprintf(&b, "docker %s\n", strings.Join(up, " "))
-		fmt.Fprintf(&b, "docker %s\n", strings.Join(run, " "))
+		commands := directorStackComposeArgs(stack)
+		fmt.Fprintf(&b, "docker %s\n", strings.Join(commands.BrokerUp, " "))
+		fmt.Fprintf(&b, "docker %s\n", strings.Join(commands.DirectorUp, " "))
+		fmt.Fprintf(&b, "docker %s\n", strings.Join(commands.DirectorAttach, " "))
+		fmt.Fprintf(&b, "docker %s\n", strings.Join(commands.DirectorRemove, " "))
 		_, err = io.WriteString(out, b.String())
 		return err
 	}

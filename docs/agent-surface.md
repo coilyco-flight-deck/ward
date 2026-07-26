@@ -10,7 +10,8 @@ This page is the durable anchor for the read-only agent surface.
 - It separates the supervisory lane from the detached engineer path.
 - It starts an independently supervised broker service before the attached
   director. The director reaches it at `broker:7420` on the Compose project
-  network. Director or terminal exit leaves that broker running.
+  network. Both containers appear under the same Compose application. Director
+  or terminal exit removes only the director and leaves that broker running.
 - It keeps the director surface's cleanup path visible. Fresh director surfaces
   mount the Docker socket for local `ward agent reap`. Already-running surfaces
   that predate that mount need a restart to pick it up. Until then, use the

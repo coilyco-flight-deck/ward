@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"gopkg.in/yaml.v3"
@@ -192,18 +193,19 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, envFile, globa
 				},
 			},
 			"director": {
-				Image:        plan.Image,
-				Entrypoint:   containerEntrypointPath,
-				Environment:  directorEnv,
-				EnvFile:      []string{envFile},
-				Volumes:      mounts,
-				Networks:     networks,
-				Labels:       labelsMap(plan.labels()),
-				MemLimit:     plan.MemoryLimit,
-				MemswapLimit: plan.MemorySwap,
-				OOMScoreAdj:  -250,
-				StdinOpen:    true,
-				TTY:          plan.TTY,
+				Image:         plan.Image,
+				ContainerName: plan.Name,
+				Entrypoint:    containerEntrypointPath,
+				Environment:   directorEnv,
+				EnvFile:       []string{envFile},
+				Volumes:       mounts,
+				Networks:      networks,
+				Labels:        labelsMap(plan.labels()),
+				MemLimit:      plan.MemoryLimit,
+				MemswapLimit:  plan.MemorySwap,
+				OOMScoreAdj:   -250,
+				StdinOpen:     true,
+				TTY:           plan.TTY,
 			},
 		},
 		Volumes:  volumes,
@@ -280,26 +282,62 @@ func (r *Runner) runDirectorStack(ctx context.Context, plan upPlan, stack direct
 	if err := r.dockerExec(ctx, "compose", "version"); err != nil {
 		return fmt.Errorf("ward director stack: Docker Compose plugin is required: %w", err)
 	}
-	upArgs, runArgs := directorStackComposeArgs(plan, stack)
-	if err := r.dockerExec(ctx, upArgs...); err != nil {
+	commands := directorStackComposeArgs(stack)
+	if err := r.dockerExec(ctx, commands.BrokerUp...); err != nil {
 		return fmt.Errorf("ward director stack: start broker: %w", err)
 	}
 	fmt.Fprintf(os.Stderr, "ward director stack: broker %s is healthy at %s (restart policy: unless-stopped)\n",
 		stack.BrokerName, dispatchBrokerServiceAddress)
-	if err := r.dockerExec(ctx, runArgs...); err != nil {
-		return fmt.Errorf("ward director stack: director exited: %w", err)
+	if err := r.runAttachedDirectorStack(ctx, commands); err != nil {
+		return err
 	}
 	fmt.Fprintf(os.Stderr, "ward director stack: director exited; broker %s remains supervised\n", stack.BrokerName)
 	return nil
 }
 
-func directorStackComposeArgs(plan upPlan, stack directorStack) (up, run []string) {
-	base := []string{"compose", "-p", stack.Project, "-f", stack.ComposePath}
-	up = append(append([]string(nil), base...), "up", "-d", "--wait", "broker")
-	run = append(append([]string(nil), base...), "run", "--rm", "--no-deps")
-	if !plan.TTY {
-		run = append(run, "-T")
+func (r *Runner) runAttachedDirectorStack(ctx context.Context, commands directorStackCommands) error {
+	if err := r.dockerExec(ctx, commands.DirectorUp...); err != nil {
+		if cleanupErr := r.removeDirectorStackService(ctx, commands.DirectorRemove); cleanupErr != nil {
+			fmt.Fprintf(os.Stderr, "ward director stack: warning: remove director service after start failure: %v\n", cleanupErr)
+		}
+		return fmt.Errorf("ward director stack: start director: %w", err)
 	}
-	run = append(run, "--name", plan.Name, "director")
-	return up, run
+	attachErr := r.dockerExec(ctx, commands.DirectorAttach...)
+	cleanupErr := r.removeDirectorStackService(ctx, commands.DirectorRemove)
+	if attachErr != nil {
+		if cleanupErr != nil {
+			fmt.Fprintf(os.Stderr, "ward director stack: warning: remove director service after attach failure: %v\n", cleanupErr)
+		}
+		return fmt.Errorf("ward director stack: director exited: %w", attachErr)
+	}
+	if cleanupErr != nil {
+		return fmt.Errorf("ward director stack: remove director service: %w", cleanupErr)
+	}
+	return nil
+}
+
+func (r *Runner) removeDirectorStackService(ctx context.Context, argv []string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	return r.dockerExec(cleanupCtx, argv...)
+}
+
+type directorStackCommands struct {
+	BrokerUp       []string
+	DirectorUp     []string
+	DirectorAttach []string
+	DirectorRemove []string
+}
+
+func directorStackComposeArgs(stack directorStack) directorStackCommands {
+	base := []string{"compose", "-p", stack.Project, "-f", stack.ComposePath}
+	withBase := func(args ...string) []string {
+		return append(append([]string(nil), base...), args...)
+	}
+	return directorStackCommands{
+		BrokerUp:       withBase("up", "-d", "--wait", "broker"),
+		DirectorUp:     withBase("up", "-d", "--no-deps", "director"),
+		DirectorAttach: withBase("attach", "director"),
+		DirectorRemove: withBase("rm", "-f", "-s", "director"),
+	}
 }
