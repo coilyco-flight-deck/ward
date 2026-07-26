@@ -80,13 +80,14 @@ type bootstrapEnv struct {
 	// (ward#580); an external (non-Forgejo) dep carries its honored clone URL (ward#612).
 	ContextRepos []catalogContextRepo
 	// Substrate config (best-effort reference-repo warming).
-	SubstrateSeed      string
-	SubstrateDest      string
-	SubstrateManifest  string
-	SubstrateTTL       string
-	SubstrateSkip      bool
-	TailnetSocks5      string
-	AgentComposeBundle string
+	SubstrateSeed     string
+	SubstrateDest     string
+	SubstrateManifest string
+	SubstrateTTL      string
+	SubstrateSkip     bool
+	TailnetSocks5     string
+	ContextBundle     string
+	ContextTools      string
 }
 
 const runProvenanceFile = ".ward-run-provenance.json"
@@ -207,13 +208,14 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		WardVersionSource: envOr(envAgentVersionSource, ""),
 		WardVersion:       envOr("WARD_VERSION", ""),
 
-		SubstrateSeed:      envOr("WARD_SUBSTRATE_SEED", "/opt/substrate-seed"),
-		SubstrateDest:      envOr("WARD_SUBSTRATE_DEST", "/substrate"),
-		SubstrateManifest:  envOr("WARD_SUBSTRATE_MANIFEST", "/opt/ward/preclone-repos.txt"),
-		SubstrateTTL:       envOr("WARD_SUBSTRATE_TTL", "600"),
-		SubstrateSkip:      os.Getenv("WARD_SUBSTRATE_SKIP") == "1",
-		TailnetSocks5:      os.Getenv("WARD_TS_SOCKS5"),
-		AgentComposeBundle: os.Getenv("WARD_AGENT_COMPOSE_BUNDLE"),
+		SubstrateSeed:     envOr("WARD_SUBSTRATE_SEED", "/opt/substrate-seed"),
+		SubstrateDest:     envOr("WARD_SUBSTRATE_DEST", "/substrate"),
+		SubstrateManifest: envOr("WARD_SUBSTRATE_MANIFEST", "/opt/ward/preclone-repos.txt"),
+		SubstrateTTL:      envOr("WARD_SUBSTRATE_TTL", "600"),
+		SubstrateSkip:     os.Getenv("WARD_SUBSTRATE_SKIP") == "1",
+		TailnetSocks5:     os.Getenv("WARD_TS_SOCKS5"),
+		ContextBundle:     os.Getenv("WARD_CONTEXT_BUNDLE"),
+		ContextTools:      os.Getenv("WARD_CONTEXT_TOOLS"),
 	}
 	if e.TargetOwner == "" {
 		return e, fmt.Errorf("missing WARD_TARGET_OWNER")
@@ -468,9 +470,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	blog("bootstrap substrate warm done")
 	blog("bootstrap context compose start")
 	r.composeContext(e)
-	if err := r.projectAgentComposeHome(ctx, e); err != nil {
+	if err := r.projectContextBundleHome(e); err != nil {
 		blog("fatal: %v", err)
-		writeGateFailure("agent-compose", err.Error())
+		writeGateFailure("context-bundle", err.Error())
 		return err
 	}
 	blog("bootstrap permissions compose start")
@@ -1654,7 +1656,7 @@ func (r *Runner) runGooseCompletionWatch(ctx context.Context, work string, launc
 }
 
 // setprivPrefix builds the bash launch prefix: drop to the agent uid/gid with
-// init-groups and pin HOME (`setpriv ... env HOME=<home>`).
+// init-groups, pin HOME, and append any context tools after the image PATH.
 func setprivPrefix(e bootstrapEnv) []string {
 	prefix := []string{
 		"setpriv", "--reuid=" + e.AgentUID, "--regid=" + e.AgentGID, "--init-groups",
@@ -1665,7 +1667,17 @@ func setprivPrefix(e bootstrapEnv) []string {
 		// raw bot token into the dropped director process.
 		prefix = append(prefix, "-u", "FORGEJO_TOKEN")
 	}
-	return append(prefix, "HOME="+e.AgentHome)
+	prefix = append(prefix, "HOME="+e.AgentHome)
+	if e.ContextTools != "" {
+		path := os.Getenv("PATH")
+		if path == "" {
+			path = e.ContextTools
+		} else {
+			path += string(os.PathListSeparator) + e.ContextTools
+		}
+		prefix = append(prefix, "PATH="+path)
+	}
+	return prefix
 }
 
 // chownAgentTree ports the launch-time chown: hand the work tree + agent config
@@ -1678,6 +1690,7 @@ func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string
 		filepath.Join(e.AgentHome, ".claude.json"), // onboarding seed, so claude can persist updates (ward#305)
 		filepath.Join(e.AgentHome, ".config"),
 		filepath.Join(e.AgentHome, ".codex"),
+		filepath.Join(e.AgentHome, ".agents"),
 	}
 	// Hand each granted extra-repo tree to the agent user too (ward#230); they
 	// were cloned as root, like the target. Skip any that failed to clone.

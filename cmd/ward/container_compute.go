@@ -52,9 +52,10 @@ var (
 	// the only default host bind, a sibling of containerWardAssets (not nested).
 	containerContextMount = "/opt/ward-context"
 
-	// containerAgentComposeBundle is the fixed, read-only handoff path for an
-	// already-materialized agent-compose bundle (ward#1541).
-	containerAgentComposeBundle = "/opt/agent-compose-bundle"
+	// containerContextBundle is the fixed, read-only handoff path for an
+	// already-materialized generic context bundle (ward#1511).
+	containerContextBundle = "/opt/ward-context-bundle"
+	containerContextTools  = containerContextBundle + "/bin"
 
 	// containerGitcacheVol is a shared named volume of bare mirrors (never a
 	// host dir) so fresh clones are cheap and never land in the host repo tree.
@@ -416,9 +417,9 @@ type mountOpts struct {
 	// AgentLogsDir, when non-empty, mounts a host agent-log drain read-only at
 	// containerAgentLogsMount (ward#525); the surface passes the REDACTED tree (ward#526).
 	AgentLogsDir string
-	// AgentComposeBundle, when non-empty, mounts one already-materialized bundle
-	// read-only. Ward never parses its policy or identity content (ward#1541).
-	AgentComposeBundle string
+	// ContextBundle, when non-empty, mounts one validated generic context bundle
+	// read-only. The bundle cannot declare authority (ward#1511).
+	ContextBundle string
 }
 
 // leastAccessMounts is the default set: cwd + assets read-only and the gitcache
@@ -441,8 +442,8 @@ func leastAccessMounts(hostCwd string, opts mountOpts) []mountSpec {
 	if opts.AgentLogsDir != "" {
 		mounts = append(mounts, mountSpec{Source: opts.AgentLogsDir, Target: containerAgentLogsMount, ReadOnly: true, Volume: false})
 	}
-	if opts.AgentComposeBundle != "" {
-		mounts = append(mounts, mountSpec{Source: opts.AgentComposeBundle, Target: containerAgentComposeBundle, ReadOnly: true, Volume: false})
+	if opts.ContextBundle != "" {
+		mounts = append(mounts, mountSpec{Source: opts.ContextBundle, Target: containerContextBundle, ReadOnly: true, Volume: false})
 	}
 	return mounts
 }
@@ -543,9 +544,12 @@ type upPlan struct {
 	// ConfigEnv are resolved config-derived WARD_* env keys: selected fleet attribution
 	// plus `--config` overrides (ward#616), applied over the baked default in wardEnv.
 	ConfigEnv map[string]string
-	// AgentComposeBundle is the resolved host path for the optional read-only mount.
-	// The container env gets the fixed target path instead (ward#1541).
-	AgentComposeBundle string
+	// ContextBundle is the resolved host path for the optional read-only mount.
+	// The container env gets the fixed target path instead (ward#1511).
+	ContextBundle string
+	// ContextTools records whether the validated bundle has a non-empty bin
+	// directory. Its fixed container path is appended to the agent PATH.
+	ContextTools bool
 }
 
 const (
@@ -926,8 +930,11 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	if p.WardFromSource {
 		env["WARD_FROM_SOURCE"] = containerWardSrcMount
 	}
-	if p.AgentComposeBundle != "" {
-		env["WARD_AGENT_COMPOSE_BUNDLE"] = containerAgentComposeBundle
+	if p.ContextBundle != "" {
+		env["WARD_CONTEXT_BUNDLE"] = containerContextBundle
+	}
+	if p.ContextTools {
+		env["WARD_CONTEXT_TOOLS"] = containerContextTools
 	}
 	if p.Headless {
 		env["WARD_HEADLESS"] = "1"

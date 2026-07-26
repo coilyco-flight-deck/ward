@@ -145,11 +145,11 @@ type backlogConfig struct {
 	issueRef     *agentIssueRef
 	dispatch     dispatchEngineer
 	// surface fields configure director's OWN surface session (ward#355, ward#353):
-	// agent-compose bundle + ward-source + with-repo + no-pull on top of dispatch.
-	agentComposeBundle string
-	wardSource         string
-	noPull             bool
-	withRepo           []string
+	// context bundle + ward-source + with-repo + no-pull on top of dispatch.
+	contextBundle string
+	wardSource    string
+	noPull        bool
+	withRepo      []string
 }
 
 // directorFlags is director's flag set: backlog/heartbeat knobs plus container/harness
@@ -417,10 +417,10 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 			wardVersionSource:   resolveWardVersionSource(c, c.String("ward-version")),
 			overrideReservation: overrideReservation(c),
 		},
-		agentComposeBundle: strings.TrimSpace(c.String("agent-compose-bundle")),
-		wardSource:         strings.TrimSpace(c.String("ward-source")),
-		noPull:             c.Bool("no-pull"),
-		withRepo:           c.StringSlice("with-repo"),
+		contextBundle: strings.TrimSpace(c.String("context-bundle")),
+		wardSource:    strings.TrimSpace(c.String("ward-source")),
+		noPull:        c.Bool("no-pull"),
+		withRepo:      c.StringSlice("with-repo"),
 	}
 	if cfg.maxParallel < 1 {
 		cfg.maxParallel = 1
@@ -1965,8 +1965,8 @@ func appendDirectorLaunchConfig(b *strings.Builder, cfg backlogConfig) error {
 	if cfg.wardSource != "" {
 		fmt.Fprintf(b, "ward-source:     %s (surface session builds ward from here)\n", cfg.wardSource)
 	}
-	if cfg.agentComposeBundle != "" {
-		fmt.Fprintf(b, "context-bundle:  %s (director surface only)\n", cfg.agentComposeBundle)
+	if cfg.contextBundle != "" {
+		fmt.Fprintf(b, "context-bundle:  %s (director surface only)\n", cfg.contextBundle)
 	}
 	fmt.Fprintf(b, "no-pull:         %t\n", cfg.noPull)
 	fmt.Fprintf(b, "override-reservation: %t (propagated to engineers; default defers on a reservation conflict)\n", cy.overrideReservation)

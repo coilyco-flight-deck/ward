@@ -614,8 +614,8 @@ func directorSurfaceArgv(contextRepo string, cfg backlogConfig) []string {
 	if v := strings.TrimSpace(cfg.wardSource); v != "" {
 		argv = append(argv, "--ward-source", v)
 	}
-	if v := strings.TrimSpace(cfg.agentComposeBundle); v != "" {
-		argv = append(argv, "--agent-compose-bundle", v)
+	if v := strings.TrimSpace(cfg.contextBundle); v != "" {
+		argv = append(argv, "--context-bundle", v)
 	}
 	if cfg.noPull {
 		argv = append(argv, "--no-pull")

@@ -16,7 +16,7 @@ The container contract is small.
 - `WARD_*` environment variables.
 - the read-only director's Compose broker address and its credential boundary.
 - bind mounts and read-only surfaces.
-- the optional read-only agent-compose bundle handoff.
+- the optional read-only generic context-bundle handoff.
 - the permission shape the container itself can use.
 - the per-harness context level.
 
@@ -31,17 +31,19 @@ The contract is the boundary between the host and the run. If a value needs to
 change the container's behavior, it belongs here or in the launch docs, not in
 the repo's `.ward/ward.yaml`.
 
-## Agent-compose context bundle
+## Context bundle
 
-`--agent-compose-bundle <path>` adds one explicit, read-only context input.
-Ward validates the host path, mounts it at `/opt/agent-compose-bundle`, and
-exports only that fixed container path as `WARD_AGENT_COMPOSE_BUNDLE`.
-Container startup asks agent-compose to verify the opaque bundle and project
-the selected harness layout into the private agent HOME before launch.
+`--context-bundle <path>` adds one explicit, read-only context input. Ward
+validates its strict role-bound manifest and path allowlist before Docker
+starts, mounts it at `/opt/ward-context-bundle`, and exports that fixed path as
+`WARD_CONTEXT_BUNDLE`. Container startup revalidates the bundle and projects
+the selected agent layout into the private agent home before launch.
 
-The bundle changes context only. It grants no authority or runtime capability.
-See [agent-compose.md](agent-compose.md) for the full ownership and failure
-contract.
+An optional validated `bin/` is exposed as `WARD_CONTEXT_TOOLS` and appended
+after the image's existing `PATH`. The bundle changes context and tool
+availability only. It grants no authority or runtime capability. See
+[context-bundle.md](context-bundle.md) for the full schema, ownership, and
+failure contract.
 
 ## Read-only director credentials
 
@@ -62,4 +64,4 @@ for its authorized operations and rotation recovery.
 - [container.md](container.md) - the overview.
 - [container-lifecycle.md](container-lifecycle.md) - launch and teardown.
 - [container-substrate.md](container-substrate.md) - `/substrate` and multi-repo.
-- [agent-compose.md](agent-compose.md) - the optional identity bundle handoff.
+- [context-bundle.md](context-bundle.md) - the optional context and tool handoff.

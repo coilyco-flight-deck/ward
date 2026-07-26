@@ -154,7 +154,7 @@ func dictatableID() string {
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
 func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountSurfaceExtras bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
-	agentComposeBundle, err := resolveAgentComposeBundle(c.String("agent-compose-bundle"))
+	contextBundle, err := resolveContextBundle(c.String("context-bundle"), role, mode)
 	if err != nil {
 		return upPlan{}, err
 	}
@@ -220,27 +220,28 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		HostCwd:     cwd,
 		AWSHome:     awsHome,
 		Mounts: appendSurfaceMounts(leastAccessMounts(cwd, mountOpts{
-			AssetsDir:          assetsDir,
-			AWSHome:            awsHome,
-			WardSource:         wardSrc,
-			AgentLogsDir:       agentLogs,
-			AgentComposeBundle: agentComposeBundle,
+			AssetsDir:     assetsDir,
+			AWSHome:       awsHome,
+			WardSource:    wardSrc,
+			AgentLogsDir:  agentLogs,
+			ContextBundle: contextBundle.Root,
 		}), mountSurfaceExtras),
-		Interactive:        !c.Bool("detach"),
-		TTY:                !c.Bool("detach") && terminalAttached(),
-		WardVersion:        wardVersion,
-		WardVersionSource:  wardVersionSource,
-		WardFromSource:     wardSrc != "",
-		MemoryLimit:        memoryLimit,
-		MemorySwap:         memorySwap,
-		AgentArgs:          agentArgs,
-		ExtraRepos:         extra,
-		HostNet:            hostNet,
-		TSSidecar:          tsSidecar,
-		SkipPreflight:      c.Bool("skip-preflight") || c.Bool("no-preflight"),
-		SkipSmokeTest:      smokeTestSkipped(c),
-		ConfigEnv:          configEnv,
-		AgentComposeBundle: agentComposeBundle,
+		Interactive:       !c.Bool("detach"),
+		TTY:               !c.Bool("detach") && terminalAttached(),
+		WardVersion:       wardVersion,
+		WardVersionSource: wardVersionSource,
+		WardFromSource:    wardSrc != "",
+		MemoryLimit:       memoryLimit,
+		MemorySwap:        memorySwap,
+		AgentArgs:         agentArgs,
+		ExtraRepos:        extra,
+		HostNet:           hostNet,
+		TSSidecar:         tsSidecar,
+		SkipPreflight:     c.Bool("skip-preflight") || c.Bool("no-preflight"),
+		SkipSmokeTest:     smokeTestSkipped(c),
+		ConfigEnv:         configEnv,
+		ContextBundle:     contextBundle.Root,
+		ContextTools:      contextBundle.HasTools,
 	}, nil
 }
 

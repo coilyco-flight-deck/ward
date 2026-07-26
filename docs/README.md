@@ -34,7 +34,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [agent-flags.md](agent-flags.md) - generated flag tree.
 - [agent-roles.md](agent-roles.md) - engineer, director, qa.
 - [agent-harnesses.md](agent-harnesses.md) - claude, codex, goose, opencode.
-- [agent-compose.md](agent-compose.md) - read-only identity bundle handoff.
+- [context-bundle.md](context-bundle.md) - provider-neutral context and tool handoff.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch, preflight, reservation.
 - [agent-check-placement.md](agent-check-placement.md) - broker/pre-flight guard matrix.
 - [agent-director.md](agent-director.md) - read-only director lane.

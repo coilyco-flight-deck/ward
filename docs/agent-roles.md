@@ -3,7 +3,9 @@ doc_goal: Collapse the role roster into one durable page that names the three st
 ---
 # ward agent roles
 
-`ward agent` has three startup roles.
+`ward agent` ships three usable startup roles by default: `director`, `qa`, and
+`engineer`. Contributors and users can launch those roles without authoring
+core role schemas from scratch.
 
 Their definitions live in ward-owned embedded role-definition KDL, with fleet
 config acting only as an overlay.
