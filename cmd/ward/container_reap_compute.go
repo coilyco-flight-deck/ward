@@ -258,6 +258,8 @@ const salvageBranchPrefix = "ward-salvage/"
 // open one for the same repo and append to it instead of filing a duplicate.
 const salvageIssueTitlePrefix = "[ward-salvage]"
 
+const salvagePullRequestEmptyReason = "salvage branch has no diff against main"
+
 // salvageBranchName builds the branch the reaper pushes residual work to.
 func salvageBranchName(id string) string {
 	return salvageBranchPrefix + id

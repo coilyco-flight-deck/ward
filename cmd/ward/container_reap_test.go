@@ -1839,6 +1839,7 @@ type fakeSalvageNotifier struct {
 	prURL        string
 	prErr        error
 	prBody       string
+	prCreated    int
 }
 
 func (f *fakeSalvageNotifier) ReopenIssue(_ context.Context, _, _ string, number int) error {
@@ -1864,6 +1865,7 @@ func (f *fakeSalvageNotifier) RepoPullRequestsEnabled(_ context.Context, _, _ st
 }
 
 func (f *fakeSalvageNotifier) CreatePullRequest(_ context.Context, _, _, _, _, _, body string) (string, error) {
+	f.prCreated++
 	f.prBody = body
 	if f.prErr != nil {
 		return "", f.prErr
@@ -1872,6 +1874,46 @@ func (f *fakeSalvageNotifier) CreatePullRequest(_ context.Context, _, _, _, _, _
 		return "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1", nil
 	}
 	return f.prURL, nil
+}
+
+func TestSalvagePullRequestWouldBeEmptyWhenHeadAlreadyInMain(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	runGitCommitAt(t, repo, "2026-07-25T10:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, repo, "remote", "add", "origin", repo)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGit(t, repo, "checkout", "-b", "ward-salvage/ward-empty")
+	runGitCommitAt(t, repo, "2026-07-25T10:01:00Z", "feature.txt", "feature\n", "feature")
+	salvageHead := mustGitRev(t, repo, "HEAD")
+	runGit(t, repo, "checkout", "main")
+	runGit(t, repo, "merge", "--ff-only", salvageHead)
+	runGitCommitAt(t, repo, "2026-07-25T10:02:00Z", "later.txt", "later\n", "main advanced")
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGit(t, repo, "checkout", salvageHead)
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if !r.salvagePullRequestWouldBeEmpty(t.Context(), repo) {
+		t.Fatal("salvage PR should be empty when the salvage head is already contained in origin/main")
+	}
+}
+
+func TestSalvagePullRequestWouldBeEmptyKeepsRealDiff(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	runGitCommitAt(t, repo, "2026-07-25T10:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, repo, "remote", "add", "origin", repo)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGit(t, repo, "checkout", "-b", "ward-salvage/ward-real")
+	runGitCommitAt(t, repo, "2026-07-25T10:01:00Z", "feature.txt", "feature\n", "feature")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	if r.salvagePullRequestWouldBeEmpty(t.Context(), repo) {
+		t.Fatal("salvage PR should remain available when the branch has a diff against origin/main")
+	}
 }
 
 // TestNotifySalvageCarriedIssueRepoensAndComments covers ward#518 deliverable 2:
@@ -1909,6 +1951,32 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 	}
 	if !strings.Contains(f.prBody, "closes #518") {
 		t.Errorf("salvage PR body must carry the closing ref for the carried issue:\n%s", f.prBody)
+	}
+}
+
+func TestNotifySalvageSkipsPrecomputedEmptyPullRequest(t *testing.T) {
+	f := &fakeSalvageNotifier{prEnabled: true, prURL: "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1560"}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 1561}
+	report := salvageReport{
+		Repo:                   env.repo(),
+		Mode:                   "codex",
+		Branch:                 "ward-salvage/ward-empty",
+		Reason:                 reasonConflict,
+		Base:                   env.Base,
+		Issue:                  1561,
+		PullRequestUnavailable: salvagePullRequestEmptyReason,
+	}
+	if err := notifySalvage(t.Context(), f, env, report); err != nil {
+		t.Fatalf("notifySalvage: %v", err)
+	}
+	if f.prCreated != 0 {
+		t.Fatalf("empty salvage branch must not create a pull request, got %d create call(s)", f.prCreated)
+	}
+	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-WORKFLOW: blocked 🛑" {
+		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
+	}
+	if !strings.Contains(f.commentBody, salvagePullRequestEmptyReason) {
+		t.Fatalf("empty-PR fallback comment missing reason %q\n---\n%s", salvagePullRequestEmptyReason, f.commentBody)
 	}
 }
 

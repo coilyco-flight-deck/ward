@@ -707,12 +707,28 @@ func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason r
 		Issue:       env.Issue,
 		Diagnostics: diag,
 	}
+	if r.salvagePullRequestWouldBeEmpty(ctx, work) {
+		report.PullRequestUnavailable = salvagePullRequestEmptyReason
+	}
 	if ferr := r.fileSalvageIssue(ctx, env, report); ferr != nil {
 		// The branch already preserved the work; a failed issue is a missed
 		// notification, not lost work. Log loudly and succeed.
 		fmt.Fprintf(os.Stderr, "ward container reap: filed branch but could not file issue: %v\n", ferr)
 	}
 	return nil
+}
+
+func (r *Runner) salvagePullRequestWouldBeEmpty(ctx context.Context, work string) bool {
+	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
+	if !refExists(ctx, r, work) {
+		return false
+	}
+	out, err := r.Runner.Capture(ctx, "git", "-C", work, "diff", "--name-only", "origin/main...HEAD")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: could not inspect salvage branch diff before opening PR: %v\n", err)
+		return false
+	}
+	return strings.TrimSpace(string(out)) == ""
 }
 
 // fileSalvageIssue posts the salvage notice: a carried run comments on its own
@@ -771,6 +787,9 @@ func notifySalvage(ctx context.Context, fc salvageNotifier, env reapEnv, report 
 }
 
 func openSalvagePullRequest(ctx context.Context, fc salvageNotifier, env reapEnv, report salvageReport) salvageReport {
+	if strings.TrimSpace(report.PullRequestURL) != "" || strings.TrimSpace(report.PullRequestUnavailable) != "" {
+		return report
+	}
 	if strings.TrimSpace(report.Branch) == "" {
 		report.PullRequestUnavailable = "salvage branch was not created"
 		return report
