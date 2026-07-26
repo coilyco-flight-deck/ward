@@ -1281,6 +1281,64 @@ func TestHostBindMounts(t *testing.T) {
 	}
 }
 
+func TestDetachedSiblingCopyArgvDistinguishesDirectoriesAndFiles(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "entrypoint.sh")
+	if err := os.WriteFile(file, []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatalf("write entrypoint fixture: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name       string
+		source     string
+		target     string
+		wantSource string
+	}{
+		{
+			name:       "directory contents",
+			source:     dir,
+			target:     containerWardAssets,
+			wantSource: dir + "/.",
+		},
+		{
+			name:       "entrypoint file",
+			source:     file,
+			target:     containerEntrypointPath,
+			wantSource: file,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, exists, err := detachedSiblingCopyArgv(mountSpec{
+				Source: tc.source,
+				Target: tc.target,
+			}, "sibling-id")
+			if err != nil {
+				t.Fatalf("detachedSiblingCopyArgv: %v", err)
+			}
+			if !exists {
+				t.Fatal("detachedSiblingCopyArgv unexpectedly skipped an existing source")
+			}
+			want := []string{"cp", tc.wantSource, "sibling-id:" + tc.target}
+			if !slices.Equal(got, want) {
+				t.Fatalf("detachedSiblingCopyArgv = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestDetachedSiblingCopyArgvSkipsMissingOptionalSource(t *testing.T) {
+	got, exists, err := detachedSiblingCopyArgv(mountSpec{
+		Source: filepath.Join(t.TempDir(), "missing"),
+		Target: containerAWSMount,
+	}, "sibling-id")
+	if err != nil {
+		t.Fatalf("detachedSiblingCopyArgv: %v", err)
+	}
+	if exists || got != nil {
+		t.Fatalf("detachedSiblingCopyArgv missing source = (%v, %v), want (nil, false)", got, exists)
+	}
+}
+
 func TestDockerCreateArgvAttachedNoTTY(t *testing.T) {
 	// Attached (not detached) but no terminal: -i to keep stdin open, never -it
 	// (docker rejects -t without a terminal), and never -d (still attached).

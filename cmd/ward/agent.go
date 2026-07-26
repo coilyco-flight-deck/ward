@@ -2464,14 +2464,33 @@ func (r *Runner) validateDispatchRecoveryContainer(ctx context.Context, id strin
 
 func (r *Runner) copyDetachedSiblingBinds(ctx context.Context, plan upPlan, id string) error {
 	for _, m := range hostBindMounts(plan) {
-		if !pathExists(m.Source) {
+		argv, exists, err := detachedSiblingCopyArgv(m, id)
+		if err != nil {
+			return fmt.Errorf("ward container: inspect docker cp source %s: %w", m.Source, err)
+		}
+		if !exists {
 			continue // an unset optional bind has no source to copy
 		}
-		if cerr := r.dockerExec(ctx, "cp", m.Source+"/.", id+":"+m.Target); cerr != nil {
+		if cerr := r.dockerExec(ctx, argv...); cerr != nil {
 			return fmt.Errorf("ward container: docker cp %s -> %s: %w", m.Source, m.Target, cerr)
 		}
 	}
 	return nil
+}
+
+func detachedSiblingCopyArgv(m mountSpec, id string) ([]string, bool, error) {
+	info, err := os.Stat(m.Source)
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	source := m.Source
+	if info.IsDir() {
+		source += "/."
+	}
+	return []string{"cp", source, id + ":" + m.Target}, true, nil
 }
 
 // captureDockerSilenced runs docker capturing stdout (the created container id) with
@@ -2487,13 +2506,6 @@ func (r *Runner) captureDockerSilenced(ctx context.Context, argv ...string) (str
 // inContainer reports whether ward runs inside a container (the docker /.dockerenv
 // marker), where host bind-mount sources don't resolve on the daemon (ward#323).
 func inContainer() bool { return fileExists("/.dockerenv") }
-
-// pathExists reports whether a path exists, file or directory (fileExists excludes
-// dirs, but bind sources like the assets dir and cwd are directories).
-func pathExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
-}
 
 // runDockerSilenced runs docker with the CLI hint banner off and stdout dropped
 // (stderr too when silenceStderr), keeping a detached launch quiet (ward#306).
