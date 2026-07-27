@@ -95,7 +95,7 @@ jobs:
         run: mkdir -p "$DIST_DIR" && bash scripts/publish-draft-release.sh
 
       - name: Alert Telegram on main failure
-        if: ${{ failure() && github.ref == 'refs/heads/release' }}
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
@@ -128,6 +128,7 @@ jobs:
           def main():
               bot_token = os.environ["BOT_TOKEN"]
               chat_id = os.environ["CHAT_ID"]
+              proxy_url = os.environ.get("FORGEJO_EGRESS_PROXY", "").strip()
               message = build_message(
                   os.environ["REPO"],
                   os.environ["WORKFLOW"],
@@ -145,8 +146,13 @@ jobs:
               ).encode("utf-8")
               url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
               req = urllib.request.Request(url, data=payload, method="POST")
+              opener = urllib.request.build_opener(
+                  urllib.request.ProxyHandler({"https": proxy_url})
+                  if proxy_url
+                  else urllib.request.ProxyHandler()
+              )
               try:
-                  with urllib.request.urlopen(req, timeout=15) as resp:
+                  with opener.open(req, timeout=15) as resp:
                       resp.read()
               except urllib.error.URLError as exc:
                   print(f"telegram alert failed: {exc}")
@@ -346,7 +352,7 @@ jobs:
           echo "GitHub release ${TAG} published with the full matrix + SHA256SUMS"
 
       - name: Alert Telegram on main failure
-        if: ${{ failure() && github.ref == 'refs/heads/release' }}
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
@@ -379,6 +385,7 @@ jobs:
           def main():
               bot_token = os.environ["BOT_TOKEN"]
               chat_id = os.environ["CHAT_ID"]
+              proxy_url = os.environ.get("FORGEJO_EGRESS_PROXY", "").strip()
               message = build_message(
                   os.environ["REPO"],
                   os.environ["WORKFLOW"],
@@ -396,8 +403,13 @@ jobs:
               ).encode("utf-8")
               url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
               req = urllib.request.Request(url, data=payload, method="POST")
+              opener = urllib.request.build_opener(
+                  urllib.request.ProxyHandler({"https": proxy_url})
+                  if proxy_url
+                  else urllib.request.ProxyHandler()
+              )
               try:
-                  with urllib.request.urlopen(req, timeout=15) as resp:
+                  with opener.open(req, timeout=15) as resp:
                       resp.read()
               except urllib.error.URLError as exc:
                   print(f"telegram alert failed: {exc}")
@@ -596,7 +608,7 @@ jobs:
           echo "tap ${TAP_REPO} formula bumped to ${TAG}"
 
       - name: Alert Telegram on main failure
-        if: ${{ failure() && github.ref == 'refs/heads/release' }}
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
@@ -629,6 +641,7 @@ jobs:
           def main():
               bot_token = os.environ["BOT_TOKEN"]
               chat_id = os.environ["CHAT_ID"]
+              proxy_url = os.environ.get("FORGEJO_EGRESS_PROXY", "").strip()
               message = build_message(
                   os.environ["REPO"],
                   os.environ["WORKFLOW"],
@@ -646,8 +659,13 @@ jobs:
               ).encode("utf-8")
               url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
               req = urllib.request.Request(url, data=payload, method="POST")
+              opener = urllib.request.build_opener(
+                  urllib.request.ProxyHandler({"https": proxy_url})
+                  if proxy_url
+                  else urllib.request.ProxyHandler()
+              )
               try:
-                  with urllib.request.urlopen(req, timeout=15) as resp:
+                  with opener.open(req, timeout=15) as resp:
                       resp.read()
               except urllib.error.URLError as exc:
                   print(f"telegram alert failed: {exc}")
@@ -837,7 +855,7 @@ jobs:
           fi
           echo "bucket ${BUCKET_REPO} scoop manifest bumped to ${TAG}"
       - name: Alert Telegram on main failure
-        if: ${{ failure() && github.ref == 'refs/heads/release' }}
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
@@ -870,6 +888,7 @@ jobs:
           def main():
               bot_token = os.environ["BOT_TOKEN"]
               chat_id = os.environ["CHAT_ID"]
+              proxy_url = os.environ.get("FORGEJO_EGRESS_PROXY", "").strip()
               message = build_message(
                   os.environ["REPO"],
                   os.environ["WORKFLOW"],
@@ -887,8 +906,13 @@ jobs:
               ).encode("utf-8")
               url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
               req = urllib.request.Request(url, data=payload, method="POST")
+              opener = urllib.request.build_opener(
+                  urllib.request.ProxyHandler({"https": proxy_url})
+                  if proxy_url
+                  else urllib.request.ProxyHandler()
+              )
               try:
-                  with urllib.request.urlopen(req, timeout=15) as resp:
+                  with opener.open(req, timeout=15) as resp:
                       resp.read()
               except urllib.error.URLError as exc:
                   print(f"telegram alert failed: {exc}")
