@@ -55,15 +55,12 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [container-substrate.md](container-substrate.md) - `/substrate` and multi-repo.
 - [demo-image.md](demo-image.md) - public demo image build.
 
-## Aguard boundary
+## AOSguard boundary
 
-- [ward-kdl.md](ward-kdl.md) - Ward to Aguard boundary.
-- [ward-kdl-surface.md](ward-kdl-surface.md) - Aguard operator families.
-- [ward-kdl-in-ward.md](ward-kdl-in-ward.md) - no generated mounts in Ward.
+- [aosguard-boundary.md](aosguard-boundary.md) - Ward to AOSguard ownership boundary.
 
 ## Examples
 
-- [ops-forgejo.md](ops-forgejo.md) - Forgejo ops in Aguard.
 - [example-repo.md](example-repo.md) - minimal managed repo.
 - [demo.md](demo.md) - runnable demo.
 

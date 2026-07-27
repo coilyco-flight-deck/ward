@@ -24,7 +24,7 @@ Inventory of what `ward` ships today.
 - Provider-neutral, read-only context-bundle handoff with strict role and agent
   binding, selected home projection, optional appended tools, and no authority
   fields. See [context-bundle.md](context-bundle.md).
-- Core tracker and forge adapters do not depend on Aguard or generated operator leaves.
+- Core tracker and forge adapters do not depend on AOSguard or generated operator leaves.
 - Launch-intent vs running-engineer split in list, dispatch-health, reap, and director.
 - Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
 - Open-PR backpressure gate.
@@ -52,11 +52,11 @@ Inventory of what `ward` ships today.
   permissions, mounts, network, and launch authority.
 - Public demo image build. See [demo-image.md](demo-image.md).
 
-## AOS policy and Aguard boundary
+## AOS policy and AOSguard boundary
 
-- Ward embeds the AOS-authored agent role catalog and launch policy from [ward-kdl.role-definitions.kdl](../.ward/ward-kdl/ward-kdl.role-definitions.kdl).
-- Aguard owns generated operator APIs in the AOS image: `aguard ops forgejo`, `actions`, `aws`, `kubectl`, and `tailscale`.
-- A stale or unavailable Aguard config reference cannot affect Ward's native `agent`, `container`, `exec`, help, or version paths.
+- Ward embeds the AOS-authored agent role catalog and launch policy from [roles.kdl](../.ward/policy/roles.kdl).
+- AOSguard owns generated operator APIs in AOS: `aosguard ops forgejo`, `actions`, `aws`, `kubectl`, and `tailscale`.
+- A stale or unavailable AOSguard config reference cannot affect Ward's native `agent`, `container`, `exec`, help, or version paths.
 
 ## Release and docs
 

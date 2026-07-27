@@ -6,7 +6,7 @@ import (
 
 // TestFleetConfigParsesSplitBundle proves the new split bundle contract loads
 // through the ward runtime seam.
-func TestFleetConfigParsesSplitBundle(t *testing.T) {
+func TestPolicyBoundaryFleetConfigParsesSplitBundle(t *testing.T) {
 	dir := writeBundleFixture(t)
 	f, err := loadFleetConfigFrom(bundleConfigSource(dir))
 	if err != nil {

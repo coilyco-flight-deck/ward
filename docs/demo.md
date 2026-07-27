@@ -3,7 +3,7 @@
 `examples/demo.sh` runs the small release-era demo against `examples/toy/`.
 
 - one happy path.
-- two rejected danger classes.
+- one rejected dangerous argv.
 
 The demo is here to show the gate, not to be a long tutorial.
 

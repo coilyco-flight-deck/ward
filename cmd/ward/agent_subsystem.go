@@ -25,9 +25,9 @@ type subsystemPointer struct {
 // render order; keep keywords specific enough not to fire on a passing mention.
 var agentSubsystemPointers = []subsystemPointer{
 	{
-		label:    "ward-kdl guardfile generator (the ward#226 unknown)",
-		keywords: []string{"ward-kdl", "guardfile", "ops forgejo", "ops aws", "operator verb"},
-		paths:    []string{"docs/ward-kdl.md", "docs/ward-kdl-surface.md", "docs/ward-kdl-in-ward.md"},
+		label:    "AOSguard ownership boundary",
+		keywords: []string{"aosguard", "specgen", "guardfile", "ops forgejo", "ops aws", "operator verb"},
+		paths:    []string{"docs/aosguard-boundary.md"},
 	},
 	{
 		label:    "ward exec dev-verb surface + .ward/ward.yaml",
@@ -49,7 +49,6 @@ var agentSubsystemPointers = []subsystemPointer{
 		paths: []string{
 			"docs/doctor.md",
 			"docs/config-source.md",
-			"examples/ward-specs/README.md",
 		},
 		followUp: "Once the placeholders are replaced, tell the user to restart `warded` so the resolved config is picked up before the next launch.",
 	},

@@ -6,10 +6,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 )
+
+func shortBrokerSocket(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "ward-broker-")
+	if err != nil {
+		t.Fatalf("broker temp dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, "broker.sock")
+}
 
 func TestExecutorFileIssueHTTP(t *testing.T) {
 	var gotMethod, gotPath, gotAuth string

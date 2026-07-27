@@ -88,7 +88,7 @@ func bakedConfigSource() configSource {
 func bundleConfigSource(dir string) configSource {
 	return configSource{
 		fsys:               os.DirFS(dir),
-		roleDefinitionsKDL: filepath.Join("ward-kdl", "ward-kdl.role-definitions.kdl"),
+		roleDefinitionsKDL: filepath.Join("policy", "roles.kdl"),
 	}
 }
 

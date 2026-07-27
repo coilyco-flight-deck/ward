@@ -34,7 +34,7 @@ If the orchestration itself is flaky, that is a Ward product bug, not an operato
 
 The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
 
-**Which Forgejo?** Ward defaults its native issue and PR adapters to `forgejo.coilysiren.me` and `coily*`-owned orgs. Aguard owns standalone operator APIs and their spec configuration inside the AOS image. The forge-agnostic verb gate still runs against any repo.
+**Which Forgejo?** Ward defaults its native issue and PR adapters to `forgejo.coilysiren.me` and `coily*`-owned orgs. AOSguard owns standalone operator APIs and their spec configuration inside the AOS image. The forge-agnostic verb gate still runs against any repo.
 
 When a doc or example needs a concrete GitHub repo that should actually resolve,
 use `coilysiren/example` or `https://github.com/coilysiren/example`. It is a
@@ -65,7 +65,7 @@ Install from the release channel you prefer:
 - **From source.**
   `make workspace` is the local path for ward itself. It resolves a sibling `cli-guard` checkout through `go.work`; see [docs/workspace.md](docs/workspace.md).
 
-The explicit-URL form is required because the tap lives on forgejo, not github.com. The Homebrew formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The Scoop bucket installs `ward` on Windows. Aguard is supplied by the AOS image for container operator work, not by Ward.
+The explicit-URL form is required because the tap lives on forgejo, not github.com. The Homebrew formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The Scoop bucket installs `ward` on Windows. AOSguard is supplied by AOS for container operator work, not by Ward.
 
 **Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] from `forgejo.coilysiren.me/coilyco-flight-deck/cli-guard`, so a plain `go build` needs that Forgejo host reachable and the repo public.
 
@@ -108,7 +108,7 @@ A `warded` run that failed or seemed to do nothing has a single symptom-indexed 
 The boundary is easiest to keep straight by **when** each layer runs:
 
 - **[cli-guard][cli-guard]** - the **engine**. The policy-and-routing framework ward consumes (pinned via go.mod). Thin consumer, not a fork.
-- **`aguard`** - the AOS-image **operator CLI**. Specgen builds its `aguard ops <api>` REST and exec surfaces, including Forgejo, Actions, AWS, kubectl, and Tailscale. It is standalone at runtime and does not invoke or configure Ward.
+- **`aosguard`** - the AOS **operator CLI**. Specgen builds its `aosguard ops <api>` REST and exec surfaces, including Forgejo, Actions, AWS, kubectl, and Tailscale. It is standalone at runtime and does not invoke or configure Ward.
 - **`ward`** - the native **run-time control plane**. It provides `agent`, `container`, `exec`, reservations, reaping, and PR workflow. It embeds only the AOS-authored role and launch-policy data it needs.
 
 See [`docs/architecture.md`](docs/architecture.md).
@@ -121,7 +121,7 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 - **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-qa.md](docs/agent-qa.md), [agent-lifecycle.md](docs/agent-lifecycle.md), [agent-ops.md](docs/agent-ops.md).
 - **The container** - [container.md](docs/container.md), [container-lifecycle.md](docs/container-lifecycle.md) (land-or-salvage on teardown), [container-substrate.md](docs/container-substrate.md).
 - **The demo image** - [docs/demo-image.md](docs/demo-image.md).
-- **Container operator surface (Aguard)** - use `aguard ops ...` in the current AOS image. [ward-kdl.md](docs/ward-kdl.md) records the boundary migration.
+- **Container operator surface (AOSguard)** - use `aosguard ops ...` from AOS. [aosguard-boundary.md](docs/aosguard-boundary.md) records the ownership boundary.
 - **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [golangci.md](docs/golangci.md).
 
 ## Status
@@ -144,7 +144,7 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 ## See also
 
 - [docs/README.md](docs/README.md) - the docs index: every doc grouped by subsystem.
-- [docs/architecture.md](docs/architecture.md) - ward in three layers (cli-guard, ward-kdl, ward).
+- [docs/architecture.md](docs/architecture.md) - Ward's native boundary beside cli-guard and AOSguard.
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
 - [docs/features-release-tooling.md](docs/features-release-tooling.md) - cross-repo tooling and release convention.

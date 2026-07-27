@@ -40,11 +40,11 @@ States mean:
 
 ## AOS operator providers
 
-- Forgejo, Actions, AWS, kubectl, and Tailscale belong to `aguard ops` in the current AOS image. They are not Ward commands.
+- Forgejo, Actions, AWS, kubectl, and Tailscale belong to `aosguard ops` in AOS. They are not Ward commands.
 
 ## Config and auth sources
 
-- Ward native policy is baked into the release. Aguard owns its own operator-spec configuration.
+- Ward native policy is baked into the release. AOSguard owns its own operator-spec configuration.
 - `~/.ward/fleet.local.kdl` - shipped operator-local overlay. `cmd/ward/fleetlocal.go`.
 - `WARD_GITHUB_TOKEN_SOURCE`, `env`, `gh`, `app` - shipped GitHub token path. `cmd/ward/forge.go`, `cmd/ward/github_app.go`.
 - `SHORTCUT_API_TOKEN`, `SSM` - shipped operator input and backing store. `cmd/ward/shortcut_ops.go`, `cmd/ward/container.go`, `cmd/ward/forgejo_ops.go`.

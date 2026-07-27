@@ -6,7 +6,7 @@ import (
 
 // TestTopologyBundleParsesSplitLayout proves the topology file still loads from
 // the bundle layout ward consumes.
-func TestTopologyBundleParsesSplitLayout(t *testing.T) {
+func TestPolicyBoundaryTopologyBundleParsesSplitLayout(t *testing.T) {
 	dir := writeBundleFixture(t)
 	topo, err := loadContainerTopologyFrom(bundleConfigSource(dir))
 	if err != nil {

@@ -31,7 +31,7 @@ func writeFleetBundle(t *testing.T, dir, body string) {
     role engineer {
     }
     role director {
-        guardfiles ward-kdl.aws.guardfile.kdl ward-kdl.tailscale.guardfile.kdl
+        guardfiles aws.kdl tailscale.kdl
     }
 }`), 0o644); err != nil {
 		t.Fatalf("write bundle roles: %v", err)

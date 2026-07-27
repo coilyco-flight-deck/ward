@@ -25,7 +25,7 @@ repos:
         args: [--assume-in-merge]
   # END managed by agentic-os/scripts/apply-agentic-os-hooks.py
 
-  # kdlfmt check: gate the ward-kdl guardfiles on kdlfmt's format. The hook is
+  # kdlfmt check: gate Ward's native KDL policy on kdlfmt's format. The hook is
   # `language: system`, so it needs kdlfmt on PATH (`brew install hougesen/tap/kdlfmt`).
   - repo: https://github.com/hougesen/kdlfmt
     rev: v0.1.7

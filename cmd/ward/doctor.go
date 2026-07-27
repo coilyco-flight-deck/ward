@@ -48,7 +48,7 @@ func doctorCommand() *cli.Command {
 		Name:  "doctor",
 		Usage: "Validate embedded native policy and exit.",
 		Description: `doctor validates Ward's embedded agent policy: smart defaults,
-fleet/roles data, and native launch assets. Aguard owns operator specs.`,
+fleet/roles data, and native launch assets. AOSguard owns operator specs.`,
 		Action: func(ctx context.Context, _ *cli.Command) error {
 			report, err := runDoctor(ctx)
 			printDoctorReport(report)

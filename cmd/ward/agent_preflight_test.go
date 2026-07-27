@@ -20,7 +20,7 @@ func TestRunPreflightGooseNeverRunsHostOneShot(t *testing.T) {
 	w := resolvedWork{
 		Ref:   agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 131},
 		Title: "some ward feature",
-		Body:  "implement cmd/ward-kdl wiring",
+		Body:  "implement AOSguard boundary wiring",
 	}
 
 	var proceed bool

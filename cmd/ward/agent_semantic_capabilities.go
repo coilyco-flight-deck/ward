@@ -6,7 +6,7 @@ import (
 )
 
 // agent_semantic_capabilities.go carries ward's semantic role postures, separate
-// from the KDL edge surfaces ward-kdl owns.
+// from the generated operator surfaces AOSguard owns.
 
 type semanticCapability string
 

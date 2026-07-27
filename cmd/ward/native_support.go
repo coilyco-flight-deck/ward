@@ -3,20 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
-)
-
-// These flag names are shared by Ward's native broker protocol. They remain
-// here after the generated operator CLI moved to Aguard.
-const (
-	flagOutput   = "output"
-	flagDryRun   = "dry-run"
-	flagQuery    = "query"
-	flagBodyFile = "body-file"
 )
 
 // ssmValueResolver is native credential plumbing for the agent control plane.
@@ -39,7 +29,7 @@ func (r *Runner) ssmValueResolver(ctx context.Context, ssmPath string) (string, 
 }
 
 // forgejoTokenResolver is native credential plumbing shared by issue, PR, and
-// git control-plane calls. It deliberately has no dependency on Aguard specs.
+// git control-plane calls. It deliberately has no dependency on AOSguard specs.
 func (r *Runner) forgejoTokenResolver(ctx context.Context, ssmPath string) (string, error) {
 	if os.Getenv("WARD_READONLY") == "1" {
 		if token, ok := r.brokerDispatchSeed(ctx, broker.Target{Owner: brokerOwnerPrefix, Repo: "credential", Number: 1}); ok {
@@ -53,26 +43,4 @@ func (r *Runner) forgejoTokenResolver(ctx context.Context, ssmPath string) (stri
 		return tok, nil
 	}
 	return r.ssmValueResolver(ctx, ssmPath)
-}
-
-// captureLeafStdout is retained for the native broker result projection.
-func captureLeafStdout(fn func() error) (string, error) {
-	orig := os.Stdout
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		return "", fmt.Errorf("capture stdout: %w", err)
-	}
-	os.Stdout = pw
-	runErr := fn()
-	_ = pw.Close()
-	os.Stdout = orig
-	out, readErr := io.ReadAll(pr)
-	_ = pr.Close()
-	if runErr != nil {
-		return "", runErr
-	}
-	if readErr != nil {
-		return "", fmt.Errorf("capture stdout: %w", readErr)
-	}
-	return string(out), nil
 }

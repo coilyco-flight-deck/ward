@@ -1256,7 +1256,7 @@ advisors when the work should outlive the session.
 Capture-and-dispatch is an **obligation, not a "may"**. Every work item you surface -
 a bug, a missing test, a follow-up, anything worth doing - you **must**:
 
-- **File an issue** for it (` + "`aguard ops forgejo issue create ...`" + `), then
+- **File an issue** for it (` + "`aosguard ops forgejo issue create ...`" + `), then
 - **Dispatch a sibling headless run** to do the actual fix - ` + "`warded <owner/repo>#N`" + `
   spins up its own sealed container with its own credential and lifecycle, does its
   own implement -> commit -> merge -> push there, and never touches this clone.
@@ -1285,7 +1285,7 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
 
 - Forgejo access is brokered over ` + "`$WARD_BROKER_SOCK`" + `. The root bootstrap holds and
   refreshes the bot credential; this dropped agent does **not** receive ` + "`FORGEJO_TOKEN`" + `.
-  Use the normal ` + "`aguard ops forgejo ...`" + ` and dispatch commands; never attempt to retrieve,
+  Use the normal ` + "`aosguard ops forgejo ...`" + ` and dispatch commands; never attempt to retrieve,
   print, or inject a token. If the broker reports an unrecoverable credential refresh, exit so the
   director heartbeat can recycle this surface.
 - **PR-workflow management is native ward, not specgen** (ward#1067): ` + "`ward agent pr status <owner/repo#N>`" + `
@@ -1297,7 +1297,7 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   and ` + "`ward agent pr rerun <owner/repo> <run-id>`" + ` reruns one.
   These forward through the supervised dispatch broker on ward's compiled Forgejo client, gated
   by the embedded role x workflow permission table, so they keep working even when the
-  ` + "`aguard ops forgejo`" + ` specgen surface is stripped or rolled back (infrastructure#538).
+  ` + "`aosguard ops forgejo`" + ` specgen surface is stripped or rolled back (infrastructure#538).
 - Fresh director surfaces mount the host Docker socket at ` + "`/var/run/docker.sock`" + `, so
   ` + "`ward agent reap`" + ` can list and stop stale engineer containers and a dispatched
   ` + "`warded #N`" + ` can spawn its sibling container. If this live surface does not have that

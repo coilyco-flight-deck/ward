@@ -1947,7 +1947,7 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 	return r.emit(b.String())
 }
 
-// appendDirectorLaunchConfig renders native launch policy. Aguard's operator
+// appendDirectorLaunchConfig renders native launch policy. AOSguard's operator
 // config is intentionally absent from this control-plane path.
 func appendDirectorLaunchConfig(b *strings.Builder, cfg backlogConfig) error {
 	src := bakedConfigSource()

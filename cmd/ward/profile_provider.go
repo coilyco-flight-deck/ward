@@ -45,7 +45,7 @@ func bakedProfileProvider() ProfileProvider {
 }
 
 // currentProfileSourceProvider is deliberately native-only.
-// Aguard config cannot perturb Ward's agent lifecycle.
+// AOSguard config cannot perturb Ward's agent lifecycle.
 func currentProfileSourceProvider() (configSource, ProfileProvider) {
 	src := bakedConfigSource()
 	return src, newProfileProvider(src)

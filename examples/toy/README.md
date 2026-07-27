@@ -16,7 +16,6 @@ Everything here is deliberately tiny and dependency-free (a pure POSIX-`sh`
   release-planning inventory.
 - `.ward/ward.yaml` - the allowlist: the build/test/install triple plus a
   `security:` block preserved for inventory compatibility.
-- `toy.guardfile.kdl` - a minimal ward-kdl permission surface (deny-by-default).
 
 ## Try it
 
@@ -26,7 +25,7 @@ ward exec build     # runs `make build` through the gate, one audit row
 ward exec test      # runs `make test`
 ```
 
-For the launch demo - one happy path plus two danger classes, driven against
+For the launch demo - one happy path plus one hard denial, driven against
 this repo - run `sh ../demo.sh` from here (or `sh examples/demo.sh` from the
 repo root). Walkthrough: [../../docs/demo.md](../../docs/demo.md).
 

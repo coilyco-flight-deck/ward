@@ -14,9 +14,6 @@ import (
 // agent_upgrade.go re-surfaces the "host ward is behind latest" reminder at `ward
 // agent` dispatch, since a detached run logs its version unseen. See ward#143.
 
-// wardReleaseRepo is the repo whose latest release defines "current ward".
-const wardReleaseRepo = "coilyco-flight-deck/ward"
-
 // wardReleaseCheckTimeout caps the best-effort release lookup so a slow or
 // unreachable Forgejo never holds up an agent dispatch.
 const wardReleaseCheckTimeout = 5 * time.Second
@@ -60,40 +57,26 @@ func wardOutdatedNotice(current, latest string) string {
 }
 
 // fetchLatestWardTag resolves the newest ward release tag through the in-binary
-// `aguard ops forgejo release list` command (ward#172). See docs/agent.md.
+// native Forgejo release API (ward#172). See docs/agent.md.
 func (r *Runner) fetchLatestWardTag(ctx context.Context) (string, bool) {
-	if r == nil || r.Runner == nil {
-		return "", false
-	}
-	owner, repo, ok := strings.Cut(wardReleaseRepo, "/")
-	if !ok || owner == "" || repo == "" {
-		return "", false
-	}
-	exe, err := os.Executable()
-	if err != nil {
+	if r == nil {
 		return "", false
 	}
 
 	cctx, cancel := context.WithTimeout(ctx, wardReleaseCheckTimeout)
 	defer cancel()
 
-	// Swallow the specverb's own stderr (SSM miss, upstream error): this nag is
-	// silent on failure, so its chatter would only confuse. Stdout is captured.
-	prevErr := r.Runner.Stderr
-	r.Runner.Stderr = io.Discard
-	out, err := r.Runner.Capture(cctx, exe,
-		"ops", "forgejo", "release", "list", owner, repo,
-		"--draft=false", "--pre-release=false",
-		"--query", "[0].tag_name",
-		"--output", "text",
-	)
-	r.Runner.Stderr = prevErr
+	releases, err := fetchWardBootstrapReleasesPage(cctx, 1)
 	if err != nil {
 		return "", false
 	}
-	tag := strings.TrimSpace(string(out))
-	if tag == "" {
-		return "", false
+	for _, release := range releases {
+		if release.Draft || release.Prerelease {
+			continue
+		}
+		if tag := strings.TrimSpace(release.TagName); tag != "" {
+			return tag, true
+		}
 	}
-	return tag, true
+	return "", false
 }

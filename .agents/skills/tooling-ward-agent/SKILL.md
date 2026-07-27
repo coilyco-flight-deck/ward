@@ -33,7 +33,7 @@ Lowercase the repo tokens, strip hyphens/spaces, fuzzy-match the registry's repo
 
 ## Step 3: confirm, or refuse and explain
 
-Confirm one line with the issue title from the relevant tracker API (`ward ops forgejo issue view <owner> <repo> <N>`, or `gh issue view <ref>` for a GitHub ref):
+Confirm one line with the issue title from the relevant tracker API (`aosguard ops forgejo issue view <owner> <repo> <N>`, or `gh issue view <ref>` for a GitHub ref):
 
 > Resolved: `coilyco-bridge/coily#125` - "<title>". Send an agent?
 

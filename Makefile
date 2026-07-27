@@ -23,35 +23,35 @@ workspace: ## Write a gitignored go.work resolving cli-guard from a sibling ../c
 	@echo "cli-guard now resolves from the local working tree instead of the pinned module."
 	@echo "go.work + go.work.sum are gitignored; delete go.work to return to the module-pinned dependency."
 
-sync-fleet-assets: ## Mirror the dialect-2 ward-kdl.fleet.kdl into cmd/ward for embedding (ward#415).
+sync-fleet-assets: ## Mirror the typed fleet policy into cmd/ward for embedding (ward#415).
 	# The fleet config is dialect 2 (fleetconfig, not a guardfile): it names the
 	# agent roster + launch shape, never a permission. go:embed can't reach the
-	# sibling .ward/ward-kdl/ dir, so mirror the one canonical source here as
+	# sibling .ward/policy/ dir, so mirror the one canonical source here as
 	# fleet.generated.kdl (the `.generated.` infix marks it derived, ward#270).
 	# fleetassets_test.go fails the build on drift, so re-sync after every change.
 	@mkdir -p ./cmd/ward/fleetassets
-	cp ./.ward/ward-kdl/ward-kdl.fleet.kdl ./cmd/ward/fleetassets/fleet.generated.kdl
+	cp ./.ward/policy/fleet.kdl ./cmd/ward/fleetassets/fleet.generated.kdl
 
 sync-defaults-assets: ## Mirror the canonical smart-defaults KDL into cmd/ward for embedding (ward#679).
 	# The smart-defaults bundle carries baked native runtime policy knobs. go:embed
-	# can't reach the sibling .ward/ward-kdl/ dir, so mirror the canonical source
+	# can't reach the sibling .ward/policy/ dir, so mirror the canonical source
 	# here as an ignored build artifact. defaultsassets_test.go fails the build on drift.
 	@mkdir -p ./cmd/ward/defaultsassets
-	cp ./.ward/ward-kdl/ward-kdl.defaults.kdl ./cmd/ward/defaultsassets/defaults.generated.kdl
+	cp ./.ward/policy/defaults.kdl ./cmd/ward/defaultsassets/defaults.generated.kdl
 
 sync-role-assets: ## Mirror the shipped role-definition KDL into cmd/ward for embedding.
 	# The shipped agent role presets are product defaults, not a fleet overlay.
-	# go:embed can't reach the sibling .ward/ward-kdl/ dir, so mirror the canonical
+	# go:embed can't reach the sibling .ward/policy/ dir, so mirror the canonical
 	# source here as role-definitions.generated.kdl. roleassets_test.go fails the build on drift.
 	@mkdir -p ./cmd/ward/roleassets
-	cp ./.ward/ward-kdl/ward-kdl.role-definitions.kdl ./cmd/ward/roleassets/role-definitions.generated.kdl
+	cp ./.ward/policy/roles.kdl ./cmd/ward/roleassets/role-definitions.generated.kdl
 
 sync-topology-assets: ## Mirror the container topology bundle into cmd/ward for embedding (ward#655).
 	# The container-topology overlay is bundle data, not code: go:embed can't
-	# reach the sibling .ward/ward-kdl/ dir, so mirror the canonical source here
+	# reach the sibling .ward/policy/ dir, so mirror the canonical source here
 	# as topology.generated.kdl. topologyassets_test.go fails the build on drift.
 	@mkdir -p ./cmd/ward/topologyassets
-	cp ./.ward/ward-kdl/ward-kdl.topology.kdl ./cmd/ward/topologyassets/topology.generated.kdl
+	cp ./.ward/policy/topology.kdl ./cmd/ward/topologyassets/topology.generated.kdl
 
 agent-roster: ## Regenerate docs/agent-roster.md from the code roster - the binary describing its own roles (ward#348).
 	# The flat agent-role list is generated, never hand-edited: `ward agent roster`

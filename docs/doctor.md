@@ -19,4 +19,4 @@
 ## See also
 
 - [config-source.md](config-source.md) - native-policy boundary.
-- [ward-kdl.md](ward-kdl.md) - the Aguard boundary.
+- [aosguard-boundary.md](aosguard-boundary.md) - the AOSguard boundary.

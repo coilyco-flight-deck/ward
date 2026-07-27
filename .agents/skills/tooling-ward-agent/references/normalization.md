@@ -16,7 +16,7 @@ Recognize the shape `[ward ]agent <role>? <owner-tokens> <repo-tokens> [issue|nu
 
 Bake these in. Voice dictation produces them constantly:
 
-* "coily" alone -> `coilyco-bridge/coily` (NOT `agentic-os-kai`). The bare word is the retiring ops CLI; its verbs fold into `ward ops`.
+* "coily" alone -> `coilyco-bridge/coily` (NOT `agentic-os-kai`). The bare word is the retired ops CLI. Current operator verbs live under `aosguard ops`.
 * "coily co ai" / "coily-co-ai" / "coilco ai" / "coily-coai" -> `coilyco-bridge/agentic-os-kai`
 * "ward" -> `coilyco-flight-deck/ward`
 * "eco mods" -> `coilyco-bridge/eco-mods` (private superset; public subset is `coilyco-flight-deck/eco-mods-public`)

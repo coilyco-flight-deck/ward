@@ -12,4 +12,4 @@ This page is the durable anchor for the demo's boundary story.
 ## See also
 
 - [exec-verb.md](exec-verb.md) - the gated dev-verb path.
-- [ward-kdl-surface.md](ward-kdl-surface.md) - the generated operator surface.
+- [aosguard-boundary.md](aosguard-boundary.md) - the external operator boundary.

@@ -333,7 +333,7 @@ func TestAgentSeedPromptKeepsAdjacentIssuesDistinct(t *testing.T) {
 func TestAgentSeedPromptEmptyBody(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 151}
 	for _, mode := range agentModes {
-		got := agentSeedPrompt(ref, "setup ward-kdl", "   \n  ", "", false, nil)
+		got := agentSeedPrompt(ref, "setup aosguard", "   \n  ", "", false, nil)
 		if !strings.Contains(got, "This issue has no body") {
 			t.Errorf("%s: empty body should be called out explicitly\n got: %s", mode, got)
 		}

@@ -677,7 +677,7 @@ func TestWardEnvCorrelationEnvelope(t *testing.T) {
 	}
 }
 
-// TestWardEnvDoesNotExportOperatorConfigRef keeps Aguard's edge config out of
+// TestWardEnvDoesNotExportOperatorConfigRef keeps AOSguard's edge config out of
 // native Ward containers, even for a coilyco checkout.
 func TestWardEnvDoesNotExportOperatorConfigRef(t *testing.T) {
 	home := t.TempDir()

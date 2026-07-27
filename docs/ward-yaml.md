@@ -29,7 +29,7 @@ plus optional security policy.
 
 - The file lives at the repo root under `.ward/ward.yaml`.
 - It is the whole contract for `ward exec` adoption.
-- It does not replace the agent container or ward-kdl surfaces.
+- It does not replace the agent container or AOSguard operator surface.
 
 ## See also
 

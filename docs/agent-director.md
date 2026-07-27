@@ -11,11 +11,11 @@ The director surface is the read-only control plane for runs.
   widening into the repo backlog.
 * `~/.ward/config.yaml` provides implicit repo scope. Explicit `--repo` / `--org`
   values override it. The director does not need the current directory to be a
-  git repo, and Aguard configuration cannot alter its native policy.
+  git repo, and AOSguard configuration cannot alter its native policy.
 - By default it prints status from the stored ledger, then opens the attached
   read-only surface without enumerating the live issue backlog. Add `--burndown`
   to run the autonomous dispatch heartbeat, or `--triage` to opt into startup issue inventory.
-- The bundled burndown default comes from `.ward/ward-kdl/ward-kdl.defaults.kdl`, which keeps the interactive lane on the bundled smart-defaults file without hardcoding a number in docs.
+- The bundled burndown default comes from `.ward/policy/defaults.kdl`, which keeps the interactive lane on the bundled smart-defaults file without hardcoding a number in docs.
 - When issue-scoped under `--burndown`, each heartbeat refresh stays pinned to
   that exact issue instead of rehydrating the repo backlog.
 - It is the surface that hosts the merge-ready workflow for PR landings.

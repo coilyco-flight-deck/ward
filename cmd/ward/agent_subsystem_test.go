@@ -11,30 +11,30 @@ func wardRef(n int) agentIssueRef {
 
 // TestMatchSubsystemPointers covers ward#236: a known subsystem keyword resolves
 // to that subsystem's in-clone paths, firing once per pointer.
-func TestMatchSubsystemPointers(t *testing.T) {
-	// The ward#226 case: an issue whose whole point is a ward-kdl guardfile.
-	hits := matchSubsystemPointers(wardRef(226), "wire a ward-kdl guardfile", "add an ops forgejo verb")
+func TestPolicyBoundaryMatchSubsystemPointers(t *testing.T) {
+	// The ward#226 case: an issue whose whole point is a generated guardfile.
+	hits := matchSubsystemPointers(wardRef(226), "wire an aosguard guardfile", "add an ops forgejo verb")
 	if len(hits) == 0 {
-		t.Fatalf("a ward-kdl issue should match the guardfile pointer; got none")
+		t.Fatalf("an AOSguard issue should match the ownership pointer; got none")
 	}
 	if hits[0].label == "" || len(hits[0].paths) == 0 {
 		t.Errorf("matched pointer must carry a label and paths; got %+v", hits[0])
 	}
 	found := false
 	for _, p := range hits[0].paths {
-		if p == "docs/ward-kdl.md" {
+		if p == "docs/aosguard-boundary.md" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("ward-kdl pointer should include docs/ward-kdl.md; got %v", hits[0].paths)
+		t.Errorf("AOSguard pointer should include docs/aosguard-boundary.md; got %v", hits[0].paths)
 	}
 
 	// A pointer fires once even when several of its keywords hit.
-	dup := matchSubsystemPointers(wardRef(1), "ward-kdl guardfile ops forgejo", "")
+	dup := matchSubsystemPointers(wardRef(1), "aosguard guardfile ops forgejo", "")
 	count := 0
 	for _, p := range dup {
-		if strings.HasPrefix(p.label, "ward-kdl") {
+		if strings.HasPrefix(p.label, "AOSguard") {
 			count++
 		}
 	}
@@ -43,7 +43,7 @@ func TestMatchSubsystemPointers(t *testing.T) {
 	}
 
 	// Case-insensitive: keywords match regardless of issue casing.
-	if got := matchSubsystemPointers(wardRef(2), "WARD-KDL Guardfile", ""); len(got) == 0 {
+	if got := matchSubsystemPointers(wardRef(2), "AOSGUARD Guardfile", ""); len(got) == 0 {
 		t.Error("keyword match should be case-insensitive")
 	}
 
@@ -64,7 +64,7 @@ func TestMatchSubsystemPointers(t *testing.T) {
 			continue
 		}
 		foundPlaceholder = true
-		for _, want := range []string{"docs/doctor.md", "docs/config-source.md", "examples/ward-specs/README.md"} {
+		for _, want := range []string{"docs/doctor.md", "docs/config-source.md"} {
 			if !containsString(p.paths, want) {
 				t.Errorf("placeholder pointer missing %q; got %v", want, p.paths)
 			}
@@ -80,20 +80,20 @@ func TestMatchSubsystemPointers(t *testing.T) {
 
 // TestMatchSubsystemPointersScopedToWard covers ward#236's repo scoping: the map
 // holds ward-specific paths, so a non-ward clone must get nothing.
-func TestMatchSubsystemPointersScopedToWard(t *testing.T) {
+func TestPolicyBoundaryMatchSubsystemPointersScopedToWard(t *testing.T) {
 	other := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "cli-guard", Number: 9}
-	if got := matchSubsystemPointers(other, "ward-kdl guardfile changes", ""); got != nil {
+	if got := matchSubsystemPointers(other, "aosguard guardfile changes", ""); got != nil {
 		t.Errorf("subsystem pointers must stay scoped to %s; a cli-guard issue got %v", subsystemPointerRepo, got)
 	}
 }
 
 // TestSubsystemSeedBlock covers ward#236 item 1: a headless seed for an issue
 // naming a subsystem must carry the front-load instruction and the paths.
-func TestSubsystemSeedBlock(t *testing.T) {
-	block := subsystemSeedBlock(wardRef(226), "ward-kdl guardfile", "ops forgejo verb")
+func TestPolicyBoundarySubsystemSeedBlock(t *testing.T) {
+	block := subsystemSeedBlock(wardRef(226), "aosguard guardfile", "ops forgejo verb")
 	for _, want := range []string{
 		"Front-load before you plan",
-		"docs/ward-kdl.md",
+		"docs/aosguard-boundary.md",
 		"BEFORE your first edit",
 		"is not", // the "located is not read" nudge
 		"\"read\"",
@@ -114,7 +114,6 @@ func TestSubsystemSeedBlock(t *testing.T) {
 	)
 	for _, want := range []string{
 		"docs/doctor.md",
-		"examples/ward-specs/README.md",
 		"restart `warded`",
 	} {
 		if !strings.Contains(placeholder, want) {
@@ -125,11 +124,11 @@ func TestSubsystemSeedBlock(t *testing.T) {
 
 // TestAgentSeedPromptFrontLoads covers ward#236 item 1 end-to-end: the seed the
 // dispatcher hands the agent embeds the subsystem pointers when the issue names one.
-func TestAgentSeedPromptFrontLoads(t *testing.T) {
+func TestPolicyBoundaryAgentSeedPromptFrontLoads(t *testing.T) {
 	ref := wardRef(236)
 	got := agentSeedPrompt(ref, "feat(agent-dispatch): front-load subsystem context",
-		"Scan the issue body for ward-kdl, guardfile, ward exec, headless keywords.", "", true, nil)
-	for _, want := range []string{"Front-load before you plan", "docs/ward-kdl.md", "docs/agent.md"} {
+		"Scan the issue body for aosguard, guardfile, ward exec, headless keywords.", "", true, nil)
+	for _, want := range []string{"Front-load before you plan", "docs/aosguard-boundary.md", "docs/agent.md"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("headless seed should front-load subsystem context; missing %q\n got: %s", want, got)
 		}
@@ -143,14 +142,14 @@ func TestAgentSeedPromptFrontLoads(t *testing.T) {
 
 // TestPreflightPromptContextGate covers ward#236 item 2: the pre-flight demands a
 // front-load list and surfaces the matched subsystem pointers.
-func TestPreflightPromptContextGate(t *testing.T) {
+func TestPolicyBoundaryPreflightPromptContextGate(t *testing.T) {
 	got := preflightPrompt(wardRef(236), "front-load subsystem context",
-		"scan for ward-kdl and guardfile keywords in headless dispatch", "", nil, nil)
+		"scan for aosguard and guardfile keywords in headless dispatch", "", nil, nil)
 	for _, want := range []string{
 		"Context to front-load:", // the required checklist line
 		"before your first edit", // the read-it-before-editing commitment
 		"Naming a gap is not closing it",
-		"docs/ward-kdl.md", // the matched pointer reaches the read
+		"docs/aosguard-boundary.md", // the matched pointer reaches the read
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("preflight context gate missing %q\n got: %s", want, got)

@@ -2,7 +2,7 @@
 # `security:`; `catalog:` is agentic-os tooling metadata it ignores. The
 # security: block is required per ward#450. Field reference: ../../../docs/ward-yaml.md.
 catalog:
-  description: "toy - ward's minimal example repo, the demo (ward#250/#251) and spec-bundle (ward#453) anchor."
+  description: "toy - ward's minimal example repo and the demo (ward#250/#251) anchor."
   dependsOn: []
 
 commands:
@@ -20,14 +20,6 @@ commands:
     description: Static-check the shell sources.
 
 security:
-  protected_binaries:
-    - name: docker
-      mode: deny-direct
-      allowed_wrappers:
-        - ward-kdl docker
-      expected_real_paths:
-        - /usr/local/bin/docker
-        - /opt/homebrew/bin/docker
   sudo:
     forbid_passwordless: true
   hooks:
@@ -35,5 +27,5 @@ security:
       - kubectl
       - aws
     route_hints:
-      kubectl: "route kubectl through a ward-kdl wrapper, not the bare binary"
-      aws: "route aws through a ward-kdl wrapper, not the bare binary"
+      kubectl: "this example repo exposes no kubectl dev verb"
+      aws: "this example repo exposes no aws dev verb"

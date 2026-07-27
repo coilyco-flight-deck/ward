@@ -15,7 +15,7 @@ import (
 )
 
 // smartDefaults is Ward-owned native runtime policy baked with the agent image.
-// Aguard operator configuration cannot override it at process startup.
+// AOSguard operator configuration cannot override it at process startup.
 type smartDefaults struct {
 	agentReservationTTL           time.Duration
 	reservationRecheckDefaultMax  time.Duration

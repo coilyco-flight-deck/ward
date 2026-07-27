@@ -6,9 +6,9 @@ import (
 )
 
 // A stale edge reference is irrelevant to every native Ward policy loader.
-// This protects `ward agent` after Aguard moved out of the Ward binary.
-func TestNativePolicyIgnoresStaleOperatorConfigRef(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "forgejo.example.invalid/edge/aguard@missing//.specgen")
+// This protects `ward agent` after AOSguard moved out of the Ward binary.
+func TestPolicyBoundaryNativePolicyIgnoresStaleOperatorConfigRef(t *testing.T) {
+	t.Setenv(wardConfigRefEnv, "forgejo.example.invalid/edge/aosguard@missing//.specgen")
 
 	defs, err := currentSmartDefaultsWithError()
 	if err != nil {
@@ -28,7 +28,7 @@ func TestNativePolicyIgnoresStaleOperatorConfigRef(t *testing.T) {
 	}
 }
 
-func TestRootOmitsGeneratedOperatorSurfaces(t *testing.T) {
+func TestPolicyBoundaryRootOmitsGeneratedOperatorSurfaces(t *testing.T) {
 	root := rootCommand()
 	for _, gone := range []string{"ops", "docker", "aws", "kubectl", "pkg"} {
 		if commandNamed(root.Commands, gone) != nil {

@@ -2,7 +2,7 @@
 # The security: block below is required per the retired ward doctor surface
 # inventory; ward dogfoods it. Field reference: docs/ward-yaml.md.
 catalog:
-  description: "ward - a contributor-facing cli-guard consumer with native agent control-plane commands. Aguard owns AOS-container operator APIs."
+  description: "ward - a contributor-facing cli-guard consumer with native agent control-plane commands. AOSguard owns AOS-container operator APIs."
   dependsOn:
     - forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
 
@@ -13,6 +13,9 @@ commands:
   test:
     run: make test
     description: Run the unit test suite.
+  test-policy-boundary:
+    run: go test ./cmd/ward -run PolicyBoundary
+    description: Run the focused native-policy and AOSguard-boundary contract tests.
   test-release-contract:
     run: go test ./scripts -run TestReleasePipelineUsesDraftArtifacts
     description: Run the focused release-pipeline contract test.
@@ -58,15 +61,15 @@ security:
     - name: docker
       mode: deny-direct
       allowed_wrappers:
-        - ward-kdl docker
+        - ward exec demo-image
     - name: kubectl
       mode: deny-direct
       allowed_wrappers:
-        - ward-kdl kubectl
+        - aosguard ops kubectl
   hooks:
     deny_bare_binaries:
       - docker
       - kubectl
     route_hints:
-      docker: "route docker through `ward-kdl docker`, not the bare binary"
-      kubectl: "route kubectl through `ward-kdl kubectl`, not the bare binary"
+      docker: "route the repository demo image through `ward exec demo-image`, not the bare binary"
+      kubectl: "route operator work through `aosguard ops kubectl`, not the bare binary"

@@ -8,8 +8,8 @@ import (
 )
 
 // TestCapabilityGuardfilesStayInFleetPolicy pins the names used to derive
-// native role capabilities. The actual operator guardfiles now ship with Aguard.
-func TestCapabilityGuardfilesStayInFleetPolicy(t *testing.T) {
+// native role capabilities. The actual operator guardfiles ship with AOSguard.
+func TestPolicyBoundaryCapabilityGuardfilesStayInFleetPolicy(t *testing.T) {
 	fleet, err := bakedAssets.ReadFile(fleetGeneratedKDLPath)
 	if err != nil {
 		t.Fatalf("read baked fleet config: %v", err)
@@ -21,7 +21,7 @@ func TestCapabilityGuardfilesStayInFleetPolicy(t *testing.T) {
 
 // TestCapabilityForRole covers ward#578 + ward#547: director holds the
 // live-observe set; engineer/qa/session/unknown fall through to least-access.
-func TestCapabilityForRole(t *testing.T) {
+func TestPolicyBoundaryCapabilityForRole(t *testing.T) {
 	if caps := capabilityForRole(roleDirector); !caps.aws || !caps.tailnet {
 		t.Errorf("%s capability = %+v, want aws+tailnet from its guardfile set", roleDirector, caps)
 	}
@@ -34,15 +34,15 @@ func TestCapabilityForRole(t *testing.T) {
 
 // TestGuardfileInSet covers both membership forms: exact match in a flat list and
 // a name-prefix match, with non-members rejected either way.
-func TestGuardfileInSet(t *testing.T) {
+func TestPolicyBoundaryGuardfileInSet(t *testing.T) {
 	list := fleetconfig.Guardfiles{List: []string{guardfileAWS, guardfileTailscale}}
 	if !guardfileInSet(guardfileAWS, list) || !guardfileInSet(guardfileTailscale, list) {
 		t.Error("flat list should contain both members")
 	}
-	if guardfileInSet("ward-kdl.git.guardfile.kdl", list) {
+	if guardfileInSet("git.kdl", list) {
 		t.Error("flat list must not contain a non-member")
 	}
-	prefix := fleetconfig.Guardfiles{Prefix: "ward-kdl.aws"}
+	prefix := fleetconfig.Guardfiles{Prefix: "aws"}
 	if !guardfileInSet(guardfileAWS, prefix) {
 		t.Error("prefix set should match the aws guardfile")
 	}
@@ -53,7 +53,7 @@ func TestGuardfileInSet(t *testing.T) {
 
 // TestResolveCapability covers the role default and full-isolation opt-out
 // path (ward#578).
-func TestResolveCapability(t *testing.T) {
+func TestPolicyBoundaryResolveCapability(t *testing.T) {
 	if caps := resolveCapability(roleDirector); !caps.aws || !caps.tailnet {
 		t.Fatalf("director role capability = %+v, want aws+tailnet from its guardfile set", caps)
 	}

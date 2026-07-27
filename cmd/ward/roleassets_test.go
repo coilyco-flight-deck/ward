@@ -8,11 +8,11 @@ import (
 
 // roleSrcPath is the canonical role-definition source mirrored into roleassets
 // by `make sync-role-assets`.
-const roleSrcPath = "../../.ward/ward-kdl/ward-kdl.role-definitions.kdl"
+const roleSrcPath = "../../.ward/policy/roles.kdl"
 
 // TestRoleAssetsMirrorWardKDL fails when the embedded role-definition asset
 // drifts from the canonical source.
-func TestRoleAssetsMirrorWardKDL(t *testing.T) {
+func TestPolicyBoundaryRoleAssetsMirrorNativePolicy(t *testing.T) {
 	src, err := os.ReadFile(roleSrcPath)
 	if err != nil {
 		t.Fatalf("read role source %s: %v", roleSrcPath, err)

@@ -20,7 +20,7 @@ Unsure? You are almost certainly the **adopter**. The delegated "set this up for
 The ordered path, start to finish:
 
 1. **Install** - `brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-deck/homebrew-tap`, then `brew install coilyco-flight-deck/tap/ward`. The explicit tap URL is required because the tap lives on Forgejo, not github.com. Full steps: [README Install](README.md#install).
-2. **Inventory the compact release-era surfaces** - the former `ward setup` and `ward doctor` behavior is now folded into the smaller docs set, especially [docs/agent-lifecycle.md](docs/agent-lifecycle.md) and [docs/ward-kdl.md](docs/ward-kdl.md).
+2. **Inventory the compact release-era surfaces** - start with [docs/agent-lifecycle.md](docs/agent-lifecycle.md) and [docs/ward-yaml.md](docs/ward-yaml.md).
 3. **Use the live gate** - route current dev work through `ward exec build`, `ward exec test`, and the other verbs declared in `.ward/ward.yaml`. To hand-edit or understand a field, use the schema reference in [docs/ward-yaml.md](docs/ward-yaml.md). The live contract is the command allowlist, not the retired setup/doctor surface.
 Once that is done, contributors route dev work through the verbs your `.ward/ward.yaml` declares - `ward exec build`, `ward exec test`, and so on. See [docs/exec-verb.md](docs/exec-verb.md).
 
@@ -30,10 +30,15 @@ Once that is done, contributors route dev work through the verbs your `.ward/war
 
 `ward` is a contributor-facing [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) consumer: the gate a contributor (human or agent) routes through to build, test, and lint code.
 
-ward also carries the operator surface from the retiring [coily](https://github.com/coilyco-bridge/coily). Three roles, by **when** they run: cli-guard the **engine**, [ward-kdl](docs/ward-kdl.md) the **build-time generator** (guardfile in, audited CLI out), `ward` the **run-time product** that embeds those surfaces. Two verb kinds:
+Ward uses cli-guard as its policy engine and keeps its agent, container,
+repository-development, and tracker control plane native. AOS owns specgen and
+the separate [`aosguard`](docs/aosguard-boundary.md) operator CLI.
 
 - **Contributor dev verbs** - `build`, `test`, `vet`, `lint`, `tidy`, `cover`, declared per-repo in `.ward/ward.yaml`.
-- **Operator verbs** - [ward-kdl](docs/ward-kdl.md) generates the `ward ops <api>` REST surfaces (`ops forgejo`, `ops aws`). Composite control flow stays hand-written Go in `cmd/ward` (e.g. `ward agent`, `ward container reap`).
+- **Native control-plane verbs** - hand-written commands under `agent`,
+  `container`, `git`, and related Ward-owned groups.
+- **Operator verbs** - `aosguard ops ...`, authored and shipped by AOS. They
+  are not Ward commands.
 
 ## Project shape
 
@@ -42,7 +47,8 @@ Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/
 ## Repo boundaries
 
 - Upstream: `coilyco-flight-deck/cli-guard` is the policy/routing engine. Thin consumer, not a fork.
-- Retiring sibling: `coilyco-bridge/coily` - ops verbs migrate into ward. New operator work lands here, not coily.
+- Operator owner: `coilyco-flight-deck/agentic-os` - specgen inputs and
+  AOSguard work land there, not in Ward.
 - Downstream: consumers upgrade to the `ward` binary and `.ward` config on their own schedule.
 
 ## Commands
@@ -77,7 +83,7 @@ Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/
 
 Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 
-Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mirror): `ward ops forgejo tasks list coilyco-flight-deck ward --limit 1`. Once green, refresh the installed ward binary.
+Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mirror): `aosguard ops forgejo tasks list coilyco-flight-deck ward --limit 1`. Once green, refresh the installed ward binary.
 
 ## Agent rules
 

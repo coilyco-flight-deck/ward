@@ -12,8 +12,8 @@ import (
 // Well-known capability guardfile names a role's set can hold; ward binds each to
 // the host mechanism it ships. A name outside this set grants no container capability.
 const (
-	guardfileAWS       = "ward-kdl.aws.guardfile.kdl"       // -> export host creds + inject AWS_* env (mount ~/.aws:ro is the fallback)
-	guardfileTailscale = "ward-kdl.tailscale.guardfile.kdl" // -> join the tailnet
+	guardfileAWS       = "aws.kdl"       // -> export host creds + inject AWS_* env (mount ~/.aws:ro is the fallback)
+	guardfileTailscale = "tailscale.kdl" // -> join the tailnet
 )
 
 // roleCapability is the resolved host/cloud reach a role holds: the two opt-in
