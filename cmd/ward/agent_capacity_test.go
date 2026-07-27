@@ -34,6 +34,7 @@ func engineerCountDockerStub(t *testing.T, count int) string {
 		fmt.Fprintf(&b, "[{\"Name\":\"/%s\",\"Config\":{\"Labels\":{\"ward\":\"true\",\"ward.role\":\"engineer\"},\"Env\":[\"WARD_TARGET_OWNER=coilyco-flight-deck\",\"WARD_TARGET_NAME=ward\",\"WARD_TARGET_REPO=coilyco-flight-deck/ward\",\"WARD_TARGET_ISSUE=%d\",\"WARD_BRANCH=issue-%d\",\"WARD_MODE=codex\"]},\"State\":{\"Status\":\"running\",\"StartedAt\":\"2026-07-10T00:00:00Z\"}}]\n", name, i+1, i+1)
 		b.WriteString("JSON\n")
 		b.WriteString("      exit 0\n")
+		b.WriteString("      ;;\n")
 	}
 	b.WriteString("  esac\n")
 	b.WriteString("fi\n")
