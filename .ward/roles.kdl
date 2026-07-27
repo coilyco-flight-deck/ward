@@ -1,5 +1,6 @@
 // Ward's shipped agent role-definition presets. This is product-default data, not
-// a guardfile or a fleet overlay. The embedded copy mirrors this canonical source.
+// a guardfile or a fleet overlay. The root policy-assets package embeds this file
+// directly.
 agent-roles {
     role engineer {
         tagline "Implements a ticket end to end."

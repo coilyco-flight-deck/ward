@@ -11,8 +11,8 @@ Ward does not compile, embed, mount, or dispatch generated operator commands.
 Ward therefore needs no `wardguard` variant. Its root command intentionally
 omits `ops`, `aws`, `kubectl`, `docker`, and `pkg`.
 
-Ward retains typed native role and launch policy under
-[`.ward/policy/`](../.ward/policy/). Those files select agent behavior and
+Ward retains typed native role and launch policy directly under
+[`.ward/`](../.ward/). Those files select agent behavior and
 container capabilities such as AWS credential delivery and tailnet attachment.
 They do not generate a command tree.
 
@@ -23,5 +23,5 @@ load its specifications.
 ## See also
 
 - [AOSguard](https://github.com/coilyco-flight-deck/agentic-os/blob/main/docs/aosguard.md) - the owning operator documentation.
-- [native policy assets](../.ward/policy/README.md) - Ward's retained inputs.
+- [native policy assets](../.ward/README.md) - Ward's retained inputs.
 - [architecture.md](architecture.md) - the full Ward ownership split.

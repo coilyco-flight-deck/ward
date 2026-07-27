@@ -54,7 +54,7 @@ Inventory of what `ward` ships today.
 
 ## AOS policy and AOSguard boundary
 
-- Ward embeds the AOS-authored agent role catalog and launch policy from [roles.kdl](../.ward/policy/roles.kdl).
+- Ward directly embeds its native agent role catalog and launch policy from [roles.kdl](../.ward/roles.kdl).
 - AOSguard owns generated operator APIs in AOS: `aosguard ops forgejo`, `actions`, `aws`, `kubectl`, and `tailscale`.
 - A stale or unavailable AOSguard config reference cannot affect Ward's native `agent`, `container`, `exec`, help, or version paths.
 

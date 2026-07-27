@@ -156,7 +156,7 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		t.Fatalf("Homebrew formula generator must not emit download-route URLs (ward#1493):\n%s", release)
 	}
 
-	for _, ban := range []string{"go build -trimpath", "go mod download", "make sync-defaults-assets"} {
+	for _, ban := range []string{"go build -trimpath", "go mod download"} {
 		if strings.Contains(release, ban) {
 			t.Fatalf("release workflow should not rebuild on release; found %q", ban)
 		}

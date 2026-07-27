@@ -1,10 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -27,9 +23,7 @@ func TestPolicyBoundaryDefaultsBundleParsesSplitLayout(t *testing.T) {
 
 func canonicalDefaultsBundleBytes(t *testing.T) []byte {
 	t.Helper()
-	// `.ward/policy/defaults.kdl` is the authored smart-defaults
-	// source. The embedded copy is a generated build artifact that must match it.
-	b, err := os.ReadFile(filepath.Join("..", "..", ".ward", "policy", "defaults.kdl"))
+	b, err := bakedAssets.ReadFile(defaultsKDLPath)
 	if err != nil {
 		t.Fatalf("read canonical smart defaults: %v", err)
 	}
@@ -43,17 +37,6 @@ func canonicalSmartDefaults(t *testing.T) smartDefaults {
 		t.Fatalf("parse canonical smart defaults: %v", err)
 	}
 	return defs
-}
-
-func TestPolicyBoundaryGeneratedDefaultsAssetMatchesCanonicalSource(t *testing.T) {
-	want := canonicalDefaultsBundleBytes(t)
-	got, err := fs.ReadFile(bakedDefaultsAssets, defaultsGeneratedKDLPath)
-	if err != nil {
-		t.Fatalf("read embedded defaults asset: %v", err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatalf("embedded defaults asset drifted from canonical source\nembedded:\n%s\ncanonical:\n%s", got, want)
-	}
 }
 
 func TestPolicyBoundaryBakedSmartDefaultsDerivesFromCanonicalSource(t *testing.T) {

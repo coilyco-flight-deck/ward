@@ -10,7 +10,7 @@ import (
 // TestCapabilityGuardfilesStayInFleetPolicy pins the names used to derive
 // native role capabilities. The actual operator guardfiles ship with AOSguard.
 func TestPolicyBoundaryCapabilityGuardfilesStayInFleetPolicy(t *testing.T) {
-	fleet, err := bakedAssets.ReadFile(fleetGeneratedKDLPath)
+	fleet, err := bakedAssets.ReadFile(fleetKDLPath)
 	if err != nil {
 		t.Fatalf("read baked fleet config: %v", err)
 	}

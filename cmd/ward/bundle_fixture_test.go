@@ -82,11 +82,11 @@ topology {
 `,
 	}
 
-	roleDefs, err := bakedAssets.ReadFile(roleDefinitionsGeneratedKDLPath)
+	roleDefs, err := bakedAssets.ReadFile(roleDefinitionsKDLPath)
 	if err != nil {
 		t.Fatalf("read baked role definitions: %v", err)
 	}
-	files["policy/roles.kdl"] = string(roleDefs)
+	files["roles.kdl"] = string(roleDefs)
 
 	files[bundleFixtureDefaultsPath] = canonicalSmartDefaultsBlock(t, func(defs *smartDefaults) {
 		defs.reservationRecheckDefaultMax = 9 * time.Second
@@ -115,8 +115,8 @@ topology {
 func writeSelectedBundleFixture(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	writeBundleFixtureFile(t, dir, "policy/fleet.kdl", "agents {\n    schema-version 2\n    defaults {\n        agent codex\n        attribution name=example-bot email=bot@example.com\n    }\n    agent claude {\n    }\n    agent codex {\n    }\n}\n")
-	writeBundleFixtureFile(t, dir, "policy/roles.kdl", "agent-roles {\n    role engineer {\n        tagline \"Implements a ticket end to end.\"\n        capabilities read engineering\n        modes \"A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.\"\n        default-harness codex\n        posture code-landing\n        execution-time-limit \"90m\"\n    }\n    role director {\n        tagline \"Opens the read-only director surface. Autonomous burndown is opt-in.\"\n        capabilities read project-management\n        modes \"Attached read-only control surface over a repo's backlog (`--repo` scope). Use `--burndown` or `--drain` for the autonomous heartbeat.\"\n        default-harness codex\n        posture attached\n        execution-time-limit none\n    }\n    role qa {\n        tagline \"Inspects a candidate and posts a structured QA verdict comment.\"\n        capabilities read\n        modes \"A ref inspects the issue, branch, pull request, and checks, then posts a structured QA verdict comment. Freeform mode is not exposed.\"\n        default-harness codex\n        posture no-code\n        execution-time-limit \"30m\"\n    }\n}\n")
+	writeBundleFixtureFile(t, dir, "fleet.kdl", "agents {\n    schema-version 2\n    defaults {\n        agent codex\n        attribution name=example-bot email=bot@example.com\n    }\n    agent claude {\n    }\n    agent codex {\n    }\n}\n")
+	writeBundleFixtureFile(t, dir, "roles.kdl", "agent-roles {\n    role engineer {\n        tagline \"Implements a ticket end to end.\"\n        capabilities read engineering\n        modes \"A ref carries that issue detached, fire-and-forget. Freeform text files an issue first, then carries it. Detached-only - interactive work funnels to the director.\"\n        default-harness codex\n        posture code-landing\n        execution-time-limit \"90m\"\n    }\n    role director {\n        tagline \"Opens the read-only director surface. Autonomous burndown is opt-in.\"\n        capabilities read project-management\n        modes \"Attached read-only control surface over a repo's backlog (`--repo` scope). Use `--burndown` or `--drain` for the autonomous heartbeat.\"\n        default-harness codex\n        posture attached\n        execution-time-limit none\n    }\n    role qa {\n        tagline \"Inspects a candidate and posts a structured QA verdict comment.\"\n        capabilities read\n        modes \"A ref inspects the issue, branch, pull request, and checks, then posts a structured QA verdict comment. Freeform mode is not exposed.\"\n        default-harness codex\n        posture no-code\n        execution-time-limit \"30m\"\n    }\n}\n")
 	return dir
 }
 

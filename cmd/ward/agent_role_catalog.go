@@ -33,13 +33,13 @@ func loadAgentRoleCatalogFrom(src configSource) (agentRoleCatalog, error) {
 	if src.fsys == nil {
 		path := src.roleDefinitionsKDL
 		if path == "" {
-			path = roleDefinitionsGeneratedKDLPath
+			path = roleDefinitionsKDLPath
 		}
 		return agentRoleCatalog{}, fmt.Errorf("read agent role catalog %s: no profile source available", path)
 	}
 	path := src.roleDefinitionsKDL
 	if path == "" {
-		path = roleDefinitionsGeneratedKDLPath
+		path = roleDefinitionsKDLPath
 	}
 	b, err := fs.ReadFile(src.fsys, path)
 	if err != nil {

@@ -116,7 +116,6 @@ jobs:
             echo "::error::tag-bump did not produce a release tag for the draft artifacts" >&2
             exit 1
           fi
-          make sync-defaults-assets
           ensure_go
 
           export GOPROXY=direct GOSUMDB=off CGO_ENABLED=0

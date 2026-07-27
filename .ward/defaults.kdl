@@ -1,3 +1,4 @@
+// Ward's directly embedded native smart defaults.
 smart-defaults {
     agent-reservation-ttl "3h"
     agent-reservation-recheck-max "15s"

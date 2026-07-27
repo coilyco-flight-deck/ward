@@ -77,9 +77,9 @@ func bakedSmartDefaults() smartDefaults {
 
 func bakedSmartDefaultsWithError() (smartDefaults, error) {
 	bakedSmartDefaultsCache.Do(func() {
-		b, err := fs.ReadFile(bakedDefaultsAssets, defaultsGeneratedKDLPath)
+		b, err := fs.ReadFile(bakedAssets, defaultsKDLPath)
 		if err != nil {
-			bakedSmartDefaultsCache.err = fmt.Errorf("read baked smart defaults %s: %w", defaultsGeneratedKDLPath, err)
+			bakedSmartDefaultsCache.err = fmt.Errorf("read baked smart defaults %s: %w", defaultsKDLPath, err)
 			return
 		}
 		bakedSmartDefaultsCache.defaults, bakedSmartDefaultsCache.err = parseSmartDefaultsBundle(b)
