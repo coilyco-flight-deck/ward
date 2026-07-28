@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -148,6 +149,15 @@ func (r *Runner) runAgentDispatchHealth(ctx context.Context, c *cli.Command) err
 }
 
 func (r *Runner) dispatchHealthSnapshot(ctx context.Context, repos []string, maxParallel int) dispatchHealthReport {
+	cl, err := r.hostTrackerClient(ctx, trackerForgejo, currentAgentMode())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward agent dispatch-health: note: cannot read live issue state (%v); using cached ledger state\n", err)
+		cl = nil
+	}
+	return r.dispatchHealthSnapshotWithTracker(ctx, repos, maxParallel, cl)
+}
+
+func (r *Runner) dispatchHealthSnapshotWithTracker(ctx context.Context, repos []string, maxParallel int, cl Tracker) dispatchHealthReport {
 	entries := r.backlogScopeEntries(repos)
 	rows, err := r.agentListRows(ctx)
 	report := dispatchHealthReport{
@@ -166,40 +176,103 @@ func (r *Runner) dispatchHealthSnapshot(ctx context.Context, repos []string, max
 	if serr != nil {
 		report.Warnings = append(report.Warnings, firstLine(serr.Error()))
 	}
-	inv := agentLaunchInventoryFromRowsWithScope(rows, scope)
-	runningRows := make([]agentRunningEngineer, 0, len(rows))
-	for _, row := range rows {
-		if len(scope) > 0 && !scope[row.Repo] {
-			continue
-		}
-		if row.Phase == agentLaunchPhaseRunning {
-			runningRows = append(runningRows, row)
-		}
-	}
+	activeIssue := dispatchHealthActiveIssueFilter(ctx, cl)
+	visibleRows := dispatchHealthVisibleRows(rows, scope, activeIssue)
+	runningRows := dispatchHealthRunningRows(visibleRows)
+	inv := agentLaunchInventoryFromRowsWithScope(visibleRows, scope)
 	report.Running = inv.Running
 	report.PartialLaunch = inv.PartialLaunch
 	report.LaunchIntents = inv.LaunchIntents
 	report.CleanupNeeded = inv.CleanupNeeded
 	report.FailedBefore = inv.FailedBefore
-	report.Queued, report.InFlight, report.Held = backlogLaneCounts(entries)
-	for _, e := range entries {
-		dispatchHealthTallyEntry(&report, e)
-	}
+	dispatchHealthTallyEntries(&report, entries, activeIssue)
 	report.RecentDispatches, report.DuplicateRefs = dispatchHealthRunningSignals(runningRows)
-	report.StalePrelaunch = len(stale)
+	report.StalePrelaunch = len(dispatchHealthStalePrelaunchReservations(stale, activeIssue))
 	report.Backpressure = maxParallel > 0 && report.InFlight >= maxParallel && report.Queued > 0
 	report.Runaway = maxParallel > 0 && report.RecentDispatches > maxParallel*2
 	report.Signals = dispatchHealthSignals(report)
 	return report
 }
 
+type dispatchHealthIssueFilter func(agentIssueRef) bool
+
+func dispatchHealthActiveIssueFilter(ctx context.Context, cl Tracker) dispatchHealthIssueFilter {
+	if cl == nil {
+		return nil
+	}
+	cache := map[string]bool{}
+	return func(ref agentIssueRef) bool {
+		if ref.Owner == "" || ref.Repo == "" || ref.Number <= 0 {
+			return true
+		}
+		key := ref.String()
+		if active, ok := cache[key]; ok {
+			return active
+		}
+		issue, err := cl.GetIssue(ctx, ref.Owner, ref.Repo, ref.Number)
+		if err != nil || issue == nil {
+			cache[key] = true
+			return true
+		}
+		if !strings.EqualFold(strings.TrimSpace(issue.State), "closed") {
+			cache[key] = true
+			return true
+		}
+		comments, err := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
+		if err != nil {
+			cache[key] = true
+			return true
+		}
+		active := !dispatchHealthIssueHasDoneOutcome(comments)
+		cache[key] = active
+		return active
+	}
+}
+
+func dispatchHealthIssueHasDoneOutcome(comments []issueComment) bool {
+	for _, c := range comments {
+		outcome, ok := backlogOutcomeOfComment(c.Body)
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(outcome.Status), "done") {
+			return true
+		}
+	}
+	return false
+}
+
+func dispatchHealthTallyEntries(report *dispatchHealthReport, entries []*backlogEntry, activeIssue dispatchHealthIssueFilter) {
+	for _, e := range entries {
+		if e == nil {
+			continue
+		}
+		if backlogKindOf(e.Kind) == backlogKindIssue && activeIssue != nil && !activeIssue(dispatchHealthEntryRef(e)) {
+			continue
+		}
+		dispatchHealthTallyEntry(report, e)
+	}
+}
+
 func dispatchHealthTallyEntry(report *dispatchHealthReport, e *backlogEntry) {
+	switch e.State {
+	case "queued", backlogReservationSafeToRedispatch:
+		report.Queued++
+	case "dispatched":
+		report.InFlight++
+	case backlogReservationWaitingReaper:
+		report.Held++
+	}
 	switch e.State {
 	case "submitted":
 		report.Submitted++
 	case "merge-ready":
 		report.MergeReady++
 	}
+	dispatchHealthTallyEntryOutcome(report, e)
+}
+
+func dispatchHealthTallyEntryOutcome(report *dispatchHealthReport, e *backlogEntry) {
 	if e.LastOutcome != nil {
 		switch strings.ToLower(strings.TrimSpace(e.LastOutcome.Status)) {
 		case "deferred":
@@ -212,6 +285,60 @@ func dispatchHealthTallyEntry(report *dispatchHealthReport, e *backlogEntry) {
 	case "failed", "blocked":
 		report.Failed++
 	}
+}
+
+func dispatchHealthEntryRef(e *backlogEntry) agentIssueRef {
+	return agentIssueRef{Owner: ownerOf(e.repo), Repo: nameOf(e.repo), Number: e.Num}
+}
+
+func dispatchHealthVisibleRows(rows []agentRunningEngineer, scope map[string]bool, activeIssue dispatchHealthIssueFilter) []agentRunningEngineer {
+	out := make([]agentRunningEngineer, 0, len(rows))
+	for _, row := range rows {
+		if len(scope) > 0 && !scope[row.Repo] {
+			continue
+		}
+		if activeIssue != nil && !activeIssue(dispatchHealthRowRef(row)) {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func dispatchHealthRunningRows(rows []agentRunningEngineer) []agentRunningEngineer {
+	out := make([]agentRunningEngineer, 0, len(rows))
+	for _, row := range rows {
+		if row.Phase == agentLaunchPhaseRunning {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func dispatchHealthStalePrelaunchReservations(stale []stalePrelaunchReservation, activeIssue dispatchHealthIssueFilter) []stalePrelaunchReservation {
+	if activeIssue == nil {
+		return stale
+	}
+	out := make([]stalePrelaunchReservation, 0, len(stale))
+	for _, hold := range stale {
+		if !activeIssue(hold.Ref()) {
+			continue
+		}
+		out = append(out, hold)
+	}
+	return out
+}
+
+func dispatchHealthRowRef(row agentRunningEngineer) agentIssueRef {
+	owner, repo, ok := strings.Cut(strings.TrimSpace(row.Repo), "/")
+	if !ok {
+		return agentIssueRef{}
+	}
+	num, err := strconv.Atoi(strings.TrimSpace(row.Issue))
+	if err != nil || num <= 0 {
+		return agentIssueRef{}
+	}
+	return agentIssueRef{Owner: owner, Repo: repo, Number: num}
 }
 
 func dispatchHealthRunningSignals(rows []agentRunningEngineer) (recent int, duplicates []string) {

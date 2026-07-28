@@ -85,3 +85,62 @@ func TestDispatchHealthReportFlagsPartialLaunch(t *testing.T) {
 		t.Fatal("partial launches should make the report alertable")
 	}
 }
+
+func TestDispatchHealthSkipsClosedCompletedIssueRefs(t *testing.T) {
+	comments := []issueComment{
+		{Body: "WARD-WORKFLOW: blocked 🛑\n\n<details><summary>details</summary>\n\nstalled\n\n</details>"},
+		{Body: "WARD-WORKFLOW: done ✅\n\n<details><summary>details</summary>\n\nlanded on main\n\n</details>"},
+		{Body: "WARD-WORKFLOW: failed ❌\n\n<details><summary>details</summary>\n\nfalse salvage noise\n\n</details>"},
+	}
+	if !dispatchHealthIssueHasDoneOutcome(comments) {
+		t.Fatal("done marker should win over older or newer blocked/salvage noise")
+	}
+
+	activeIssue := func(ref agentIssueRef) bool {
+		return ref.Number != 1443 && ref.Number != 1526
+	}
+	scope := map[string]bool{"coilyco-flight-deck/ward": true}
+	rows := []agentRunningEngineer{
+		{Repo: "coilyco-flight-deck/ward", Issue: "1443", Phase: agentLaunchPhaseRunning, Status: "running"},
+		{Repo: "coilyco-flight-deck/ward", Issue: "1526", Phase: agentLaunchPhaseFailed, Status: agentLaunchStatusCleanup},
+		{Repo: "coilyco-flight-deck/ward", Issue: "2000", Phase: agentLaunchPhaseRunning, Status: "running"},
+		{Repo: "coilyco-flight-deck/ward", Issue: "2001", Phase: agentLaunchPhaseFailed, Status: "failed"},
+	}
+	visibleRows := dispatchHealthVisibleRows(rows, scope, activeIssue)
+	if got := len(visibleRows); got != 2 {
+		t.Fatalf("visible rows = %d, want 2 active issue rows", got)
+	}
+	inv := agentLaunchInventoryFromRowsWithScope(visibleRows, scope)
+	if inv.Running != 1 || inv.CleanupNeeded != 0 || inv.FailedBefore != 1 || inv.LaunchIntents != 0 {
+		t.Fatalf("inventory = %+v, want one running and one failed-before row after filtering", inv)
+	}
+	runningRows := dispatchHealthRunningRows(visibleRows)
+	if got := len(runningRows); got != 1 || runningRows[0].Issue != "2000" {
+		t.Fatalf("running rows = %+v, want only the active running issue", runningRows)
+	}
+
+	report := dispatchHealthReport{}
+	entries := []*backlogEntry{
+		{Num: 1443, Kind: backlogKindIssue, Lane: "headless", State: "blocked", repo: "coilyco-flight-deck/ward", LastOutcome: &backlogOutcome{Status: "blocked"}},
+		{Num: 1526, Kind: backlogKindIssue, Lane: "headless", State: "queued", repo: "coilyco-flight-deck/ward", LastOutcome: &backlogOutcome{Status: "deferred"}},
+		{Num: 2000, Kind: backlogKindIssue, Lane: "headless", State: "queued", repo: "coilyco-flight-deck/ward"},
+		{Num: 2001, Kind: backlogKindIssue, Lane: "headless", State: "blocked", repo: "coilyco-flight-deck/ward"},
+		{Num: 9001, Kind: backlogKindPullRequest, Lane: backlogKindPullRequest, State: "blocked", repo: "coilyco-flight-deck/ward", LastOutcome: &backlogOutcome{Status: "failed"}},
+	}
+	dispatchHealthTallyEntries(&report, entries, activeIssue)
+	if report.Queued != 1 || report.Failed != 2 {
+		t.Fatalf("report = %+v, want one active queued issue and two active failures (one issue, one PR)", report)
+	}
+	if report.Deferred != 0 || report.Submitted != 0 || report.MergeReady != 0 {
+		t.Fatalf("report should not count filtered historical states, got %+v", report)
+	}
+
+	stale := []stalePrelaunchReservation{
+		{Reservation: agentReservation{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1443}},
+		{Reservation: agentReservation{Owner: "coilyco-flight-deck", Repo: "ward", Number: 2000}},
+	}
+	filtered := dispatchHealthStalePrelaunchReservations(stale, activeIssue)
+	if got := len(filtered); got != 1 || filtered[0].Reservation.Number != 2000 {
+		t.Fatalf("filtered stale prelaunch = %+v, want only the active issue hold", filtered)
+	}
+}
