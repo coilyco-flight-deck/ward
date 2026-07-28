@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
@@ -56,6 +57,95 @@ func TestRunAgentLogsExplicitTargetKeepsExistingTailDefault(t *testing.T) {
 	}
 	if got := stdout.String(); got != "explicit-target\n" {
 		t.Fatalf("stdout = %q, want explicit docker logs body", got)
+	}
+}
+
+func TestRunAgentLogsFreshSilentContainerReturnsBoundedStatus(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1594}
+	container := "engineer-codex-ward-1594"
+	reservedAt := time.Now().UTC().Add(-2 * time.Minute)
+	path, err := agentReservationPath(ref)
+	if err != nil {
+		t.Fatalf("reservation path: %v", err)
+	}
+	if err := writeAgentReservation(path, agentReservation{
+		Owner:     ref.Owner,
+		Repo:      ref.Repo,
+		Number:    ref.Number,
+		Mode:      string(modeCodex),
+		Container: container,
+		At:        reservedAt,
+	}); err != nil {
+		t.Fatalf("write reservation: %v", err)
+	}
+	dispatchDir := filepath.Join(agentLogsDir(), dispatchLogsSubdir)
+	if err := os.MkdirAll(dispatchDir, 0o755); err != nil {
+		t.Fatalf("mkdir dispatch logs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dispatchDir, "20260728T085230Z-director-codex-ward-1594.log"),
+		[]byte("ward dispatch broker: director-codex-ward requested `ward agent engineer coilyco-flight-deck/ward#1594 --harness codex`\n"+
+			"ward dispatch broker: request id: abc\n"+
+			"launch start: creating engineer container\n"), 0o644); err != nil {
+		t.Fatalf("write dispatch log: %v", err)
+	}
+
+	r := fakeAgentLogsDockerRunner(t, container+"\n", "", nil, ".codex/sessions")
+	var stdout, stderr bytes.Buffer
+	r.Runner.Stdout = &stdout
+	r.Runner.Stderr = &stderr
+
+	cmd := parseCommandForTest(t, agentLogsCommand().Flags, []string{"logs", ref.String(), "--tail", "12"})
+	if err := r.runAgentLogs(t.Context(), cmd); err != nil {
+		t.Fatalf("runAgentLogs: %v", err)
+	}
+
+	got := stdout.String()
+	for _, want := range []string{
+		"ward agent logs: docker logs engineer-codex-ward-1594 --tail 12 had no readable bytes",
+		"container: engineer-codex-ward-1594",
+		"ref: coilyco-flight-deck/ward#1594",
+		"phase: container starting",
+		"reservation age:",
+		"transcript: no readable live transcript exists yet",
+		"/home/ubuntu/.ward/.codex/sessions",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout missing %q\n%s", want, got)
+		}
+	}
+}
+
+func TestLiveTranscriptSourceTimesOutPromptly(t *testing.T) {
+	orig := agentLogsLiveTranscriptTimeout
+	agentLogsLiveTranscriptTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { agentLogsLiveTranscriptTimeout = orig })
+
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"if [ \"$1\" = cp ]; then\n" +
+		"  sleep 1\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	writeTestShellCommand(t, script, body)
+	r := &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
+
+	start := time.Now()
+	bodyBytes, timedOut := r.liveTranscriptSource(t.Context(), "engineer-codex-ward-1594", "/home/ubuntu/.ward/.codex/sessions")
+	if !timedOut {
+		t.Fatal("liveTranscriptSource did not report the bounded read timeout")
+	}
+	if len(bodyBytes) != 0 {
+		t.Fatalf("transcript body = %q, want empty on timeout", string(bodyBytes))
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("liveTranscriptSource took %s, want a prompt bounded return", elapsed)
 	}
 }
 

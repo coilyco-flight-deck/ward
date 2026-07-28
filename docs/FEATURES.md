@@ -7,7 +7,8 @@ Inventory of what `ward` ships today.
 - `ward exec` - gated repo dev verbs.
 - `ward audit` - append-only audit trail.
 - `ward git` - audited git.
-- `ward setup` - first-run `~/.ward/config.yaml` bootstrap + config/cache warmer.
+- `ward config drop` - clear local `config-ref`.
+- `ward setup` - first-run local config bootstrap + policy check.
 - `ward doctor` - runtime config validation.
 - `source-doc-refs` - source-comment documentation path validation.
 - `.ward/ward.yaml` - repo config schema in [ward-yaml.md](ward-yaml.md).

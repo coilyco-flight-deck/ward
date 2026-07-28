@@ -525,6 +525,7 @@ func (r *Runner) inspectContainerEnv(ctx context.Context, name string) map[strin
 // dockerContainerState is the inspect-time Docker state subset used for the OOM
 // breadcrumb. The JSON tags mirror `docker inspect --format {{json .State}}`.
 type dockerContainerState struct {
+	Status     string `json:"Status"`
 	OOMKilled  bool   `json:"OOMKilled"`
 	StartedAt  string `json:"StartedAt"`
 	FinishedAt string `json:"FinishedAt"`
