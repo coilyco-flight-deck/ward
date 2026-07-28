@@ -7,7 +7,8 @@ Start here for a first `warded` run.
 
 ## What you need
 
-- Docker running.
+- Docker initialized and running. Check it with
+  `docker version --format '{{.Server.Version}}'`.
 - A reachable issue tracker for the target repo.
 - The repo's `.ward/ward.yaml` if you are using the dev-verb gate.
 
@@ -38,7 +39,8 @@ warded engineer #98 --print
 5. drop `--print` only after the command shape looks right.
 
 If you are starting from a fresh host-local setup, run `ward setup` once to
-create `~/.ward/config.yaml`. For the director surface, an attached
+create `~/.ward/config.yaml` and get a Docker initialization prompt if the
+daemon is not ready. For the director surface, an attached
 `warded director` with no `--repo` or `--org` prompts once for a repo or org
 default and saves it as `director.default-scope`.
 

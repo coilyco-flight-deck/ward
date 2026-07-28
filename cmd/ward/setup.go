@@ -22,7 +22,12 @@ type setupReport struct {
 	phasePlan          string
 	localConfigPath    string
 	localConfigCreated bool
+	dockerPrompt       string
 	nextStep           string
+}
+
+var setupDockerReadiness = func(ctx context.Context) error {
+	return leanRunner().checkDockerReady(ctx)
 }
 
 func setupCommand() *cli.Command {
@@ -39,7 +44,7 @@ func setupCommand() *cli.Command {
 			"",
 			"AOSguard owns operator configuration and generated API surfaces.",
 			"",
-			"Phases: embedded policy -> launch checks -> host integration checks (stub).",
+			"Phases: embedded policy -> launch checks -> host integration checks.",
 		}, "\n"),
 		Action: func(ctx context.Context, _ *cli.Command) error {
 			report, err := runSetup(ctx)
@@ -56,7 +61,7 @@ func runSetup(ctx context.Context) (setupReport, error) {
 	_ = ctx
 	report := setupReport{
 		validatedSurfaces: []string{"fleet", "roles", "smart defaults", "topology"},
-		phasePlan:         "embedded policy -> launch checks -> host integration checks (stub)",
+		phasePlan:         "embedded policy -> launch checks -> host integration checks",
 		nextStep:          setupNextStep,
 	}
 
@@ -76,6 +81,10 @@ func runSetup(ctx context.Context) (setupReport, error) {
 	}
 	if _, err := loadSmartDefaultsFrom(src); err != nil {
 		return report, fmt.Errorf("setup surface compile: smart defaults: %w", err)
+	}
+	if err := setupDockerReadiness(ctx); err != nil {
+		report.dockerPrompt = err.Error()
+		report.nextStep = "initialize Docker, then restart warded"
 	}
 
 	return report, nil
@@ -120,6 +129,11 @@ func printSetupReport(report setupReport) {
 			status = "created"
 		}
 		_, _ = fmt.Fprintf(os.Stdout, "ward setup: config=%s (%s)\n", report.localConfigPath, status)
+	}
+	if strings.TrimSpace(report.dockerPrompt) == "" {
+		_, _ = fmt.Fprintln(os.Stdout, "ward setup: docker=ready")
+	} else {
+		_, _ = fmt.Fprintf(os.Stdout, "ward setup: docker=needs-init\n%s\n", report.dockerPrompt)
 	}
 	if strings.TrimSpace(report.nextStep) != "" {
 		_, _ = fmt.Fprintf(os.Stdout, "ward setup: next step: %s\n", report.nextStep)

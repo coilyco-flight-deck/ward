@@ -2335,6 +2335,13 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		}
 	}()
 
+	logDispatchDecision(decisionWriter, "host", "docker", "checking daemon readiness")
+	if err := r.checkDockerReady(ctx); err != nil {
+		logDispatchDecision(decisionWriter, "host", "docker", "failed: %s", firstLine(err.Error()))
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	logDispatchDecision(decisionWriter, "host", "docker", "ready")
+
 	// Ready the ward-tailnet network before the sweep + pull burn, so a host missing it
 	// gets it created here (idempotent), not a raw 125 mid-launch (ward#597).
 	if plan.SkipPreflight {
@@ -2450,6 +2457,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 // prelaunchDispatch runs the shared pre-`docker create` steps for dispatch paths:
 // the ward-tailnet ready-up (create-if-absent; ward#597), the sweep, the pull.
 func (r *Runner) prelaunchDispatch(ctx context.Context, c *cli.Command, plan upPlan, label string) error {
+	if err := r.checkDockerReady(ctx); err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
 	if err := r.preflightTailnet(ctx, plan); err != nil {
 		return err
 	}
