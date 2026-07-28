@@ -11,14 +11,12 @@ Start here when a run failed or seemed to do nothing.
 - never launched.
 - `ward exec` refused.
 - the run never landed on `main`.
-- capacity looks full even though `ward agent list` shows a ghost `container
-  starting` or `cleanup-needed` record.
+- capacity looks full with a ghost `container starting` or `cleanup-needed` record.
 
 ## What to check
 
 - `~/.ward/agent-logs/<container>/`.
-- `~/.ward/agent-logs/dispatch/` for brokered launch failures and host-wrapper
-  evidence.
+- `~/.ward/agent-logs/dispatch/` for brokered launch failures.
 - the reservation comment on the issue.
 - the preflight or trust gate that blocked the launch.
 - if the issue is already terminal, stale reservation cleanup is not the fix.
@@ -42,6 +40,8 @@ Start here when a run failed or seemed to do nothing.
   transient/superseded unless you can reproduce it on the current head.
 - if `promote.yml` fails after draft assets and the `ward:release` image alias
   both publish, compare the failure with [promote-run-2491.md](promote-run-2491.md).
+- if `release.yml` fails immediately in `promote-draft-assets`, compare
+  [release-run-2495.md](release-run-2495.md).
 - if the run vanished, the issue is usually in teardown or reap.
 - if `ward agent list --json` shows `phase: container starting` with
   `status: cleanup-needed` and an empty `started_at`, use the manual stale reservation cleanup path in
