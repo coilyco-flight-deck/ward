@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -36,6 +38,9 @@ var (
 	backlogModeLane = map[string]string{"headless": "headless", "interactive": "interactive", "consult": "consult"}
 	// backlogLanes is the print/iteration order of the lanes the loop tracks.
 	backlogLanes = []string{"headless", "pull-request", "interactive", "consult", "untriaged"}
+	// directorScopeSetupAttached is a seam for tests; production prompts only
+	// when stdin/stdout are attached to a terminal.
+	directorScopeSetupAttached = terminalAttached
 )
 
 const (
@@ -577,6 +582,12 @@ func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string, 
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", label, err)
 	}
+	if len(cfgOrgs) == 0 && len(cfgRepos) == 0 && directorScopeSetupAttached() {
+		cfgOrgs, cfgRepos, err = r.promptDirectorDefaultScope(label)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", label, err)
+		}
+	}
 	if len(cfgOrgs) > 0 || len(cfgRepos) > 0 {
 		expanded, eerr := r.expandOrgScopes(ctx, label, cfgOrgs)
 		if eerr != nil {
@@ -592,6 +603,170 @@ func (r *Runner) resolveDirectorDefaultScope(ctx context.Context, label string, 
 		return repos, nil
 	}
 	return nil, fmt.Errorf("%s: no --repo/--org given and no director.default-scope in ~/.ward/config.yaml", label)
+}
+
+type directorScopeKind string
+
+const (
+	directorScopeRepo   directorScopeKind = "repo"
+	directorScopeOrg    directorScopeKind = "org"
+	directorScopeCancel directorScopeKind = "cancel"
+)
+
+func (r *Runner) promptDirectorDefaultScope(label string) (orgs, repos []string, err error) {
+	reader := bufio.NewReader(r.gateIn())
+	w := r.gateErr()
+	_, _ = fmt.Fprintf(w, "%s: no --repo/--org given and no director.default-scope in ~/.ward/config.yaml\n\n", label)
+	_, _ = fmt.Fprintln(w, "Choose a default director scope to save:")
+	_, _ = fmt.Fprintln(w, "  1) Repo scope (owner/name, comma-separated)")
+	_, _ = fmt.Fprintln(w, "  2) Org scope (owner, comma-separated)")
+	_, _ = fmt.Fprintln(w, "  3) Cancel")
+	_, _ = fmt.Fprint(w, "Selection [1-3]: ")
+	choice, err := readDirectorScopeChoice(reader)
+	if err != nil {
+		return nil, nil, err
+	}
+	if choice == directorScopeCancel {
+		return nil, nil, errors.New("director scope setup canceled")
+	}
+	prompt := "Repo scope"
+	if choice == directorScopeOrg {
+		prompt = "Org scope"
+	}
+	_, _ = fmt.Fprintf(w, "%s: ", prompt)
+	entries, err := readDirectorScopeEntries(reader, choice)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := writeDirectorDefaultScope(entries); err != nil {
+		return nil, nil, err
+	}
+	path, _ := config.GlobalConfigPath()
+	if path != "" {
+		_, _ = fmt.Fprintf(w, "%s: saved director.default-scope to %s\n\n", label, path)
+	}
+	orgs, repos = partitionScopeEntries(entries)
+	return orgs, repos, nil
+}
+
+func readDirectorScopeChoice(reader *bufio.Reader) (directorScopeKind, error) {
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("read scope selection: %w", err)
+	}
+	switch strings.TrimSpace(line) {
+	case "1", "repo", "repos", "r":
+		return directorScopeRepo, nil
+	case "2", "org", "orgs", "o":
+		return directorScopeOrg, nil
+	case "3", "cancel", "c", "q", "quit":
+		return directorScopeCancel, nil
+	default:
+		return "", fmt.Errorf("invalid scope selection %q (want 1, 2, or 3)", strings.TrimSpace(line))
+	}
+}
+
+func readDirectorScopeEntries(reader *bufio.Reader, kind directorScopeKind) ([]string, error) {
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("read scope value: %w", err)
+	}
+	entries := dedupeSlugs(strings.Split(line, ","))
+	if len(entries) == 0 {
+		return nil, errors.New("empty director.default-scope")
+	}
+	for _, entry := range entries {
+		hasSlash := strings.Contains(entry, "/")
+		switch {
+		case kind == directorScopeRepo && !hasSlash:
+			return nil, fmt.Errorf("repo scope entry %q must be owner/name", entry)
+		case kind == directorScopeOrg && hasSlash:
+			return nil, fmt.Errorf("org scope entry %q must be an owner, not owner/name", entry)
+		}
+	}
+	return entries, nil
+}
+
+func writeDirectorDefaultScope(entries []string) error {
+	path, err := config.GlobalConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create config dir %s: %w", filepath.Dir(path), err)
+	}
+	doc, mapping, err := loadOrCreateGlobalConfigDocument(path)
+	if err != nil {
+		return err
+	}
+	director := mappingChildMapping(mapping, "director")
+	setMappingValue(director, "default-scope", scopeEntriesNode(entries))
+	return writeYAMLDocument(path, doc)
+}
+
+func loadOrCreateGlobalConfigDocument(path string) (*yaml.Node, *yaml.Node, error) {
+	body, err := os.ReadFile(path) // #nosec G304 -- ~/.ward/config.yaml is the intended operator-local input.
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return nil, nil, fmt.Errorf("read %s: %w", path, err)
+		}
+		doc := &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode}}}
+		return doc, doc.Content[0], nil
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(body, &doc); err != nil {
+		return nil, nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	mapping, hasMapping, err := documentMapping(&doc, path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !hasMapping {
+		doc = yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode}}}
+		mapping = doc.Content[0]
+	}
+	return &doc, mapping, nil
+}
+
+func mappingChildMapping(mapping *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value != key {
+			continue
+		}
+		child := mapping.Content[i+1]
+		if child.Kind != yaml.MappingNode {
+			child.Kind = yaml.MappingNode
+			child.Tag = "!!map"
+			child.Value = ""
+			child.Content = nil
+		}
+		return child
+	}
+	child := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	mapping.Content = append(mapping.Content, scalarNode(key), child)
+	return child
+}
+
+func setMappingValue(mapping *yaml.Node, key string, value *yaml.Node) {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			mapping.Content[i+1] = value
+			return
+		}
+	}
+	mapping.Content = append(mapping.Content, scalarNode(key), value)
+}
+
+func scopeEntriesNode(entries []string) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+	for _, entry := range dedupeSlugs(entries) {
+		node.Content = append(node.Content, scalarNode(entry))
+	}
+	return node
+}
+
+func scalarNode(value string) *yaml.Node {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
 }
 
 // wardGlobalConfig is the slice of ~/.ward/config.yaml ward reads today.
