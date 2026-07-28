@@ -1135,6 +1135,44 @@ func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
 	}
 }
 
+func TestComposeContextInteractiveIntroductionBlock(t *testing.T) {
+	const marker = "begin your first response with a\nbrief introduction"
+	r := &Runner{}
+
+	compose := func(env bootstrapEnv) string {
+		t.Helper()
+		env.ContextLevel = "0"
+		env.ContextSrc = filepath.Join(t.TempDir(), "absent")
+		env.AgentHome = t.TempDir()
+		if env.Mode == "" {
+			env.Mode = "codex"
+		}
+		r.composeContext(env)
+		data, err := os.ReadFile(filepath.Join(env.AgentHome, "AGENTS.md"))
+		if err != nil {
+			t.Fatalf("read composed context: %v", err)
+		}
+		return string(data)
+	}
+
+	interactive := compose(bootstrapEnv{})
+	for _, want := range []string{"Interactive startup", "selected Ward role", "WARD_ROLE", "WARD_AGENT", "WARD_TARGET_REPO"} {
+		if !strings.Contains(interactive, want) {
+			t.Errorf("interactive context missing %q\n%s", want, interactive)
+		}
+	}
+	if !strings.Contains(interactive, marker) {
+		t.Errorf("interactive context missing startup introduction guidance\n%s", interactive)
+	}
+
+	if headless := compose(bootstrapEnv{Headless: true}); strings.Contains(headless, marker) {
+		t.Errorf("headless context should not carry interactive intro guidance\n%s", headless)
+	}
+	if ask := compose(bootstrapEnv{Ask: true}); strings.Contains(ask, marker) {
+		t.Errorf("ask context should not carry interactive intro guidance\n%s", ask)
+	}
+}
+
 func TestComposeClaudeSettingsInjectsStatusLineOnlyForClaude(t *testing.T) {
 	base := []byte(`{"tui":"fullscreen","permissions":{"defaultMode":"bypassPermissions"}}`)
 	gotClaude := composeClaudeSettings(modeClaude, base)
