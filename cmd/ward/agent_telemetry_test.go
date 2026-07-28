@@ -11,7 +11,6 @@ func TestRedactSecrets(t *testing.T) {
 		name string
 		in   string
 	}{
-		{"aws", "key AKIAIOSFODNN7EXAMPLE here"},
 		{"github-classic", "tok ghp_1234567890abcdefghijklmnopqrstuvwxyz here"},
 		{"github-pat", "github_pat_" + strings.Repeat("a", 82) + " end"},
 		{"anthropic", "sk-ant-api03-" + strings.Repeat("a", 95) + " end"},
@@ -53,9 +52,9 @@ func TestExtractEnvelopesDropsBodiesAndRedacts(t *testing.T) {
 		// A Write whose content body carries a token, plus a file path.
 		`{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/workspace/ward/x.go","content":"secret ghp_1234567890abcdefghijklmnopqrstuvwxyz body"}}]}}`,
 		// A Bash that pushes + echoes a token in its command (an arg, so redacted).
-		`{"type":"assistant","timestamp":"2026-06-26T02:00:01Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"git push origin HEAD:main # AKIAIOSFODNN7EXAMPLE"}}]}}`,
+		`{"type":"assistant","timestamp":"2026-06-26T02:00:01Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"git push origin HEAD:main # ghs_1234567890abcdefghijklmnopqrstuvwxyz"}}]}}`,
 		// The Bash result errors, after 2s.
-		`{"type":"user","timestamp":"2026-06-26T02:00:03Z","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":"fatal: leaked AKIAIOSFODNN7EXAMPLE in result body"}]}}`,
+		`{"type":"user","timestamp":"2026-06-26T02:00:03Z","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":"fatal: leaked ghs_1234567890abcdefghijklmnopqrstuvwxyz in result body"}]}}`,
 	}, "\n")
 
 	envs := extractEnvelopes([]byte(transcript), true)
@@ -84,8 +83,8 @@ func TestExtractEnvelopesDropsBodiesAndRedacts(t *testing.T) {
 	if !strings.Contains(bash.Args["command"], redactionPlaceholder) {
 		t.Errorf("Bash command not redacted: %q", bash.Args["command"])
 	}
-	if strings.Contains(bash.Args["command"], "AKIA") {
-		t.Errorf("Bash command leaked the AWS id: %q", bash.Args["command"])
+	if strings.Contains(bash.Args["command"], "ghs_") {
+		t.Errorf("Bash command leaked the token: %q", bash.Args["command"])
 	}
 	if bash.Lifecycle != lifecyclePush {
 		t.Errorf("Bash lifecycle = %q, want %q", bash.Lifecycle, lifecyclePush)
@@ -124,9 +123,9 @@ func TestExtractEnvelopesFullKeepsBodies(t *testing.T) {
 // TestRedactConsole scrubs secret shapes from a drained console while preserving
 // its line structure, the redacted-at-rest console view (ward#526).
 func TestRedactConsole(t *testing.T) {
-	console := []byte("starting run\nleaked ghp_1234567890abcdefghijklmnopqrstuvwxyz here\nand AKIAIOSFODNN7EXAMPLE too\ndone\n")
+	console := []byte("starting run\nleaked ghp_1234567890abcdefghijklmnopqrstuvwxyz here\nand ghs_1234567890abcdefghijklmnopqrstuvwxyz too\ndone\n")
 	got := string(redactConsole(console))
-	if strings.Contains(got, "ghp_") || strings.Contains(got, "AKIA") {
+	if strings.Contains(got, "ghp_") || strings.Contains(got, "ghs_") {
 		t.Errorf("redactConsole left a secret shape in: %q", got)
 	}
 	if !strings.Contains(got, redactionPlaceholder) {
@@ -149,11 +148,11 @@ func TestRedactConsole(t *testing.T) {
 func TestRedactedTranscript(t *testing.T) {
 	transcript := strings.Join([]string{
 		`{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/workspace/ward/x.go","content":"secret ghp_1234567890abcdefghijklmnopqrstuvwxyz body"}}]}}`,
-		`{"type":"assistant","timestamp":"2026-06-26T02:00:01Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"git push origin HEAD:main # AKIAIOSFODNN7EXAMPLE"}}]}}`,
+		`{"type":"assistant","timestamp":"2026-06-26T02:00:01Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"git push origin HEAD:main # ghs_1234567890abcdefghijklmnopqrstuvwxyz"}}]}}`,
 	}, "\n")
 
 	got := redactedTranscript([]byte(transcript))
-	if strings.Contains(string(got), "ghp_") || strings.Contains(string(got), "AKIA") {
+	if strings.Contains(string(got), "ghp_") || strings.Contains(string(got), "ghs_") {
 		t.Errorf("redactedTranscript leaked a secret: %q", got)
 	}
 	// The Write body must be gone entirely (dropped, not scrubbed-and-kept).

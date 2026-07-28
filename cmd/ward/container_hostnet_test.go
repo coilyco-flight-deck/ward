@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -98,7 +97,7 @@ func TestResolveTailnet(t *testing.T) {
 }
 
 // TestBuildUpPlanTailnet covers ward#362: the role's guardfile set selects the
-// platform mechanism and implies the ~/.aws mount.
+// platform mechanism.
 func TestBuildUpPlanTailnet(t *testing.T) {
 	run := func(role string, args []string) upPlan {
 		var got upPlan
@@ -120,30 +119,18 @@ func TestBuildUpPlanTailnet(t *testing.T) {
 		return got
 	}
 
-	hasAWSMount := func(p upPlan) bool {
-		for _, m := range p.Mounts {
-			if m.Target == containerAWSMount {
-				return true
-			}
-		}
-		return false
-	}
-
 	// Director carries the live-observe set.
 	p := run(roleDirector, nil)
-	if runtime.GOOS == "linux" {
+	if goos := launchHostGOOS(); goos == "linux" {
 		if !p.HostNet || p.TSSidecar {
 			t.Errorf("director role on linux should resolve host-net, got HostNet=%v TSSidecar=%v", p.HostNet, p.TSSidecar)
 		}
 	} else if !p.TSSidecar || p.HostNet {
-		t.Errorf("director role on %s should resolve the sidecar, got HostNet=%v TSSidecar=%v", runtime.GOOS, p.HostNet, p.TSSidecar)
-	}
-	if !hasAWSMount(p) {
-		t.Error("director role should imply the ~/.aws mount")
+		t.Errorf("director role on %s should resolve the sidecar, got HostNet=%v TSSidecar=%v", goos, p.HostNet, p.TSSidecar)
 	}
 
 	// Engineer stays least-access.
-	if p := run(roleEngineer, nil); p.HostNet || p.TSSidecar || hasAWSMount(p) {
-		t.Errorf("engineer default: HostNet=%v TSSidecar=%v aws-mounted=%v, want all false", p.HostNet, p.TSSidecar, hasAWSMount(p))
+	if p := run(roleEngineer, nil); p.HostNet || p.TSSidecar {
+		t.Errorf("engineer default: HostNet=%v TSSidecar=%v, want all false", p.HostNet, p.TSSidecar)
 	}
 }

@@ -48,7 +48,7 @@ roles {
         }
     }
     role director {
-        guardfiles aws.kdl tailscale.kdl
+        guardfiles tailscale.kdl
         agent claude {
             model "claude-opus-4-8[1m]"
             reasoning-effort high

@@ -123,7 +123,7 @@ func TestTSSidecarWardEnv(t *testing.T) {
 	if strings.Contains(env["WARD_TS_SOCKS5"], "127.0.0.1") {
 		t.Errorf("WARD_TS_SOCKS5 must dial the box by name, not loopback; got %q", env["WARD_TS_SOCKS5"])
 	}
-	// The tower endpoint is the MagicDNS name (by name, no SSM IP), dialed :11434.
+	// The tower endpoint is the MagicDNS name, dialed :11434.
 	if got := env["WARD_TOWER_OLLAMA"]; got != towerOllamaURL() {
 		t.Errorf("WARD_TOWER_OLLAMA = %q, want %q", got, towerOllamaURL())
 	}

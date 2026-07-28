@@ -30,7 +30,7 @@ func TestPolicyBoundaryNativePolicyIgnoresStaleOperatorConfigRef(t *testing.T) {
 
 func TestPolicyBoundaryRootOmitsGeneratedOperatorSurfaces(t *testing.T) {
 	root := rootCommand()
-	for _, gone := range []string{"ops", "docker", "aws", "kubectl", "pkg"} {
+	for _, gone := range []string{"ops", "docker", "kubectl", "pkg"} {
 		if commandNamed(root.Commands, gone) != nil {
 			t.Errorf("root still exposes generated operator surface %q", gone)
 		}

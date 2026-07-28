@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"testing"
 
@@ -134,8 +133,8 @@ func TestAgentHostCtxCarve(t *testing.T) {
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
 	hc := r.agentHostCtx(context.Background())
 
-	if hc.GOOS != runtime.GOOS {
-		t.Errorf("GOOS = %q, want %q", hc.GOOS, runtime.GOOS)
+	if hc.GOOS != launchHostGOOS() {
+		t.Errorf("GOOS = %q, want %q", hc.GOOS, launchHostGOOS())
 	}
 	if hc.Home != homeDir() {
 		t.Errorf("Home = %q, want %q", hc.Home, homeDir())

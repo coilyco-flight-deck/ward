@@ -6,20 +6,18 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 )
 
-// agent_capability.go resolves a startup role's host/cloud reach from the
-// embedded fleet config's per-role guardfile sets (ward#578). See docs/agent-flags.md.
+// agent_capability.go resolves a startup role's network reach from the embedded
+// fleet config's per-role guardfile sets (ward#578). See docs/agent-flags.md.
 
 // Well-known capability guardfile names a role's set can hold; ward binds each to
 // the host mechanism it ships. A name outside this set grants no container capability.
 const (
-	guardfileAWS       = "aws.kdl"       // -> export host creds + inject AWS_* env (mount ~/.aws:ro is the fallback)
 	guardfileTailscale = "tailscale.kdl" // -> join the tailnet
 )
 
-// roleCapability is the resolved host/cloud reach a role holds: the two opt-in
-// mechanisms ward composes at launch. Zero value is least-access.
+// roleCapability is the resolved host reach a role holds. Zero value is
+// least-access.
 type roleCapability struct {
-	aws     bool // deliver AWS creds: export the host chain into AWS_* env, else mount ~/.aws:ro
 	tailnet bool // join the tailnet (the tailscale guardfile's declared network)
 }
 
@@ -42,7 +40,6 @@ func capabilityForRole(role string) roleCapability {
 // the host mechanisms ward knows how to compose.
 func capabilityFromGuardfiles(g fleetconfig.Guardfiles) roleCapability {
 	return roleCapability{
-		aws:     guardfileInSet(guardfileAWS, g),
 		tailnet: guardfileInSet(guardfileTailscale, g),
 	}
 }
@@ -64,11 +61,7 @@ func guardfileInSet(name string, g fleetconfig.Guardfiles) bool {
 // resolveCapability resolves the role's config-driven capability. The source of
 // truth is the embedded fleet config.
 func resolveCapability(role string) roleCapability {
-	caps := capabilityForRole(role)
-	if caps.tailnet {
-		caps.aws = true
-	}
-	return caps
+	return capabilityForRole(role)
 }
 
 // resolveCapabilityWithOptOut resolves the role capability and applies the
@@ -76,10 +69,8 @@ func resolveCapability(role string) roleCapability {
 func resolveCapabilityWithOptOut(role string, noTailnet bool) roleCapability {
 	caps := resolveCapability(role)
 	if noTailnet {
-		// "Stay isolated" wins over the role default + a stray tailnet grant:
-		// drop the tailnet and the role-granted ~/.aws.
+		// "Stay isolated" wins over the role default + a stray tailnet grant.
 		caps.tailnet = false
-		caps.aws = false
 	}
 	return caps
 }

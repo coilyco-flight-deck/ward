@@ -405,12 +405,12 @@ func TestLeastAccessMountsDefaultIsCwdOnly(t *testing.T) {
 }
 
 func TestLeastAccessMountsOptIns(t *testing.T) {
-	mounts := leastAccessMounts("/cwd", mountOpts{AssetsDir: "/a", AWSHome: "/home/kai/.aws", WardSource: "/src/ward"})
+	mounts := leastAccessMounts("/cwd", mountOpts{AssetsDir: "/a", WardSource: "/src/ward"})
 	targets := map[string]bool{}
 	for _, m := range mounts {
 		targets[m.Target] = true
 	}
-	for _, want := range []string{containerContextMount, containerGitcacheMnt, containerWardAssets, containerEntrypointPath, containerAWSMount, containerWardSrcMount} {
+	for _, want := range []string{containerContextMount, containerGitcacheMnt, containerWardAssets, containerEntrypointPath, containerWardSrcMount} {
 		if !targets[want] {
 			t.Errorf("opt-in mount set missing %q", want)
 		}
@@ -1164,7 +1164,7 @@ func TestDockerCreateArgvLaunchEnvAllowlist(t *testing.T) {
 	t.Setenv("WARD_GIT_NAME", "host-bot")
 	t.Setenv("WARD_GIT_EMAIL", "host@example.com")
 	t.Setenv("FORGEJO_TOKEN", "dont-pass")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "dont-pass")
+	t.Setenv("PRIVATE_SERVICE_TOKEN", "dont-pass")
 
 	joined := strings.Join(dockerCreateArgv(sampleUpPlan(), ""), " ")
 	for _, want := range []string{
@@ -1189,7 +1189,7 @@ func TestDockerCreateArgvLaunchEnvAllowlist(t *testing.T) {
 		"WARD_GIT_NAME=host-bot",
 		"WARD_GIT_EMAIL=host@example.com",
 		"FORGEJO_TOKEN=dont-pass",
-		"AWS_SECRET_ACCESS_KEY=dont-pass",
+		"PRIVATE_SERVICE_TOKEN=dont-pass",
 	} {
 		if strings.Contains(joined, denied) {
 			t.Errorf("docker argv leaked denied env %q\n got: %s", denied, joined)
@@ -1327,7 +1327,7 @@ func TestDetachedSiblingCopyArgvDistinguishesDirectoriesAndFiles(t *testing.T) {
 func TestDetachedSiblingCopyArgvSkipsMissingOptionalSource(t *testing.T) {
 	got, exists, err := detachedSiblingCopyArgv(mountSpec{
 		Source: filepath.Join(t.TempDir(), "missing"),
-		Target: containerAWSMount,
+		Target: containerContextBundle,
 	}, "sibling-id")
 	if err != nil {
 		t.Fatalf("detachedSiblingCopyArgv: %v", err)
@@ -1819,7 +1819,7 @@ func envLineValue(lines []agentsapi.EnvLine, key string) (string, bool) {
 }
 
 // TestResolveAgentCredsRouting checks the host resolver routes by mode through the
-// drained CredentialProvider seam (codex auth.json, goose SSM, opencode none; ward#425).
+// drained CredentialProvider seam (codex auth.json, opencode none; ward#425).
 func TestResolveAgentCredsRouting(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
@@ -1829,15 +1829,7 @@ func TestResolveAgentCredsRouting(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte("codex-auth-blob"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// A stub `aws` so goose's SSM resolution is hermetic: it prints a known host
-	// regardless of argv, standing in for `aws ssm get-parameter`.
-	const towerHost = "http://tower.tailnet:11434"
-	stub := filepath.Join(home, "aws")
-	writeTestShellCommand(t, stub, "#!/bin/sh\necho "+towerHost+"\n")
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(bin string) (string, error) {
-		if bin == "aws" {
-			return stub, nil
-		}
 		return "", fmt.Errorf("unexpected binary %q", bin)
 	}}}
 
@@ -1853,18 +1845,8 @@ func TestResolveAgentCredsRouting(t *testing.T) {
 	if _, ok := envLineValue(codex, "WARD_CLAUDE_CREDS_B64"); ok {
 		t.Errorf("codex mode must not resolve a claude credential, got %+v", codex)
 	}
-	// goose binds the tower Ollama, so ward resolves and injects its endpoint.
-	goose := r.resolveAgentCreds(t.Context(), modeGoose)
-	genc, ok := envLineValue(goose, "WARD_GOOSE_OLLAMA_HOST_B64")
-	if !ok {
-		t.Fatalf("goose mode: no WARD_GOOSE_OLLAMA_HOST_B64 line, got %+v", goose)
-	}
-	gdec, gerr := base64.StdEncoding.DecodeString(genc)
-	if gerr != nil || string(gdec) != towerHost {
-		t.Errorf("goose host did not round-trip: dec=%q err=%v", gdec, gerr)
-	}
-	if len(goose) != 1 {
-		t.Errorf("goose mode must resolve only its ollama host, got %+v", goose)
+	if c := r.resolveAgentCreds(t.Context(), modeGoose); len(c) != 0 {
+		t.Errorf("goose must resolve no host creds by default, got %+v", c)
 	}
 	// opencode's provider is image-configured (local ollama), so ward injects nothing.
 	if c := r.resolveAgentCreds(t.Context(), modeOpencode); len(c) != 0 {
@@ -1899,7 +1881,6 @@ func TestBuildUpPlanWardVersion(t *testing.T) {
 				&cli.StringFlag{Name: "tag", Value: containerImageTagDefault},
 				&cli.StringFlag{Name: "branch"},
 				&cli.StringSliceFlag{Name: "repo"},
-				&cli.BoolFlag{Name: "aws"},
 				&cli.BoolFlag{Name: "detach"},
 			},
 			Action: func(_ context.Context, c *cli.Command) error {
@@ -1938,7 +1919,6 @@ func TestBuildUpPlanWardVersionSource(t *testing.T) {
 				&cli.StringFlag{Name: "tag", Value: containerImageTagDefault},
 				&cli.StringFlag{Name: "branch"},
 				&cli.StringSliceFlag{Name: "repo"},
-				&cli.BoolFlag{Name: "aws"},
 				&cli.BoolFlag{Name: "detach"},
 			},
 			Action: func(_ context.Context, c *cli.Command) error {
@@ -1987,7 +1967,6 @@ func TestBuildUpPlanWardDowngradeGuard(t *testing.T) {
 				&cli.StringFlag{Name: "branch"},
 				&cli.StringSliceFlag{Name: "repo"},
 				&cli.BoolFlag{Name: "allow-ward-downgrade"},
-				&cli.BoolFlag{Name: "aws"},
 				&cli.BoolFlag{Name: "detach"},
 			},
 			Action: func(_ context.Context, c *cli.Command) error {

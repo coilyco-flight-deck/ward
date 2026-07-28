@@ -25,38 +25,33 @@ import (
 const (
 	// envGitHubAppID names the numeric App ID (the JWT `iss`), operator-supplied.
 	envGitHubAppID = "WARD_GITHUB_APP_ID"
-	// envGitHubAppKeySSM names the SSM param holding the App's PEM private key. The
-	// param NAME is operator config (env); the key VALUE never leaves SSM until dispatch.
-	envGitHubAppKeySSM = "WARD_GITHUB_APP_KEY_SSM"
+	// envGitHubAppPrivateKey names the PEM private key for App token minting.
+	envGitHubAppPrivateKey = "WARD_GITHUB_APP_PRIVATE_KEY"
 )
 
 // githubAPIBase is the GitHub REST origin the App mint calls hit; a package var so a
 // test can point it at an httptest server. Never on argv, never audited.
 var githubAPIBase = "https://api.github.com"
 
-// resolveGitHubTokenFromApp mints an owner/repo-scoped installation token: env config ->
-// PEM from SSM -> App JWT -> installation lookup -> repo-scoped token (ward#534).
+// resolveGitHubTokenFromApp mints an owner/repo-scoped installation token:
+// env config -> App JWT -> installation lookup -> repo-scoped token (ward#534).
 func (r *Runner) resolveGitHubTokenFromApp(ctx context.Context, owner, repo string) (string, error) {
 	appID := strings.TrimSpace(os.Getenv(envGitHubAppID))
-	keySSM := strings.TrimSpace(os.Getenv(envGitHubAppKeySSM))
-	if appID == "" || keySSM == "" {
+	pemKey := strings.TrimSpace(os.Getenv(envGitHubAppPrivateKey))
+	if appID == "" || pemKey == "" {
 		return "", fmt.Errorf(
-			"ward: WARD_GITHUB_TOKEN_SOURCE=app needs %s (the App ID) and %s (the SSM param holding the App private key) - "+
+			"ward: WARD_GITHUB_TOKEN_SOURCE=app needs %s (the App ID) and %s (the App private key PEM) - "+
 				"set both from operator config, or switch to WARD_GITHUB_TOKEN_SOURCE=env or gh. "+
 				"app mode is gated on a registered GitHub App (ward#534). See docs/github-token.md",
-			envGitHubAppID, envGitHubAppKeySSM)
+			envGitHubAppID, envGitHubAppPrivateKey)
 	}
 	if owner == "" || repo == "" {
 		return "", fmt.Errorf("ward: WARD_GITHUB_TOKEN_SOURCE=app needs a target owner/repo to scope the installation token, but none was resolved")
 	}
 
-	pemKey, err := r.ssmValueResolver(ctx, keySSM)
-	if err != nil {
-		return "", fmt.Errorf("ward: app mode: resolve App private key from SSM param %q (host needs aws creds): %w", keySSM, err)
-	}
 	key, err := parseRSAPrivateKeyPEM(pemKey)
 	if err != nil {
-		return "", fmt.Errorf("ward: app mode: parse App private key from SSM param %q: %w", keySSM, err)
+		return "", fmt.Errorf("ward: app mode: parse App private key from %s: %w", envGitHubAppPrivateKey, err)
 	}
 
 	jwt, err := signAppJWT(key, appID, time.Now())

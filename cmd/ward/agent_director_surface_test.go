@@ -152,39 +152,25 @@ func TestBuildUpPlanDirectorSurfaceThreading(t *testing.T) {
 	}
 }
 
-// resolveForgejoToken prefers an already-present FORGEJO_TOKEN over the host SSM
-// lookup, so a `warded #N` dispatched from inside an explore box resolves (ward#315).
+// resolveForgejoToken prefers an already-present FORGEJO_TOKEN so a `warded #N`
+// dispatched from inside an explore box resolves (ward#315).
 func TestResolveForgejoTokenPrefersEnv(t *testing.T) {
-	stub := tokenStub(t, "ssm-token")
-	r, _, _ := bufRunner(stub)
+	r, _, _ := bufRunner("")
 
-	// No WARD_BROKER_SOCK here, so the broker seed is inert and the env/SSM path runs.
+	// No WARD_BROKER_SOCK here, so the broker seed is inert and the env path runs.
 	t.Setenv("FORGEJO_TOKEN", "env-token")
 	got, err := r.resolveForgejoToken(t.Context(), broker.Target{}, forgeForgejo)
 	if err != nil {
 		t.Fatalf("resolveForgejoToken (env set): %v", err)
 	}
 	if got != "env-token" {
-		t.Errorf("with FORGEJO_TOKEN set, resolveForgejoToken = %q, want the env value (no SSM call)", got)
+		t.Errorf("with FORGEJO_TOKEN set, resolveForgejoToken = %q, want the env value", got)
 	}
 
 	t.Setenv("FORGEJO_TOKEN", "")
-	got, err = r.resolveForgejoToken(t.Context(), broker.Target{}, forgeForgejo)
-	if err != nil {
-		t.Fatalf("resolveForgejoToken (env empty): %v", err)
+	if _, err = r.resolveForgejoToken(t.Context(), broker.Target{}, forgeForgejo); err == nil {
+		t.Fatal("resolveForgejoToken with no env or broker seed: want error, got nil")
 	}
-	if got != "ssm-token" {
-		t.Errorf("with FORGEJO_TOKEN empty, resolveForgejoToken = %q, want the SSM fallback", got)
-	}
-}
-
-// tokenStub writes a stand-in binary that echoes a fixed token, standing in for the
-// `aws ssm get-parameter` call resolveForgejoToken makes when the env var is unset.
-func tokenStub(t *testing.T, token string) string {
-	t.Helper()
-	stub := filepath.Join(t.TempDir(), "aws")
-	writeTestShellCommand(t, stub, "#!/bin/sh\necho "+token+"\n")
-	return stub
 }
 
 // readBootstrapEnv maps WARD_READONLY onto bootstrapEnv.ReadOnly (the in-container

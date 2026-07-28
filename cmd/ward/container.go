@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"embed"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -44,16 +43,6 @@ func loadSubstrateManifest() ([]substrateRepo, error) {
 	return parseSubstrateManifest(string(data))
 }
 
-// forgejoTokenSSMPath is the host-resolved git-over-HTTPS push token: the
-// coilyco-ops bot, not a personal PAT (ward#161). See docs/agent-attribution.md.
-
-// #nosec G101 -- this is an SSM parameter path, not an embedded secret.
-const forgejoTokenSSMPath = "/forgejo/coilyco-ops/api-token"
-
-// ollamaHostSSMPath is the SSM param for the tower Ollama endpoint goose binds;
-// ward resolves it host-side (the container has no aws creds). docs/agent.md (ward#186).
-const ollamaHostSSMPath = "/coilysiren/ollama/host"
-
 // containerCommand is the Hidden `ward container` umbrella (ward#263): only the
 // entrypoint-internal reap/bootstrap leaves remain. See docs/container.md.
 func containerCommand() *cli.Command {
@@ -89,7 +78,7 @@ const (
 )
 
 // resolveAgentCreds resolves the host-side credential env-file lines a mode needs
-// through the drained CredentialProvider seam (goose's Ollama host aside; ward#425).
+// through the drained CredentialProvider seam (ward#425).
 func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []agentsapi.EnvLine {
 	if inherited := inheritedAgentCredential(mode); inherited != nil {
 		return inherited
@@ -97,11 +86,6 @@ func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []ag
 	if agent, ok := agents.Lookup(string(mode)); ok {
 		if cp, ok := agent.(agentsapi.CredentialProvider); ok {
 			return cp.ResolveCreds(r.agentHostCtx(ctx))
-		}
-	}
-	if mode == modeGoose {
-		if host := r.resolveOllamaHost(ctx); host != "" {
-			return []agentsapi.EnvLine{{Key: gooseOllamaHostEnvKey, Value: base64.StdEncoding.EncodeToString([]byte(host))}}
 		}
 	}
 	return nil
@@ -164,14 +148,10 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	if err != nil {
 		return upPlan{}, err
 	}
-	// Host/cloud capability is the role's guardfile set (ward#578; docs/agent-flags.md),
-	// resolved to the mechanisms ward composes; a tailnet grant implies the ~/.aws mount.
+	// Host capability is the role's guardfile set (ward#578; docs/agent-flags.md),
+	// resolved to the mechanisms ward composes.
 	capab := resolveCapabilityWithOptOut(role, c.Bool("no-tailnet"))
 	hostNet, tsSidecar := resolveTailnetMechanism(launchHostGOOS(), capab.tailnet)
-	awsHome := ""
-	if capab.aws {
-		awsHome = filepath.Join(homeDir(), ".aws")
-	}
 	// extraRepoGrant reads the --repo grant on the agent surfaces and --with-repo on
 	// director (ward#280, ward#362; docs/container-multi-repo.md).
 	extra, err := parseExtraRepos(extraRepoGrant(c), repo)
@@ -218,10 +198,8 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		Branch:      c.String("branch"),
 		ForgejoBase: forgejoBaseURL,
 		HostCwd:     cwd,
-		AWSHome:     awsHome,
 		Mounts: appendSurfaceMounts(leastAccessMounts(cwd, mountOpts{
 			AssetsDir:     assetsDir,
-			AWSHome:       awsHome,
 			WardSource:    wardSrc,
 			AgentLogsDir:  agentLogs,
 			ContextBundle: contextBundle.Root,
@@ -303,35 +281,6 @@ func (r *Runner) maybeWarnHostNet(plan upPlan) {
 	}
 }
 
-// maybeWarnAWSMount warns when the aws capability bound ~/.aws but the host has no
-// creds there, so an empty-dir mount doesn't read as working SSM (ward#579).
-func (r *Runner) maybeWarnAWSMount(plan upPlan) {
-	if plan.AWSHome == "" {
-		return
-	}
-	if msg, warn := awsMountMissingWarning(plan.AWSHome, awsHomeHasCreds(plan.AWSHome)); warn {
-		w := r.Runner.Stderr
-		if w == nil {
-			w = os.Stderr
-		}
-		writeln(w, msg)
-	}
-}
-
-// awsHomeHasCreds reports whether the host ~/.aws dir holds a config or credentials
-// file (the two the AWS SDK reads); a missing or empty dir reads false (ward#579).
-func awsHomeHasCreds(awsHome string) bool {
-	if awsHome == "" {
-		return false
-	}
-	for _, name := range []string{"credentials", "config"} {
-		if fi, err := os.Stat(filepath.Join(awsHome, name)); err == nil && !fi.IsDir() {
-			return true
-		}
-	}
-	return false
-}
-
 // terminalAttached reports whether stdin and stdout are both terminals - the
 // precondition docker needs before allocating a pseudo-TTY. See docs/container.md.
 func terminalAttached() bool {
@@ -362,21 +311,8 @@ func (r *Runner) resolveTarget(ctx context.Context, arg string) (targetRepo, str
 	return repo, cwd, err
 }
 
-// resolveOllamaHost reads the tower Ollama endpoint from SSM host-side so goose can
-// bind it (the container can't resolve SSM). Best-effort: empty falls back.
-func (r *Runner) resolveOllamaHost(ctx context.Context) string {
-	out, err := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
-		"--name", ollamaHostSSMPath, "--with-decryption",
-		"--query", "Parameter.Value", "--output", "text")
-	if err != nil {
-		writef(os.Stderr, "ward container: could not resolve %s from SSM (%v); goose will fall back to its config default ollama host\n", ollamaHostSSMPath, err)
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
 // resolveForgejoToken resolves the child env-file's push/API token: GitHub and GitLab
-// from host-side env or CLI fallbacks; Forgejo via broker seed, env, then SSM.
+// from host-side env or CLI fallbacks; Forgejo via broker seed or env.
 func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, f forge) (string, error) {
 	if tok := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); tok != "" {
 		return tok, nil
@@ -393,13 +329,7 @@ func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, 
 	if tok, ok := r.brokerDispatchSeed(ctx, target); ok {
 		return tok, nil
 	}
-	out, err := r.Runner.Capture(ctx, "aws", "ssm", "get-parameter",
-		"--name", forgejoTokenSSMPath, "--with-decryption",
-		"--query", "Parameter.Value", "--output", "text")
-	if err != nil {
-		return "", fmt.Errorf("ward container: resolve %s from SSM (host needs aws creds, or set FORGEJO_TOKEN): %w", forgejoTokenSSMPath, err)
-	}
-	return strings.TrimSpace(string(out)), nil
+	return "", fmt.Errorf("ward container: resolve Forgejo token: set FORGEJO_TOKEN or launch through a credential broker")
 }
 
 func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg forge, creds []agentsapi.EnvLine) (path string, cleanup func(), err error) {

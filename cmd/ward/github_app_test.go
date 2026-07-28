@@ -12,8 +12,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -34,20 +32,6 @@ func genTestKeyPEM(t *testing.T) (*rsa.PrivateKey, string) {
 		Bytes: x509.MarshalPKCS1PrivateKey(key),
 	})
 	return key, string(pemBytes)
-}
-
-// awsPEMStubRunner writes a stand-in `aws` that prints pemKey (ignoring argv) and wires a
-// Runner resolving every binary to it, standing in for the SSM fetch.
-func awsPEMStubRunner(t *testing.T, pemKey string) *Runner {
-	t.Helper()
-	keyFile := filepath.Join(t.TempDir(), "key.pem")
-	if err := os.WriteFile(keyFile, []byte(pemKey), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	stub := filepath.Join(t.TempDir(), "aws")
-	script := "#!/bin/sh\ncat " + shellQuote(testShellPath(keyFile)) + "\n"
-	writeTestShellCommand(t, stub, script)
-	return &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) { return stub, nil }}}
 }
 
 // TestParseRSAPrivateKeyPEM accepts both PKCS#1 and PKCS#8 encodings and rejects junk.
@@ -182,8 +166,8 @@ func TestMintInstallationTokenAPIError(t *testing.T) {
 	}
 }
 
-// TestResolveGitHubTokenFromAppEndToEnd stitches SSM -> JWT -> installation -> scoped
-// token: an `aws` stub feeds the PEM and a stub GitHub API mints the token.
+// TestResolveGitHubTokenFromAppEndToEnd stitches PEM env -> JWT -> installation ->
+// scoped token with a stub GitHub API.
 func TestResolveGitHubTokenFromAppEndToEnd(t *testing.T) {
 	_, keyPEM := genTestKeyPEM(t)
 
@@ -200,10 +184,10 @@ func TestResolveGitHubTokenFromAppEndToEnd(t *testing.T) {
 	githubAPIBase = srv.URL
 	defer func() { githubAPIBase = orig }()
 
-	r := awsPEMStubRunner(t, keyPEM)
+	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
 	t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "app")
 	t.Setenv(envGitHubAppID, "999")
-	t.Setenv(envGitHubAppKeySSM, "/ward/github-app/key")
+	t.Setenv(envGitHubAppPrivateKey, keyPEM)
 
 	tok, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward")
 	if err != nil {
@@ -218,7 +202,7 @@ func TestResolveGitHubTokenFromAppEndToEnd(t *testing.T) {
 // owner/repo to scope the token to.
 func TestResolveGitHubTokenFromAppNeedsTarget(t *testing.T) {
 	t.Setenv(envGitHubAppID, "1")
-	t.Setenv(envGitHubAppKeySSM, "/p")
+	t.Setenv(envGitHubAppPrivateKey, "pem")
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
 	if _, err := r.resolveGitHubTokenFromApp(t.Context(), "", ""); err == nil {
 		t.Fatal("app mode with no target: want error, got nil")

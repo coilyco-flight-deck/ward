@@ -18,8 +18,8 @@ var rawForgejoTokenReads = []string{
 // Keep it in lockstep with docs/forgejo-token-audit.md (ward#239).
 var rawForgejoTokenSites = map[string]string{
 	// Resolver chokepoints - the sanctioned path every forge consumer funnels through.
-	"native_support.go": "forgejoTokenResolver: native broker-first auth provider (director broker, else env/SSM)",
-	"container.go":      "resolveForgejoToken: host->container seed, broker-first then env/SSM",
+	"native_support.go": "forgejoTokenResolver: native broker-first auth provider (director broker, else env)",
+	"container.go":      "resolveForgejoToken: host->container seed, broker-first then env",
 	// Root-only plumbing - runs outside the dropped-agent boundary.
 	"broker.go":              "the root daemon that holds the token and serves the write tier",
 	"container_bootstrap.go": "the PID-1 entrypoint seeding the git-credential store",

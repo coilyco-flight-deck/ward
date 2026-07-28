@@ -290,7 +290,6 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 	goose := filepath.Join(binDir, "goose")
 	setpriv := filepath.Join(binDir, "setpriv")
 	chown := filepath.Join(binDir, "chown")
-	aws := filepath.Join(binDir, "aws")
 	gooseBody := "#!/bin/sh\n" +
 		"test \"$#\" -eq 3 || exit 2\n" +
 		"IFS= read -r prompt\n" +
@@ -301,12 +300,10 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 		"while :; do :; done\n"
 	setprivBody := "#!/bin/sh\nshift 4\nexec env \"$@\"\n"
 	chownBody := "#!/bin/sh\nexit 0\n"
-	awsBody := "#!/bin/sh\nprintf '%s\\n' http://127.0.0.1:11434\n"
 	for path, body := range map[string]string{
 		goose:   gooseBody,
 		setpriv: setprivBody,
 		chown:   chownBody,
-		aws:     awsBody,
 	} {
 		writeTestShellCommand(t, path, body)
 	}

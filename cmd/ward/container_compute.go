@@ -63,10 +63,6 @@ var (
 	containerGitcacheVol = "ward-gitcache"
 	containerGitcacheMnt = "/gitcache"
 
-	// containerAWSMount is where ~/.aws lands as the aws capability's fallback bind, used
-	// only when host credential export fails (ward#586). Off by default.
-	containerAWSMount = "/root/.aws"
-
 	// containerAgentLogsMount is where the host agent-log drain binds read-only in a
 	// director surface container; surface-only opt-in (ward#525, redacted source ward#526).
 	containerAgentLogsMount = "/opt/ward-agent-logs"
@@ -136,7 +132,7 @@ const (
 	proxySocks5Scheme = "socks5h://"
 
 	// envTowerHost overrides the tower's MagicDNS node name, dialed by name through
-	// the proxy, no SSM IP lookup (ward#337).
+	// the proxy (ward#337).
 	envTowerHost     = "WARD_TOWER_HOST"
 	defaultTowerHost = "kai-tower-3026"
 
@@ -183,7 +179,7 @@ func towerOllamaPort() string {
 }
 
 // towerOllamaURL is the by-name tower endpoint a --ts-sidecar run dials through the
-// proxy; no per-launch SSM IP lookup (ward#337; the doc).
+// proxy (ward#337; the doc).
 func towerOllamaURL() string { return "http://" + towerMagicDNS() + ":" + towerOllamaPort() }
 
 // substrateRepo is one entry in the container substrate manifest: a
@@ -416,9 +412,6 @@ type mountOpts struct {
 	// AssetsDir holds ward's embedded entrypoint + doctrine, written to a
 	// per-run tmp dir and mounted read-only. Always set in practice.
 	AssetsDir string
-	// AWSHome, when non-empty, mounts ~/.aws read-only as the aws capability's fallback
-	// bind; the launch path drops it when host credential export succeeds (ward#586).
-	AWSHome string
 	// WardSource, when non-empty, mounts a local ward checkout (--ward-source)
 	// so the container builds ward from source instead of downloading.
 	WardSource string
@@ -440,9 +433,6 @@ func leastAccessMounts(hostCwd string, opts mountOpts) []mountSpec {
 	if opts.AssetsDir != "" {
 		mounts = append(mounts, mountSpec{Source: opts.AssetsDir, Target: containerWardAssets, ReadOnly: true, Volume: false})
 		mounts = append(mounts, mountSpec{Source: filepath.Join(opts.AssetsDir, containerEntrypointRel), Target: containerEntrypointPath, ReadOnly: true, Volume: false})
-	}
-	if opts.AWSHome != "" {
-		mounts = append(mounts, mountSpec{Source: opts.AWSHome, Target: containerAWSMount, ReadOnly: true, Volume: false})
 	}
 	if opts.WardSource != "" {
 		mounts = append(mounts, mountSpec{Source: opts.WardSource, Target: containerWardSrcMount, ReadOnly: true, Volume: false})
@@ -546,9 +536,6 @@ type upPlan struct {
 	// ReviewClass pins the pre-landing review panel's autonomy class into the
 	// container (WARD_REVIEW_CLASS, ward#134). See docs/dispatch-review.md.
 	ReviewClass string
-	// AWSHome is the aws capability's fallback ~/.aws bind source; a good host cred export
-	// drops the mount and clears this, else it arms the #579 creds-less warning (ward#586).
-	AWSHome string
 	// ConfigEnv are resolved config-derived WARD_* env keys: selected fleet attribution
 	// plus `--config` overrides (ward#616), applied over the baked default in wardEnv.
 	ConfigEnv map[string]string
@@ -978,7 +965,7 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 		// Per-connection proxy (never a host-wide ALL_PROXY), the box dialed by name;
 		// socks5h so it resolves the tower's MagicDNS name tailnet-side (ward#349).
 		env["WARD_TS_SOCKS5"] = proxySocks5Scheme + proxyBoxAddr()
-		// A MagicDNS name, not a secret IP, so it rides plain (no SSM lookup; ward#337).
+		// A MagicDNS name, not a secret IP, so it rides plain (ward#337).
 		env["WARD_TOWER_OLLAMA"] = towerOllamaURL()
 		// The loopback forwarder's no-proxy endpoint: tools dial the tower at plain
 		// localhost:<port> with no --proxy once the run starts the forwarder (ward#359).
@@ -1156,22 +1143,6 @@ func hostNetTailnetWarning(goos string, hasTailscale0 bool) (string, bool) {
 			"  sidecar. See docs/agent-host-net.md (ward#332).", true
 	}
 	return "", false
-}
-
-// awsMountMissingWarning warns (true) when the aws capability is on but neither path
-// delivered creds: export returned nothing and the ~/.aws fallback is empty (ward#586).
-func awsMountMissingWarning(awsHome string, hasCreds bool) (string, bool) {
-	if awsHome == "" || hasCreds {
-		return "", false
-	}
-	return "WARNING: the aws capability is on but this host delivered no AWS credentials.\n" +
-		"  ward first ran `aws configure export-credentials` (which resolves SSO, env, profile,\n" +
-		"  assumed-role and IMDS creds) and it returned nothing, so ward fell back to binding\n" +
-		"  " + awsHome + " read-only - but that dir holds no config or credentials file either.\n" +
-		"  docker mounts the missing source as an EMPTY dir, so `aws`/`ssm` calls inside the run\n" +
-		"  fail NoCredentials. Give this host an AWS identity (log into SSO, export AWS_* env, or\n" +
-		"  add ~/.aws/config|credentials with SSM read/write) so the opt-in mount actually delivers creds.\n" +
-		"  See docs/agent-capability.md (ward#586, ward#579).", true
 }
 
 // appendEnvAndImage appends the WARD_* env, the --env-file, the image, and the agent

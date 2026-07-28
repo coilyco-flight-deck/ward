@@ -187,11 +187,6 @@ type PRWorkflowClient interface {
 	GetBranch(context.Context, string, string, string) (*Branch, error)
 }
 
-// ProfileResolver is the internal seam for host profile resolution.
-type ProfileResolver interface {
-	ResolveAWSRegion(context.Context) string
-}
-
 // ReviewService is the internal seam for the review panel.
 type ReviewService interface {
 	Execute(reviewpanel.Config) reviewpanel.PanelResult

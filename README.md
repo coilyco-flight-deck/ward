@@ -23,7 +23,7 @@ If the orchestration itself is flaky, that is a Ward product bug, not an operato
 
 ## Who it's for
 
-- **A contributor (human or agent)** who wants every `build` / `test` / `lint` run argv-validated, audited, and gated on a clean tree - one wrapper instead of bare `make` / `go` / `gh` / `aws`. Forge-agnostic: point it at any repo.
+- **A contributor (human or agent)** who wants every `build` / `test` / `lint` run argv-validated, audited, and gated on a clean tree - one wrapper instead of bare `make` / `go` / forge CLIs. Forge-agnostic: point it at any repo.
 - **An operator** running an autonomous agent fleet who wants each run boxed in a throwaway container, its reach bounded by an allowlist, and its whole session recorded - not a trusted shell.
 
 ## What it requires
@@ -108,7 +108,7 @@ A `warded` run that failed or seemed to do nothing has a single symptom-indexed 
 The boundary is easiest to keep straight by **when** each layer runs:
 
 - **[cli-guard][cli-guard]** - the **engine**. The policy-and-routing framework ward consumes (pinned via go.mod). Thin consumer, not a fork.
-- **`aosguard`** - the AOS **operator CLI**. Specgen builds its `aosguard ops <api>` REST and exec surfaces, including forge, Actions, AWS, kubectl, and Tailscale. It is standalone at runtime and does not invoke or configure Ward.
+- **`aosguard`** - the AOS **operator CLI**. Specgen builds its `aosguard ops <api>` REST and exec surfaces. It is standalone at runtime and does not invoke or configure Ward.
 - **`ward`** - the native **run-time control plane**. It provides `agent`, `container`, `exec`, reservations, reaping, and PR workflow. It embeds only the AOS-authored role and launch-policy data it needs.
 
 See [`docs/architecture.md`](docs/architecture.md).

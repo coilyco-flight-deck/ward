@@ -633,8 +633,8 @@ func postReservationComment(ctx context.Context, attempts int, backoff time.Dura
 func warnRemoteReservationLost(label string, ref agentIssueRef, detail string) {
 	fmt.Fprintf(os.Stderr,
 		"%s: warning: %s for %s (%s); the local cache still records this host, but cross-host dedup and "+
-			"the issue-thread reservation signal are LOST for this run - check the host forgejo token/SSM "+
-			"path and this issue's thread (ward#402)\n",
+			"the issue-thread reservation signal are LOST for this run - check the host Forgejo token "+
+			"and this issue's thread (ward#402)\n",
 		label, reservationWarnToken, ref, detail)
 }
 

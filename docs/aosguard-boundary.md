@@ -9,11 +9,11 @@ The AOS image and package releases ship that binary.
 
 Ward does not compile, embed, mount, or dispatch generated operator commands.
 Ward therefore needs no `wardguard` variant. Its root command intentionally
-omits `ops`, `aws`, `kubectl`, `docker`, and `pkg`.
+omits generated operator leaves.
 
 Ward retains typed native role and launch policy directly under
 [`.ward/`](../.ward/). Those files select agent behavior and
-container capabilities such as AWS credential delivery and tailnet attachment.
+container capabilities such as tailnet attachment.
 They do not generate a command tree.
 
 Ward's hand-written `agent`, `container`, `exec`, `git`, reservation, PR

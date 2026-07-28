@@ -406,7 +406,7 @@ func TestBrokerDispatchSeedRefusalPrintsHandledFallback(t *testing.T) {
 		"ward container: note: broker dispatch seed fallback handled",
 		"coilyco/ward (no issue)",
 		"broker refused (write-tier only)",
-		"continuing with env/SSM token path",
+		"continuing with explicit token path",
 		"non-fatal fallback",
 	} {
 		if !strings.Contains(stderr, want) {

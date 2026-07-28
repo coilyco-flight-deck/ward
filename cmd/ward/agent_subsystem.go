@@ -26,7 +26,7 @@ type subsystemPointer struct {
 var agentSubsystemPointers = []subsystemPointer{
 	{
 		label:    "AOSguard ownership boundary",
-		keywords: []string{"aosguard", "specgen", "guardfile", "ops forgejo", "ops aws", "operator verb"},
+		keywords: []string{"aosguard", "specgen", "guardfile", "ops forgejo", "operator verb"},
 		paths:    []string{"docs/aosguard-boundary.md"},
 	},
 	{

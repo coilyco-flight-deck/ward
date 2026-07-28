@@ -311,7 +311,7 @@ func parseGitHubTokenSource(s string) (githubTokenSource, error) {
 // defaultGitHubTokenSource picks the fleet default when WARD_GITHUB_TOKEN_SOURCE is
 // unset: prefer the bot-backed App path once its provisioning env is present, else env.
 func defaultGitHubTokenSource() githubTokenSource {
-	if strings.TrimSpace(os.Getenv(envGitHubAppID)) != "" && strings.TrimSpace(os.Getenv(envGitHubAppKeySSM)) != "" {
+	if strings.TrimSpace(os.Getenv(envGitHubAppID)) != "" && strings.TrimSpace(os.Getenv(envGitHubAppPrivateKey)) != "" {
 		return githubTokenApp
 	}
 	return githubTokenEnv
@@ -437,7 +437,7 @@ func resolveGitHubTokenFromEnv() (string, error) {
 	return "", fmt.Errorf(
 		"ward: no GitHub token found - set GITHUB_TOKEN (or GH_TOKEN / WARD_GITHUB_TOKEN) to a token with repo scope, " +
 			"or set WARD_GITHUB_TOKEN_SOURCE=gh to mint one from your `gh` login; " +
-			"ward reads GitHub tokens only from the environment, never SSM (ward#489). See docs/agent-github.md")
+			"ward reads GitHub tokens only from explicit user-provided sources (ward#489). See docs/agent-github.md")
 }
 
 // resolveGitHubTokenFromGH shells `gh auth token` host-side for a fresh token from the

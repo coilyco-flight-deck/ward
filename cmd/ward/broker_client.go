@@ -66,7 +66,7 @@ func isOutOfTierRefusal(msg string) bool {
 }
 
 // brokerDispatchSeed asks the broker for target's dispatch seed (the root-held token);
-// ok=false unbrokered or on any failure, so the caller falls back to env->SSM (ward#334).
+// ok=false means the caller must use an explicit env token (ward#334).
 func (r *Runner) brokerDispatchSeed(ctx context.Context, target broker.Target) (token string, ok bool) {
 	session, brokered := newBrokerSession()
 	if !brokered {
@@ -74,12 +74,12 @@ func (r *Runner) brokerDispatchSeed(ctx context.Context, target broker.Target) (
 	}
 	res, err := session.do(ctx, broker.Request{Op: broker.OpDispatch, Target: target})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container: note: broker dispatch seed fallback handled for %s (%v); continuing with env/SSM token path (non-fatal fallback, ward#334)\n", brokerTargetLabel(target), err)
+		fmt.Fprintf(os.Stderr, "ward container: note: broker dispatch seed fallback handled for %s (%v); continuing with explicit token path (non-fatal fallback, ward#334)\n", brokerTargetLabel(target), err)
 		return "", false
 	}
 	token = strings.TrimSpace(res.Detail)
 	if token == "" {
-		fmt.Fprintf(os.Stderr, "ward container: note: broker dispatch seed fallback handled for %s (broker returned an empty dispatch seed); continuing with env/SSM token path (non-fatal fallback, ward#334)\n", brokerTargetLabel(target))
+		fmt.Fprintf(os.Stderr, "ward container: note: broker dispatch seed fallback handled for %s (broker returned an empty dispatch seed); continuing with explicit token path (non-fatal fallback, ward#334)\n", brokerTargetLabel(target))
 		return "", false
 	}
 	return token, true
@@ -103,7 +103,7 @@ func brokerTargetLabel(target broker.Target) string {
 }
 
 // planDispatchTarget builds the broker dispatch target from a child launch plan -
-// its repo + issue. A seedless plan (Issue 0) is refused, falling back to env->SSM.
+// its repo + issue. A seedless plan (Issue 0) is refused by the broker.
 func planDispatchTarget(plan upPlan) broker.Target {
 	return broker.Target{Owner: plan.Repo.Owner, Repo: plan.Repo.Name, Number: plan.Issue}
 }

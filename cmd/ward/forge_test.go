@@ -370,8 +370,8 @@ func TestDirectToMainCarryClause(t *testing.T) {
 	}
 }
 
-// TestResolveGitHubTokenFromEnv checks the env precedence and the no-SSM error path
-// of the env source (the default, unchanged from before the ward#533 selector).
+// TestResolveGitHubTokenFromEnv checks the env precedence and missing-token error
+// path of the env source (the default, unchanged from before the ward#533 selector).
 func TestResolveGitHubTokenFromEnv(t *testing.T) {
 	t.Setenv("WARD_GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
@@ -462,7 +462,7 @@ func TestResolveGitHubTokenSourceSelects(t *testing.T) {
 	t.Run("app source without operator config names the missing env", func(t *testing.T) {
 		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "app")
 		t.Setenv(envGitHubAppID, "")
-		t.Setenv(envGitHubAppKeySSM, "")
+		t.Setenv(envGitHubAppPrivateKey, "")
 		r := &Runner{Runner: &shell.Runner{}}
 		_, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward")
 		if err == nil || !strings.Contains(err.Error(), envGitHubAppID) {
@@ -488,10 +488,10 @@ func TestResolveGitHubTokenSourceSelects(t *testing.T) {
 		githubAPIBase = srv.URL
 		defer func() { githubAPIBase = orig }()
 
-		r := awsPEMStubRunner(t, keyPEM)
+		r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
 		t.Setenv("WARD_GITHUB_TOKEN_SOURCE", "")
 		t.Setenv(envGitHubAppID, "999")
-		t.Setenv(envGitHubAppKeySSM, "/ward/github-app/key")
+		t.Setenv(envGitHubAppPrivateKey, keyPEM)
 		if got, err := r.resolveGitHubToken(t.Context(), "coilyco", "ward"); err != nil || got != "ghs_default_app" {
 			t.Fatalf("default source = %q,%v want ghs_default_app,nil", got, err)
 		}

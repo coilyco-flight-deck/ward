@@ -25,7 +25,7 @@ func (r *Runner) gitForgejoAuthEnv(ctx context.Context) (map[string]string, erro
 // resolveForgejoGitToken resolves the token through native credential plumbing.
 // A token-less host falls back to git's own flow.
 func (r *Runner) resolveForgejoGitToken(ctx context.Context) string {
-	tok, err := r.forgejoTokenResolver(ctx, forgejoTokenSSMPath)
+	tok, err := r.forgejoTokenResolver(ctx)
 	if err != nil {
 		return ""
 	}

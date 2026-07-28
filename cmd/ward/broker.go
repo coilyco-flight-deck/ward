@@ -91,8 +91,11 @@ func runContainerBroker(ctx context.Context, c *cli.Command) error {
 		return err
 	}
 
-	exec := newWardKdlWriteExecutor(token, func(refreshCtx context.Context) (string, error) {
-		return r.ssmValueResolver(refreshCtx, forgejoTokenSSMPath)
+	exec := newWardKdlWriteExecutor(token, func(context.Context) (string, error) {
+		if tok := strings.TrimSpace(os.Getenv(credseed.EnvForgejoToken)); tok != "" {
+			return tok, nil
+		}
+		return "", fmt.Errorf("ward container broker: %s is unset", credseed.EnvForgejoToken)
 	})
 	srv, err := broker.NewServer(ln, exec, r.writeTierAuthorizer())
 	if err != nil {

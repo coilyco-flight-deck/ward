@@ -42,10 +42,10 @@ fleet {
                 reasoning-effort medium
             }
         }
-        // director owns the live-observe set (aws + tailnet, ward#547); its
+        // director owns the live-observe tailnet set (ward#547); its
         // heartbeat wants the strongest model at 1M context (ward#620).
         role director {
-            guardfiles aws.kdl tailscale.kdl
+            guardfiles tailscale.kdl
             agent claude {
                 model "claude-opus-4-8[1m]"
                 reasoning-effort high

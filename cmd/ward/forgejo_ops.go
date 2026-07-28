@@ -277,7 +277,7 @@ func (c *forgejoClient) apiToken(ctx context.Context) (string, error) {
 }
 
 // optionalAPIToken returns a token already in this process. Read paths may use
-// it when present, but they do not fail closed on missing host SSM credentials.
+// it when present, but they do not fail closed when no token is configured.
 func (c *forgejoClient) optionalAPIToken() string {
 	if tok := strings.TrimSpace(c.token); tok != "" {
 		return tok

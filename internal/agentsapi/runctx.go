@@ -7,7 +7,7 @@ import "context"
 type Logger func(format string, args ...any)
 
 // Exec is the subprocess seam per-agent code runs commands through (host
-// keychain/SSM reads, container installers); *shell.Runner satisfies it.
+// keychain reads, container installers); *shell.Runner satisfies it.
 type Exec interface {
 	Exec(ctx context.Context, bin string, argv ...string) error
 	Capture(ctx context.Context, bin string, argv ...string) ([]byte, error)
@@ -23,9 +23,9 @@ type HostCtx struct {
 	GOOS string
 	// Home is the operator's home dir, the root of the ~/.claude, ~/.codex reads.
 	Home string
-	// Exec runs host reads (Capture for the keychain and SSM lookups).
+	// Exec runs host reads (Capture for keychain lookups).
 	Exec Exec
-	// Log emits host-side warnings (unreadable creds, a failed SSM lookup).
+	// Log emits host-side warnings (unreadable creds).
 	Log Logger
 }
 

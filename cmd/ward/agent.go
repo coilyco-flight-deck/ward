@@ -1967,7 +1967,7 @@ func parsePreflightVerdict(read string) preflightOutcome {
 }
 
 // postPreflightNoGo comments the NO-GO verdict back on the issue (host tracker
-// client, SSM-backed token), bouncing it to a human instead of failing silently.
+// client), bouncing it to a human instead of failing silently.
 func (r *Runner) postPreflightNoGo(ctx context.Context, mode containerMode, surface string, ref agentIssueRef, reason, read string) error {
 	cl, err := r.hostTrackerClient(ctx, ref.trackerOrDefault(), mode)
 	if err != nil {
@@ -2283,8 +2283,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	default:
 		writef(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
 	}
-	// Resolve host creds (agent + aws export-inject) before the env-file; a good AWS export
-	// drops the ~/.aws mount for injected AWS_* env (ward#586).
+	// Resolve host-side agent harness creds before the env-file.
 	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
 	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
 	if err != nil {
@@ -2396,9 +2395,6 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 	// --host-net only carries the tailnet on a host that is itself a tailnet node;
 	// warn loudly when it won't, so a no-op route doesn't read as success (ward#332).
 	r.maybeWarnHostNet(plan)
-	// The aws capability binds ~/.aws, but a host with no AWS identity mounts an empty
-	// dir - warn loudly so a NoCredentials hole doesn't read as delivered creds (ward#579).
-	r.maybeWarnAWSMount(plan)
 	// Seed any external (non-Forgejo) catalog.dependsOn mirror host-side before the
 	// sealed container clones from the warm gitcache (ward#612).
 	r.seedExternalContextMirrors(ctx, plan)

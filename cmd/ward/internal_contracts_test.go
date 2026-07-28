@@ -9,6 +9,5 @@ var (
 	_ contracts.Tracker            = (*forgejoClient)(nil)
 	_ contracts.PRRepairClassifier = (*forgejoClient)(nil)
 	_ contracts.PRWorkflowClient   = (*forgejoClient)(nil)
-	_ contracts.ProfileResolver    = (*Runner)(nil)
 	_ contracts.ReviewService      = reviewpanel.Deps{}
 )

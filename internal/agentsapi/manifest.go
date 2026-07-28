@@ -15,7 +15,7 @@ type Manifest struct {
 	// core whether to wrap the launch in the progress parser.
 	Stream string
 	// Auth is the credential-kind enum core feature-tests to route resolution
-	// (e.g. "claude-keychain", "codex-file", "ollama-ssm", "none").
+	// (e.g. "claude-keychain", "codex-file", "none").
 	Auth string
 	// Argv holds the three argv prefixes ward invokes the agent with.
 	Argv Argv

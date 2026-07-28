@@ -20,7 +20,7 @@ generic network helper.
 ## Rotation
 
 Before it vends the in-process credential needed by a brokered director read,
-the broker refreshes from the configured SSM source. If Forgejo rejects a
+the broker refreshes from the configured token source. If Forgejo rejects a
 root-held credential during an authorized write, it also refreshes and retries
 once. The director never needs to fetch, print, or inject the replacement. If
 that root refresh fails, the broker returns a clear recycle-the-director error
