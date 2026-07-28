@@ -174,6 +174,7 @@ type dispatchBrokerRequest struct {
 	// Target names the stop action's container: owner/repo#N (resolved by labels) or
 	// a container name. Empty on a launch request (ward#627).
 	Target    string `json:"target,omitempty"`
+	Artifact  string `json:"artifact,omitempty"`
 	Format    string `json:"format,omitempty"`
 	Requester string `json:"requester,omitempty"`
 	Tail      int    `json:"tail,omitempty"`
@@ -1232,13 +1233,27 @@ func validateDispatchBrokerLogs(req dispatchBrokerRequest) error {
 	if len(req.Argv) != 0 {
 		return fmt.Errorf("dispatch broker: logs takes no launch argv, got %v", req.Argv)
 	}
+	artifact, err := parseAgentLogArtifact(req.Artifact)
+	if err != nil {
+		return fmt.Errorf("dispatch broker: logs %w", err)
+	}
+	if req.Follow && artifact != agentLogArtifactConsole {
+		return fmt.Errorf("dispatch broker: logs --follow is only supported for artifact console")
+	}
+	if req.Tail < 0 {
+		return fmt.Errorf("dispatch broker: logs tail must be >= 0")
+	}
 	target := strings.TrimSpace(req.Target)
 	if target == "" {
-		if req.Tail < 0 {
-			return fmt.Errorf("dispatch broker: logs tail must be >= 0")
+		if artifact != agentLogArtifactConsole {
+			return fmt.Errorf("dispatch broker: logs artifact %s requires a target", artifact)
 		}
 		return nil
 	}
+	return validateDispatchBrokerLogsTarget(target)
+}
+
+func validateDispatchBrokerLogsTarget(target string) error {
 	if strings.ContainsRune(target, '\x00') {
 		return fmt.Errorf("dispatch broker: logs target contains NUL")
 	}
@@ -1247,9 +1262,6 @@ func validateDispatchBrokerLogs(req dispatchBrokerRequest) error {
 	}
 	if _, err := parseAgentIssueRef(target); err != nil && !dispatchStopTargetRe.MatchString(target) {
 		return fmt.Errorf("dispatch broker: logs target %q is neither an issue ref (owner/repo#N) nor a container name", target)
-	}
-	if req.Tail < 0 {
-		return fmt.Errorf("dispatch broker: logs tail must be >= 0")
 	}
 	return nil
 }
@@ -1337,10 +1349,15 @@ func (r *Runner) runDispatchBrokerList(ctx context.Context, conn net.Conn, req d
 // resolveDispatchBrokerLogsSource resolves the request target to one readable
 // engineer log source.
 func (r *Runner) resolveDispatchBrokerLogsSource(ctx context.Context, req dispatchBrokerRequest) (agentLogSource, error) {
-	if ref, err := parseAgentIssueRef(req.Target); err == nil && ref.Owner != "" && ref.Repo != "" {
-		return r.resolveAgentLogsSourceForIssue(ctx, ref, req.Tail, req.Follow)
+	artifact, err := parseAgentLogArtifact(req.Artifact)
+	if err != nil {
+		return agentLogSource{}, err
 	}
-	return r.resolveAgentLogsSourceForName(ctx, req.Target, req.Tail, req.Follow)
+	opts := agentLogsResolveOptions{Artifact: artifact, RedactedOnly: true}
+	if ref, err := parseAgentIssueRef(req.Target); err == nil && ref.Owner != "" && ref.Repo != "" {
+		return r.resolveAgentLogsSourceForIssue(ctx, ref, req.Tail, req.Follow, opts)
+	}
+	return r.resolveAgentLogsSourceForName(ctx, req.Target, req.Tail, req.Follow, opts)
 }
 
 func validateDispatchBrokerArgv(role string, tail []string) error {

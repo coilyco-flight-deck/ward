@@ -504,7 +504,7 @@ func TestForwardAgentLogsSendsLogsRequestAndRelaysBody(t *testing.T) {
 	t.Setenv(envDispatchBrokerToken, "nonce-694")
 	t.Setenv("WARD_READONLY", "1")
 	t.Setenv("WARD_CONTAINER_NAME", "director-claude-host")
-	if err := r.forwardAgentLogsToHostBroker(t.Context(), ln.Addr().String(), "coilyco-flight-deck/ward#625", 2, false); err != nil {
+	if err := r.forwardAgentLogsToHostBroker(t.Context(), ln.Addr().String(), "coilyco-flight-deck/ward#625", 2, false, agentLogArtifactConsole); err != nil {
 		t.Fatalf("forward logs: %v", err)
 	}
 	req := <-gotReq
@@ -649,7 +649,7 @@ func TestResolveDispatchBrokerLogsSourceUsesCodexTranscriptTreeWhenDockerEmpty(t
 func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
-	archiveDir := filepath.Join(home, ".ward", "agent-logs", "engineer-claude-ward-692")
+	archiveDir := filepath.Join(home, ".ward", "agent-logs-redacted", "engineer-claude-ward-692")
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		t.Fatalf("mkdir archive: %v", err)
 	}
@@ -658,7 +658,7 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(archiveDir, drainMetaFile), metaBody, 0o644); err != nil {
 		t.Fatalf("write meta: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(archiveDir, drainConsoleFile), []byte("one\ntwo\nthree\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(archiveDir, drainConsoleRedactedFile), []byte("one\ntwo\nthree\n"), 0o644); err != nil {
 		t.Fatalf("write console: %v", err)
 	}
 	r := fakeAgentLogsDockerRunner(t, "", "", nil, "")
@@ -669,8 +669,8 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 	if src.Kind != agentLogSourceFile {
 		t.Fatalf("archive source kind = %q, want file", src.Kind)
 	}
-	if got := src.Path; got != filepath.Join(archiveDir, drainConsoleFile) {
-		t.Errorf("archive path = %q, want %q", got, filepath.Join(archiveDir, drainConsoleFile))
+	if got := src.Path; got != filepath.Join(archiveDir, drainConsoleRedactedFile) {
+		t.Errorf("archive path = %q, want %q", got, filepath.Join(archiveDir, drainConsoleRedactedFile))
 	}
 	if got := src.String(); !strings.Contains(got, "(outcome unknown)") {
 		t.Fatalf("archive source string = %q, want the final outcome marker", got)
@@ -2666,7 +2666,7 @@ func TestDispatchArtifactPersistsMetaSummaryAndLookup(t *testing.T) {
 		Stderr:  io.Discard,
 		Resolve: func(string) (string, error) { return "/bin/true", nil },
 	}}
-	src, err := r.resolveAgentLogsSourceForName(t.Context(), "engineer", 0, false)
+	src, err := r.resolveAgentLogsSourceForName(t.Context(), "engineer", 0, false, agentLogsResolveOptions{})
 	if err != nil {
 		t.Fatalf("resolveAgentLogsSourceForName: %v", err)
 	}

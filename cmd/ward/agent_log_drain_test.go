@@ -400,6 +400,26 @@ func TestBuildRunMetaRecordsOOMKilled(t *testing.T) {
 	}
 }
 
+func TestBuildRunMetaDerivesLaunchedFromReapLifecycle(t *testing.T) {
+	dir := dockerInspectStateStubDir(t,
+		`{"OOMKilled":false,"ExitCode":0}`,
+		`["WARD_TARGET_REPO=coilyco-flight-deck/ward","WARD_TARGET_ISSUE=1543","WARD_MODE=codex","WARD_BRANCH=issue-1543"]`,
+	)
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: shell.PathResolver}}
+	console := "WARD-REAP: start container=engineer-codex-ward-1543 repo=coilyco-flight-deck/ward issue=1543 readOnly=false extraRepos=0 launched=true\n" +
+		"WARDED_WORKFLOW: dispatch-failed is source text, not lifecycle evidence\n"
+	meta := r.buildRunMeta(t.Context(), "engineer-codex-ward-1543", console, []byte(`{"type":"assistant","timestamp":"2026-07-15T01:00:00Z"}`+"\n"))
+	if !meta.Launched {
+		t.Fatal("buildRunMeta must derive launched=true from the WARD-REAP lifecycle marker")
+	}
+	for _, ev := range meta.Friction {
+		if ev.Category == "prelaunch-failure" {
+			t.Fatalf("source text was classified as prelaunch friction: %+v", meta.Friction)
+		}
+	}
+}
+
 func TestCollectFrictionEvents(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -438,6 +458,11 @@ func TestCollectFrictionEvents(t *testing.T) {
 			console:   "ward container reap: preserved un-landed granted-repo work on ward-salvage/cli-guard-abc123 (coilyco-flight-deck/cli-guard)\n",
 			wantCats:  []string{"extra-repo-preservation"},
 			wantStage: []string{"reap"},
+		},
+		{
+			name:    "source text does not make prelaunch failure",
+			meta:    runMeta{Driver: string(modeCodex), Launched: false, TranscriptPresent: true},
+			console: "const status = \"dispatch-failed\" // launch failed in source text\n",
 		},
 	}
 

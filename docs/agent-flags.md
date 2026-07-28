@@ -40,7 +40,7 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 - --json
 ## `ward agent logs`
 
-- --tail, --follow
+- --tail, --follow, --artifact
 ## `ward agent issue create`
 
 - --title, --body-file

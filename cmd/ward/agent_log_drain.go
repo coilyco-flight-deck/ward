@@ -495,7 +495,7 @@ func (r *Runner) buildRunMeta(ctx context.Context, name, console string, transcr
 		Issue:             env["WARD_TARGET_ISSUE"],
 		Driver:            env["WARD_MODE"],
 		Branch:            env["WARD_BRANCH"],
-		Launched:          env["WARD_AGENT_LAUNCHED"] == "1",
+		Launched:          env["WARD_AGENT_LAUNCHED"] == "1" || parseReapLaunched(console),
 		TranscriptPresent: len(bytes.TrimSpace(transcript)) > 0,
 		OOMKilled:         ok && state.OOMKilled,
 		Outcome:           classifyReapOutcome(console),
@@ -503,6 +503,21 @@ func (r *Runner) buildRunMeta(ctx context.Context, name, console string, transcr
 	meta.Summary = r.buildRunSummary(ctx, name, env, state, meta, console, transcript)
 	meta.Friction = collectFrictionEvents(meta, console)
 	return meta
+}
+
+func parseReapLaunched(console string) bool {
+	for _, raw := range strings.Split(console, "\n") {
+		line := strings.TrimSpace(raw)
+		if !strings.HasPrefix(line, "WARD-REAP: start ") {
+			continue
+		}
+		for _, field := range strings.Fields(line) {
+			if field == "launched=true" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // inspectContainerEnv reads the container's Config.Env and returns ONLY the
