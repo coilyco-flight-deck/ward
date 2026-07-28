@@ -14,5 +14,11 @@ spec configuration inside the AOS image and exposes its generated APIs through
 For compatibility examples that still need a Ward-owned value, use this repo's
 own policy bundle from a checkout: `WARD_CONFIG_REF=file://$PWD/.ward`.
 
+`ward config drop` clears the retired top-level `config-ref` field from
+`~/.ward/config.yaml` while preserving other local preferences. If
+`WARD_CONFIG_REF` is still inherited by the current process, the command reports
+that environment source and exits non-zero because the environment still wins.
+With neither source set, Ward reports the baked/default native policy source.
+
 Ward retains typed Forgejo, GitHub, and Shortcut adapters only where its own
 issue-to-merge workflow needs them. Those adapters do not route through AOSguard.
