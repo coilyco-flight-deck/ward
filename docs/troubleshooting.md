@@ -40,8 +40,8 @@ Start here when a run failed or seemed to do nothing.
   transient/superseded unless you can reproduce it on the current head.
 - if `promote.yml` fails after draft assets and the `ward:release` image alias
   both publish, compare the failure with [promote-run-2491.md](promote-run-2491.md).
-- if `release.yml` fails immediately in `promote-draft-assets`, compare the
-  release checkout checkpoints: [2495](release-run-2495.md), [2497](release-run-2497.md).
+- if `release.yml` fails immediately in `promote-draft-assets`, compare [2495](release-run-2495.md), [2497](release-run-2497.md).
+- if `release.yml` uploads draft assets but fails before publishing, compare [release-run-2501.md](release-run-2501.md).
 - if the run vanished, the issue is usually in teardown or reap.
 - if `ward agent list --json` shows `phase: container starting` with
   `status: cleanup-needed` and an empty `started_at`, use the manual stale reservation cleanup path in

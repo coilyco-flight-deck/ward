@@ -51,11 +51,9 @@ Current `main` already contains the checkout fix from
 `promote-draft-assets` now checks out the repository before fetching the draft
 assets, and the release contract test pins that dependency.
 
-Successor run
-[#2501](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/actions/runs/2501)
-proved the checkout fix passed the missing-script boundary by fetching and
-uploading the staged draft assets. It then exposed a later, separate workflow
-environment bug:
+Successor run [#2501](release-run-2501.md) proved the checkout fix passed the
+missing-script boundary by fetching and uploading the staged draft assets. It
+then exposed a later, separate workflow environment bug:
 
 ```text
 scripts/verify-release-assets.sh: line 5: RELEASE_TAG: missing RELEASE_TAG
