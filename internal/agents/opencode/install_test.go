@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -50,7 +51,11 @@ func TestInstallFailsLoudlyWhenBinaryStaysMissing(t *testing.T) {
 // short-circuits when opencode is already on PATH.
 func TestInstallNoOpWhenBinaryAlreadyPresent(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, record.Binary), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	binary := record.Binary
+	if runtime.GOOS == "windows" {
+		binary += ".bat"
+	}
+	if err := os.WriteFile(filepath.Join(dir, binary), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write stub binary: %v", err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))

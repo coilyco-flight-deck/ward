@@ -12,7 +12,7 @@ import (
 func writeOperatorLocal(t *testing.T, body string) {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	if body == "" {
 		return
 	}
@@ -27,7 +27,7 @@ func writeOperatorLocal(t *testing.T, body string) {
 
 func TestOperatorLocalConfigPath(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	got, err := operatorLocalConfigPath()
 	if err != nil {
 		t.Fatalf("operatorLocalConfigPath: %v", err)

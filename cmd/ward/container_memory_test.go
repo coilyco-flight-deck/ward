@@ -8,7 +8,7 @@ import (
 
 func TestResolveContainerMemoryLimitUsesOperatorLocalOverride(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	if err := os.MkdirAll(filepath.Join(home, ".ward"), 0o755); err != nil {
 		t.Fatalf("mkdir .ward: %v", err)
 	}

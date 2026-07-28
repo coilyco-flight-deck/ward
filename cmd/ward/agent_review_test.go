@@ -146,7 +146,7 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 // TestEngineerSeedDefaultsSkipReviewGate proves engineer dispatches now omit the
 // in-container review clause by default, while the manual review verb remains.
 func TestEngineerSeedDefaultsSkipReviewGate(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
 	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String()})
 
@@ -208,7 +208,7 @@ func TestReportPanelMachineLine(t *testing.T) {
 func TestReviewGateWantedHonorsSkipsAndConfig(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 676}
 	t.Run("default engineer dispatch skips review temporarily", func(t *testing.T) {
-		t.Setenv("HOME", t.TempDir())
+		setTestHome(t, t.TempDir())
 		cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", ref.String()})
 		wanted, reason := reviewGateDecision(cmd, "engineer", modeCodex, ref)
 		if wanted {
@@ -232,7 +232,7 @@ func TestReviewGateWantedHonorsSkipsAndConfig(t *testing.T) {
 	})
 	t.Run("config disables review by role, worker, and repo", func(t *testing.T) {
 		home := t.TempDir()
-		t.Setenv("HOME", home)
+		setTestHome(t, home)
 		if err := os.MkdirAll(filepath.Join(home, ".ward"), 0o750); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
@@ -294,7 +294,7 @@ func TestFailClosedNoReviewerResultRewordsAdvisoryNote(t *testing.T) {
 	}
 
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	if err := writeReviewSummaryHandoff(blocked); err != nil {
 		t.Fatalf("writeReviewSummaryHandoff: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestFailClosedNoReviewerResultRewordsAdvisoryNote(t *testing.T) {
 
 func TestWriteReviewSummaryHandoff(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	res := reviewpanel.PanelResult{Gate: reviewpanel.GateBlock, Note: "no runnable reviewer"}
 	if err := writeReviewSummaryHandoff(res); err != nil {
 		t.Fatalf("writeReviewSummaryHandoff: %v", err)
@@ -429,7 +429,7 @@ func main() {
 		t.Fatalf("build helper binary: %v\n%s", err, out)
 	}
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	var stderr bytes.Buffer

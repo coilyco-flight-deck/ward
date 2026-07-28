@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
@@ -319,7 +320,7 @@ func TestBrokerServerRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat socket: %v", err)
 	}
-	if perm := fi.Mode().Perm(); perm != brokerSocketMode {
+	if perm := fi.Mode().Perm(); runtime.GOOS != "windows" && perm != brokerSocketMode {
 		t.Errorf("socket perm = %#o, want %#o", perm, brokerSocketMode)
 	}
 

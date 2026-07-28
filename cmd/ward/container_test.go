@@ -109,9 +109,7 @@ func fakeDockerLiveAssetsRunner(t *testing.T) *Runner {
 		"    ;;\n" +
 		"esac\n" +
 		"exit 1\n"
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	return &Runner{Runner: &shell.Runner{
 		Stderr:  io.Discard,
 		Resolve: func(_ string) (string, error) { return script, nil },
@@ -681,7 +679,7 @@ func TestWardEnvCorrelationEnvelope(t *testing.T) {
 // native Ward containers, even for a coilyco checkout.
 func TestWardEnvDoesNotExportOperatorConfigRef(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	work := t.TempDir()
 	gitFixture(t, work, "init", "-b", "main", ".")
 	gitFixture(t, work, "commit", "--allow-empty", "-m", "seed")
@@ -730,7 +728,7 @@ func TestLaunchStagingDirIsSnapReadable(t *testing.T) {
 	// A snap-confined docker only reaches NON-hidden files under $HOME (ward#569,
 	// ward#574), so the staging dir must be $HOME itself, never the hidden ~/.ward.
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	if got := launchStagingDir(); got != home {
 		t.Fatalf("launchStagingDir() = %q, want the $HOME root %q (a hidden ~/.ward path is invisible to a snap docker)", got, home)
 	}
@@ -741,7 +739,7 @@ func TestLaunchStagingDirIsSnapReadable(t *testing.T) {
 
 func TestLaunchStagingDirFallsBackToTmp(t *testing.T) {
 	// With no resolvable $HOME the launch dir degrades to $TMPDIR rather than "".
-	t.Setenv("HOME", "")
+	setTestHome(t, "")
 	if got := launchStagingDir(); got == "" {
 		t.Error("launchStagingDir() with no $HOME must fall back to a real dir, got empty")
 	}
@@ -787,7 +785,7 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 	// The assets bind-mount source is daemon-resolved, so it must land under $HOME
 	// (never /tmp) for a snap docker daemon to see it at `docker run` (ward#574).
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	stubContainerBootstrapStage(t)
 	dir, cleanup, err := writeContainerAssets(context.Background(), nil, "", "")
 	if err != nil {
@@ -804,7 +802,7 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 
 func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	prev := stageWardBootstrapBinary
 	stageWardBootstrapBinary = func(_ context.Context, dir, wardSource, wardVersion string) error {
 		if wardSource != "/src/ward" {
@@ -826,7 +824,7 @@ func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("staged ward binary missing: %v", err)
 	}
-	if info.Mode()&0o111 == 0 {
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		t.Fatalf("staged ward binary must be executable, mode %o", info.Mode())
 	}
 }
@@ -1824,7 +1822,7 @@ func envLineValue(lines []agentsapi.EnvLine, key string) (string, bool) {
 // drained CredentialProvider seam (codex auth.json, goose SSM, opencode none; ward#425).
 func TestResolveAgentCredsRouting(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1835,9 +1833,7 @@ func TestResolveAgentCredsRouting(t *testing.T) {
 	// regardless of argv, standing in for `aws ssm get-parameter`.
 	const towerHost = "http://tower.tailnet:11434"
 	stub := filepath.Join(home, "aws")
-	if err := os.WriteFile(stub, []byte("#!/bin/sh\necho "+towerHost+"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeTestShellCommand(t, stub, "#!/bin/sh\necho "+towerHost+"\n")
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(bin string) (string, error) {
 		if bin == "aws" {
 			return stub, nil

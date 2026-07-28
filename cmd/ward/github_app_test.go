@@ -45,10 +45,8 @@ func awsPEMStubRunner(t *testing.T, pemKey string) *Runner {
 		t.Fatal(err)
 	}
 	stub := filepath.Join(t.TempDir(), "aws")
-	script := "#!/bin/sh\ncat " + keyFile + "\n"
-	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+	script := "#!/bin/sh\ncat " + shellQuote(testShellPath(keyFile)) + "\n"
+	writeTestShellCommand(t, stub, script)
 	return &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) { return stub, nil }}}
 }
 

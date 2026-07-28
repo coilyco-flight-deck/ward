@@ -570,7 +570,7 @@ var surfaceScratchMnt = "/scratch"
 // Read-only director sessions use the gitcache volume for Go verification headroom.
 func surfaceScratchRoot(readOnly bool, gitcache string) string {
 	if readOnly {
-		return filepath.Join(gitcache, "surface-scratch")
+		return rootedPathJoin(gitcache, "surface-scratch")
 	}
 	return surfaceScratchMnt
 }
@@ -589,7 +589,7 @@ func directorSurfaceScratchDir(readOnly bool) string {
 // surfaceScratchGoCacheDir returns the Go build cache root under the surface
 // scratch location.
 func surfaceScratchGoCacheDir(scratchDir string) string {
-	return filepath.Join(scratchDir, "go-build")
+	return rootedPathJoin(scratchDir, "go-build")
 }
 
 // surfaceScratchBudgetReport renders the current free-space budget for the
@@ -610,9 +610,9 @@ func (r *Runner) prepareScratchSpace(scratchDir string) error {
 	}
 	subdirs := []string{
 		surfaceScratchGoCacheDir(scratchDir),
-		filepath.Join(scratchDir, "go-mod"),
-		filepath.Join(scratchDir, "go-tmp"),
-		filepath.Join(scratchDir, "xdg-cache"),
+		rootedPathJoin(scratchDir, "go-mod"),
+		rootedPathJoin(scratchDir, "go-tmp"),
+		rootedPathJoin(scratchDir, "xdg-cache"),
 	}
 	for _, dir := range subdirs {
 		if err := os.MkdirAll(dir, 0o1777); err != nil {
@@ -628,9 +628,9 @@ func (r *Runner) prepareScratchSpace(scratchDir string) error {
 	_ = os.Setenv("TMP", scratchDir)
 	_ = os.Setenv("TEMP", scratchDir)
 	_ = os.Setenv("GOCACHE", surfaceScratchGoCacheDir(scratchDir))
-	_ = os.Setenv("GOMODCACHE", filepath.Join(scratchDir, "go-mod"))
-	_ = os.Setenv("GOTMPDIR", filepath.Join(scratchDir, "go-tmp"))
-	_ = os.Setenv("XDG_CACHE_HOME", filepath.Join(scratchDir, "xdg-cache"))
+	_ = os.Setenv("GOMODCACHE", rootedPathJoin(scratchDir, "go-mod"))
+	_ = os.Setenv("GOTMPDIR", rootedPathJoin(scratchDir, "go-tmp"))
+	_ = os.Setenv("XDG_CACHE_HOME", rootedPathJoin(scratchDir, "xdg-cache"))
 	blog("scratch/cache area ready at %s (%s; Go caches under %s)", scratchDir, surfaceScratchBudgetReport(scratchDir), surfaceScratchGoCacheDir(scratchDir))
 	return nil
 }

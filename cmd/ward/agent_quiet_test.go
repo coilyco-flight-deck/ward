@@ -17,12 +17,10 @@ func dockerStub(t *testing.T, logPath string) string {
 	t.Helper()
 	stub := filepath.Join(t.TempDir(), "docker")
 	script := "#!/bin/sh\n" +
-		"echo \"hints=$DOCKER_CLI_HINTS\" >> " + logPath + "\n" +
+		"echo \"hints=$DOCKER_CLI_HINTS\" >> " + shellQuote(testShellPath(logPath)) + "\n" +
 		"echo deadbeefcontainerid\n" +
 		"echo \"What's next: docker scout quickview ...\" 1>&2\n"
-	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+	writeTestShellCommand(t, stub, script)
 	return stub
 }
 
@@ -32,9 +30,7 @@ func slowDockerStub(t *testing.T) string {
 	t.Helper()
 	stub := filepath.Join(t.TempDir(), "docker")
 	script := "#!/bin/sh\nsleep 0.1\n"
-	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+	writeTestShellCommand(t, stub, script)
 	return stub
 }
 

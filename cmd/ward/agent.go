@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -1847,7 +1848,7 @@ func dockerPathIsSnap(path string) bool {
 
 // pathUnderSnap reports whether p is the /snap tree itself or a path within it.
 func pathUnderSnap(p string) bool {
-	p = filepath.Clean(p)
+	p = path.Clean(filepath.ToSlash(p))
 	return p == "/snap" || strings.HasPrefix(p, "/snap/")
 }
 

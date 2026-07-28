@@ -233,7 +233,7 @@ func TestResolveEngineerStopTargetStopsVisibleEngineer(t *testing.T) {
 
 func TestResolveEngineerStopTargetClassifiesStaleReservationForCleanup(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1200}
 	path, err := agentReservationPath(ref)
 	if err != nil {
@@ -271,7 +271,7 @@ func TestResolveEngineerStopTargetClassifiesStaleReservationForCleanup(t *testin
 }
 
 func TestResolveEngineerStopTargetRefusesFreshLaunchIntent(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1201}
 	path, err := agentReservationPath(ref)
 	if err != nil {
@@ -291,7 +291,7 @@ func TestResolveEngineerStopTargetRefusesFreshLaunchIntent(t *testing.T) {
 }
 
 func TestResolveEngineerStopTargetUnknownRef(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	r := fakeStopDockRunner(t, "")
 	_, err := r.resolveEngineerStopTarget(t.Context(), "coilyco-flight-deck/ward#9999")
 	if err == nil {
@@ -600,7 +600,7 @@ func TestResolveDispatchBrokerLogsSourceUsesCodexTranscriptTreeWhenDockerEmpty(t
 
 func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	archiveDir := filepath.Join(home, ".ward", "agent-logs", "engineer-claude-ward-692")
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		t.Fatalf("mkdir archive: %v", err)
@@ -638,7 +638,7 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 
 func TestRunAgentLogsIssueScopedArchiveEmptyExplainsSelectedSource(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	archiveDir := filepath.Join(home, ".ward", "agent-logs", "engineer-claude-ward-692")
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		t.Fatalf("mkdir archive: %v", err)
@@ -1426,7 +1426,7 @@ func TestDispatchPartialLaunchErrorClassifiesAsPartialLaunch(t *testing.T) {
 // TestServeHostDispatchBrokerSurvivesExit125NameConflict keeps the listener alive
 // after a brokered launch hits Docker's duplicate-name exit-125 refusal.
 func TestServeHostDispatchBrokerSurvivesExit125NameConflict(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "broker-token")
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -1501,7 +1501,7 @@ func TestServeHostDispatchBrokerSurvivesExit125NameConflict(t *testing.T) {
 // Broker env stays clear while the asynchronously-owned host launch continues.
 func TestRunHostDispatchBrokerRequestDetachesAfterHostLaunchStarts(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	t.Cleanup(func() {
 		// Let the temp-home teardown own the whole .ward tree; per-artifact
 		// removal races the broker's final redacted/raw artifact writes.
@@ -1632,7 +1632,7 @@ func TestRunHostDispatchBrokerRequestDetachesAfterHostLaunchStarts(t *testing.T)
 // TestRunHostDispatchBrokerRequestReportsLaterLaunchFailureThroughArtifact locks the
 // detach contract: an accepted response still finalizes host failures in its artifact.
 func TestRunHostDispatchBrokerRequestReportsLaterLaunchFailureThroughArtifact(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	done := make(chan struct{})
 	recoveryStarted := make(chan struct{})
 	restored := make(chan struct{})
@@ -1748,11 +1748,9 @@ func TestCommentFailedDispatchSkipsStopOnDockerNameConflict(t *testing.T) {
 	logPath := filepath.Join(dir, "docker.log")
 	script := filepath.Join(dir, "docker")
 	body := "#!/bin/sh\n" +
-		"printf '%s\\n' \"$*\" >> \"" + logPath + "\"\n" +
+		"printf '%s\\n' \"$*\" >> " + shellQuote(testShellPath(logPath)) + "\n" +
 		"exit 0\n"
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil { //nolint:gosec
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 
 	r := &Runner{Runner: &shell.Runner{
 		Stdout:  &bytes.Buffer{},
@@ -1883,15 +1881,13 @@ func TestStopFailedDispatchContainerStopsTheAttemptedEngineer(t *testing.T) {
 	name := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, 689)
 	script := filepath.Join(dir, "docker")
 	body := "#!/bin/sh\n" +
-		"printf '%s\\n' \"$*\" >> \"" + logPath + "\"\n" +
+		"printf '%s\\n' \"$*\" >> " + shellQuote(testShellPath(logPath)) + "\n" +
 		"case \"$1\" in\n" +
 		"  ps) printf '%s\\n' '" + name + "' ;;\n" +
 		"  stop) exit 0 ;;\n" +
 		"esac\n" +
 		"exit 0\n"
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil { //nolint:gosec
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	r := &Runner{Runner: &shell.Runner{
 		Stdout:  &bytes.Buffer{},
 		Stderr:  &bytes.Buffer{},
@@ -1954,7 +1950,7 @@ func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 // TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface is the ward#931 smoke.
 // It locks the ward#900 and ward#876 regression shape without a live LLM.
 func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "forgejo-token")
 	t.Setenv("WARD_AGENT", "codex")
 	t.Setenv("WARD_MODE", "codex")
@@ -2056,14 +2052,12 @@ workflow default=merge-remote-main {
 
 	dockerName := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "agentic-os"}, 400)
 	dockerScript := filepath.Join(t.TempDir(), "docker")
-	if err := os.WriteFile(dockerScript, []byte("#!/bin/sh\n"+
+	writeTestShellCommand(t, dockerScript, "#!/bin/sh\n"+
 		"if [ \"$1\" = ps ]; then\n"+
 		"  printf '%s\\n' "+shellQuote(dockerName)+"\n"+
 		"  exit 0\n"+
 		"fi\n"+
-		"exit 0\n"), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+		"exit 0\n")
 	r := &Runner{Runner: &shell.Runner{
 		Resolve: func(bin string) (string, error) {
 			if bin == "docker" {
@@ -2286,7 +2280,7 @@ func TestForwardAgentDispatchPrintsLookupCommandWhenLaunchSucceedsWithoutLogPath
 }
 
 func TestStartHostDispatchBrokerRequestDetachesBeforeEngineerVisibility(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	r := fakeEngineerVisibilityDockerRunner(t, "engineer-codex-ward-1087", 2)
 
 	origLaunch := dispatchBrokerLaunch
@@ -2372,7 +2366,7 @@ func waitForDispatchArtifactSummary(t *testing.T, summaryPath string, wants ...s
 }
 
 func TestStartHostDispatchBrokerRequestReportsMissingEngineerVisibilityAsynchronously(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	r := fakeEngineerVisibilityDockerRunner(t, "", 0)
 
 	origLaunch := dispatchBrokerLaunch
@@ -2442,7 +2436,7 @@ func TestStartHostDispatchBrokerRequestReportsMissingEngineerVisibilityAsynchron
 }
 
 func TestStartHostDispatchBrokerRequestReportsCrossOwnerVisibilityCollisionAsynchronously(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	dir := t.TempDir()
 	script := filepath.Join(dir, "docker")
 	collidingName := "engineer-codex-website-66"
@@ -2460,9 +2454,7 @@ func TestStartHostDispatchBrokerRequestReportsCrossOwnerVisibilityCollisionAsync
 		"fi\n" +
 		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
 		"exit 1\n"
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	r := &Runner{Runner: &shell.Runner{
 		Stderr:  io.Discard,
 		Resolve: func(_ string) (string, error) { return script, nil },
@@ -2570,7 +2562,7 @@ func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
 }
 
 func TestDispatchArtifactPersistsMetaSummaryAndLookup(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	at := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
 	req := dispatchBrokerRequest{
 		Requester: "director-codex-host",
@@ -2669,16 +2661,14 @@ func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte
 		"      *) printf '%s\\n' \"unexpected docker cp source: $2\" >&2; exit 1;;\n" +
 		"    esac\n" +
 		"  fi\n" +
-		"  if [ -n " + shellQuote(cpPath) + " ]; then\n" +
-		"    cat " + shellQuote(cpPath) + "\n" +
+		"  if [ -n " + shellQuote(testShellPath(cpPath)) + " ]; then\n" +
+		"    cat " + shellQuote(testShellPath(cpPath)) + "\n" +
 		"  fi\n" +
 		"  exit 0\n" +
 		"fi\n" +
 		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
 		"exit 1\n"
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	return &Runner{Runner: &shell.Runner{
 		Stderr:  io.Discard,
 		Resolve: func(_ string) (string, error) { return script, nil },
@@ -2693,11 +2683,11 @@ func fakeEngineerVisibilityDockerRunner(t *testing.T, visibleName string, visibl
 	body := "#!/bin/sh\n" +
 		"if [ \"$1\" = ps ]; then\n" +
 		"  count=0\n" +
-		"  if [ -f " + shellQuote(countPath) + " ]; then\n" +
-		"    count=$(cat " + shellQuote(countPath) + ")\n" +
+		"  if [ -f " + shellQuote(testShellPath(countPath)) + " ]; then\n" +
+		"    count=$(cat " + shellQuote(testShellPath(countPath)) + ")\n" +
 		"  fi\n" +
 		"  count=$((count + 1))\n" +
-		"  printf '%s' \"$count\" > " + shellQuote(countPath) + "\n" +
+		"  printf '%s' \"$count\" > " + shellQuote(testShellPath(countPath)) + "\n" +
 		"  if [ \"$count\" -ge " + fmt.Sprintf("%d", visibleAfter) + " ] && [ -n " + shellQuote(visibleName) + " ]; then\n" +
 		"    printf '%s\\n' " + shellQuote(visibleName) + "\n" +
 		"  fi\n" +
@@ -2705,9 +2695,7 @@ func fakeEngineerVisibilityDockerRunner(t *testing.T, visibleName string, visibl
 		"fi\n" +
 		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
 		"exit 1\n"
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	return &Runner{Runner: &shell.Runner{
 		Stderr:  io.Discard,
 		Resolve: func(_ string) (string, error) { return script, nil },
@@ -2738,9 +2726,7 @@ func fakeStopDockRunner(t *testing.T, visibleName string) *Runner {
 		"esac\n" +
 		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
 		"exit 1\n"
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	return &Runner{Runner: &shell.Runner{
 		Stderr:  io.Discard,
 		Resolve: func(_ string) (string, error) { return script, nil },
@@ -2774,7 +2760,7 @@ func liveTranscriptTar(t *testing.T, files map[string]string) []byte {
 // TestServedRunStdioLandsInLogNotTTY is the ward#389 regression: the redirect routes a
 // served run's os.Stdout/os.Stderr bytes into the per-dispatch log, then restores them.
 func TestServedRunStdioLandsInLogNotTTY(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	req := dispatchBrokerRequest{
 		Requester: "director-claude-ward-1",
 		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1", "--agent", "claude"},

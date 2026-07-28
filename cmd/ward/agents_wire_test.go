@@ -241,6 +241,7 @@ func TestSelfContainedHarnessInstall(t *testing.T) {
 }
 
 type installHarnessProbeAgent struct {
+	t             *testing.T
 	binary        string
 	installDir    string
 	installCalled bool
@@ -256,7 +257,8 @@ func (a *installHarnessProbeAgent) Signer() attribution.Signer { return attribut
 
 func (a *installHarnessProbeAgent) Install(_ agentsapi.RunCtx) error {
 	a.installCalled = true
-	return os.WriteFile(filepath.Join(a.installDir, a.binary), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	writeTestShellCommand(a.t, filepath.Join(a.installDir, a.binary), "#!/bin/sh\nexit 0\n")
+	return nil
 }
 
 func (a *installHarnessProbeAgent) LaunchArgv(agentsapi.RunCtx) ([]string, bool) {
@@ -270,7 +272,7 @@ func (a *installHarnessProbeAgent) PreflightArgv(string) ([]string, bool) { retu
 func TestInstallHarnessRunsBeforeBinaryCheck(t *testing.T) {
 	binDir := t.TempDir()
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	agent := &installHarnessProbeAgent{binary: "probe-harness", installDir: binDir}
+	agent := &installHarnessProbeAgent{t: t, binary: "probe-harness", installDir: binDir}
 	if err := installHarness(agent, agentsapi.RunCtx{Ctx: context.Background(), AgentHome: t.TempDir(), Log: discardLog}); err != nil {
 		t.Fatalf("installHarness: %v", err)
 	}

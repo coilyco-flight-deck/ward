@@ -503,7 +503,7 @@ func TestPartitionScopeEntries(t *testing.T) {
 // from ~/.ward/config.yaml, partitioned into orgs vs repos; a missing file is no error.
 func TestLoadDirectorDefaultScope(t *testing.T) {
 	t.Run("missing file yields empties, no error", func(t *testing.T) {
-		t.Setenv("HOME", t.TempDir())
+		setTestHome(t, t.TempDir())
 		orgs, repos, err := loadDirectorDefaultScope()
 		if err != nil {
 			t.Fatalf("loadDirectorDefaultScope() unexpected error: %v", err)
@@ -514,7 +514,7 @@ func TestLoadDirectorDefaultScope(t *testing.T) {
 	})
 	t.Run("orgs and bare repos partitioned", func(t *testing.T) {
 		home := t.TempDir()
-		t.Setenv("HOME", home)
+		setTestHome(t, home)
 		if err := os.MkdirAll(filepath.Join(home, ".ward"), 0o750); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
@@ -537,7 +537,7 @@ func TestLoadDirectorDefaultScope(t *testing.T) {
 
 func TestResolveDirectorScopeUsesConfigWithoutGitCwd(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
 	if err := os.MkdirAll(filepath.Join(home, ".ward"), 0o750); err != nil {
 		t.Fatalf("mkdir ~/.ward: %v", err)
@@ -566,7 +566,7 @@ func TestResolveDirectorScopeUsesConfigWithoutGitCwd(t *testing.T) {
 }
 
 func TestResolveDirectorScopeWithoutConfigDoesNotProbeGit(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
 
 	cmd := &cli.Command{Name: "director", Flags: directorFlags(), Action: func(context.Context, *cli.Command) error { return nil }}
@@ -806,7 +806,7 @@ func TestBacklogRefreshClosedIssueStates(t *testing.T) {
 }
 
 func TestBacklogPrintPlannedSkipsBlockedClosedIssue(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 
 	led := &backlogLedger{Repo: "a/b", Issues: map[string]*backlogEntry{
 		"5": {Num: 5, Kind: backlogKindIssue, Lane: "headless", State: "blocked", Title: "closed stale issue", Tier: "P0"},
@@ -835,7 +835,7 @@ func TestBacklogPrintPlannedSkipsBlockedClosedIssue(t *testing.T) {
 // TestBacklogRefreshUsesForgejoTokenForPrivateRepos covers the director startup
 // refresh path for private Forgejo repos.
 func TestBacklogRefreshUsesForgejoTokenForPrivateRepos(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	oldBase := forgejoBaseURL
@@ -866,7 +866,7 @@ func TestBacklogRefreshUsesForgejoTokenForPrivateRepos(t *testing.T) {
 }
 
 func TestPlainDirectorPrintDoesNotEnumerateIssues(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	bundleDir := t.TempDir()
@@ -908,7 +908,7 @@ func TestPlainDirectorPrintDoesNotEnumerateIssues(t *testing.T) {
 }
 
 func TestBacklogRefreshReservationStates(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
@@ -961,7 +961,7 @@ func TestBacklogRefreshReservationStates(t *testing.T) {
 }
 
 func TestDirectorIssueScopeUsesOnlyTheReferencedIssue(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	bundleDir := t.TempDir()
@@ -1039,7 +1039,7 @@ func TestDirectorIssueScopeUsesOnlyTheReferencedIssue(t *testing.T) {
 }
 
 func TestIssueScopedDirectorRefreshStaysOnOneIssue(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	bundleDir := t.TempDir()
@@ -1102,7 +1102,7 @@ func TestIssueScopedDirectorRefreshStaysOnOneIssue(t *testing.T) {
 }
 
 func TestDirectorScopeIgnoresOperatorBundleBurndownRules(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv("WARD_CONFIG_REF", "file://"+t.TempDir())
 
 	bundleDir := t.TempDir()
@@ -1181,7 +1181,7 @@ func TestDirectorScopeIgnoresOperatorBundleBurndownRules(t *testing.T) {
 }
 
 func TestDirectorPlainScopeDoesNotApplyBurndownFilter(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 
 	bundleDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte(`repos {
@@ -1218,7 +1218,7 @@ func TestDirectorPlainScopeDoesNotApplyBurndownFilter(t *testing.T) {
 }
 
 func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
 	bundleDir := t.TempDir()
@@ -1361,7 +1361,7 @@ func TestCombineOpenBacklogIssues(t *testing.T) {
 }
 
 func TestBacklogPrintStatusDistinguishesPRs(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	repo := "a/b"
 	led := &backlogLedger{Repo: repo, Issues: map[string]*backlogEntry{
 		"5": {Num: 5, Kind: backlogKindIssue, Lane: "headless", State: "queued", Title: "issue work"},
@@ -1729,7 +1729,7 @@ func TestBacklogSweepNeedsRedispatch(t *testing.T) {
 }
 
 func TestBacklogLedgerRoundTrip(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	repo := "coilyco-flight-deck/ward"
 
 	// absent ledger loads empty
@@ -1770,7 +1770,7 @@ func TestBacklogDispatchContainerName(t *testing.T) {
 }
 
 func TestBacklogReconcileKeepsDispatchedWhenDockerUnavailable(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 900}
 	entry := &backlogEntry{
 		Num:          ref.Number,

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -39,9 +40,9 @@ func containerTranscriptDir(agentHome string, mode containerMode) string {
 	}
 	switch mode {
 	case modeClaude:
-		return filepath.Join(agentHome, ".claude", "projects")
+		return path.Join(agentHome, ".claude", "projects")
 	case modeCodex:
-		return filepath.Join(agentHome, ".codex", "sessions")
+		return path.Join(agentHome, ".codex", "sessions")
 	case modeOpencode, modeGoose:
 		return ""
 	default:
@@ -225,7 +226,7 @@ func agentLogsDir() string {
 // agentLogsDisplayDir renders the host archive root in the container log stream
 // using the stable tilde path the operator can apply on the host.
 func agentLogsDisplayDir(name string) string {
-	return filepath.Join("~", config.AppDir(), agentLogsSubdir, name)
+	return path.Join("~", config.AppDir(), agentLogsSubdir, name)
 }
 
 // agentLogsRedactedDir resolves the parallel redacted archive root (ward#526),

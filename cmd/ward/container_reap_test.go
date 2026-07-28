@@ -1260,10 +1260,8 @@ func TestReapTargetTreeRunsPreCommitBeforeLanding(t *testing.T) {
 
 	binDir := t.TempDir()
 	logFile := filepath.Join(binDir, "pre-commit.log")
-	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" >> %s\nexit 0\n", logFile)
-	if err := os.WriteFile(filepath.Join(binDir, "pre-commit"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" >> %s\nexit 0\n", shellQuote(testShellPath(logFile)))
+	writeTestShellCommand(t, filepath.Join(binDir, "pre-commit"), script)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	if err := os.WriteFile(filepath.Join(work, "scratch.txt"), []byte("scratch\n"), 0o644); err != nil {
@@ -1339,10 +1337,8 @@ func TestReapTargetTreePreCommitFailureSalvagesInsteadOfPushingMain(t *testing.T
 
 	binDir := t.TempDir()
 	logFile := filepath.Join(binDir, "pre-commit.log")
-	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" >> %s\nexit 1\n", logFile)
-	if err := os.WriteFile(filepath.Join(binDir, "pre-commit"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" >> %s\nexit 1\n", shellQuote(testShellPath(logFile)))
+	writeTestShellCommand(t, filepath.Join(binDir, "pre-commit"), script)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	if err := os.WriteFile(filepath.Join(work, "scratch.txt"), []byte("scratch\n"), 0o644); err != nil {

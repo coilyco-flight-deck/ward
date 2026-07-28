@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -238,6 +239,12 @@ func canonicalize(path string) string {
 // absFrom resolves p to an absolute path, treating a relative p as relative to
 // base (which may differ from cwd under a leading -C).
 func absFrom(base, p string) string {
+	if strings.HasPrefix(p, "/") {
+		return path.Clean(p)
+	}
+	if strings.HasPrefix(base, "/") {
+		return path.Join(base, p)
+	}
 	if filepath.IsAbs(p) {
 		return filepath.Clean(p)
 	}

@@ -10,7 +10,7 @@ import (
 
 func TestCreateRescueRepositoryVerifiedBundleAndRecovery(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	remote := t.TempDir()
 	gitFixture(t, remote, "init", "--bare", "-b", "main")
 	work := filepath.Join(t.TempDir(), "work")
@@ -51,7 +51,7 @@ func TestCreateRescueRepositoryVerifiedBundleAndRecovery(t *testing.T) {
 		t.Fatalf("merge rescued head: %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(fresh, "feature.txt"))
-	if err != nil || string(data) != "rescued later\n" {
+	if err != nil || strings.ReplaceAll(string(data), "\r\n", "\n") != "rescued later\n" {
 		t.Fatalf("fresh recovery = %q, %v", data, err)
 	}
 }

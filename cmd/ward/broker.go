@@ -198,14 +198,9 @@ func newBrokerListener(path string, gid int) (net.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ward container broker: listen on %s: %w", path, err)
 	}
-	// uid -1 leaves the owner (root, the daemon) untouched; only set the group.
-	if err := os.Chown(path, -1, gid); err != nil {
+	if err := secureBrokerSocket(path, gid); err != nil {
 		_ = ln.Close()
-		return nil, fmt.Errorf("ward container broker: chgrp socket to gid %d: %w", gid, err)
-	}
-	if err := os.Chmod(path, brokerSocketMode); err != nil {
-		_ = ln.Close()
-		return nil, fmt.Errorf("ward container broker: chmod socket %#o: %w", brokerSocketMode, err)
+		return nil, err
 	}
 	return ln, nil
 }

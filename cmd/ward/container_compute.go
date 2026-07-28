@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -287,13 +288,20 @@ func (t targetRepo) canonicalSlug() string { return strings.ToLower(t.slug()) }
 // primaryWorkspaceDir preserves the primary checkout's long-standing, obvious cwd.
 // Additional grants use grantedRepoWorkspaceDir so equal basenames can coexist.
 func primaryWorkspaceDir(root string, repo targetRepo) string {
-	return filepath.Join(root, repo.Name)
+	return rootedPathJoin(root, repo.Name)
 }
 
 // grantedRepoWorkspaceDir gives every non-primary checkout an owner-qualified,
 // normalized location under the workspace.
 func grantedRepoWorkspaceDir(root string, repo targetRepo) string {
-	return filepath.Join(root, repo.Owner, repo.Name)
+	return rootedPathJoin(root, repo.Owner, repo.Name)
+}
+
+func rootedPathJoin(root string, elements ...string) string {
+	if filepath.VolumeName(root) != "" {
+		return filepath.Join(append([]string{root}, elements...)...)
+	}
+	return path.Join(append([]string{root}, elements...)...)
 }
 
 // workspaceMapping renders the resolved primary + extra checkout locations for

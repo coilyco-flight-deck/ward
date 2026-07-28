@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/version"
@@ -90,7 +89,7 @@ func newScratchGateStatus(p upPlan, readOnly, behind bool, current, latest strin
 		wardVersionSource: p.WardVersionSource,
 		withRepos:         extras,
 		scratchRoot:       scratchRoot,
-		scratchGoCache:    filepath.Join(scratchRoot, "go-build"),
+		scratchGoCache:    surfaceScratchGoCacheDir(scratchRoot),
 		scratchBudget:     "at least " + diskBytes(surfaceScratchFloorBytes) + " free",
 		behind:            behind,
 		current:           current,

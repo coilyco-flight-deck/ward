@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -144,7 +143,7 @@ func TestTSSidecarWardEnv(t *testing.T) {
 // key (the tower dials by MagicDNS, ward#337) and opencode injects nothing (ward#425).
 func TestCredEnvLinesNoTower(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) {
 		return "", fmt.Errorf("no external binaries in this hermetic test")
 	}}}
@@ -167,9 +166,7 @@ func fakeDockerRunner(t *testing.T, stdout string, code int) *Runner {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "docker")
 	body := "#!/bin/sh\nprintf '%s' " + shellQuote(stdout) + "\nexit " + strconv.Itoa(code) + "\n"
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	return &Runner{Runner: &shell.Runner{
 		Stderr:  io.Discard,
 		Resolve: func(_ string) (string, error) { return script, nil },
@@ -196,9 +193,7 @@ func fakeDockerDispatch(t *testing.T, inspectOut string, inspectCode, createCode
 	body := "#!/bin/sh\n" +
 		"if [ \"$1\" = network ] && [ \"$2\" = create ]; then exit " + strconv.Itoa(createCode) + "; fi\n" +
 		"printf '%s' " + shellQuote(inspectOut) + "\nexit " + strconv.Itoa(inspectCode) + "\n"
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	var errbuf bytes.Buffer
 	return &Runner{Runner: &shell.Runner{
 		Stderr:  &errbuf,

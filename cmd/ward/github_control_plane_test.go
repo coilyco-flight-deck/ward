@@ -146,7 +146,7 @@ func newGitHubControlPlaneClient(t *testing.T) (*githubClient, string, string) {
 
 	script := fmt.Sprintf(`#!/bin/sh
 set -eu
-printf '%%s\n' "$*" >> %[1]q
+printf '%%s\n' "$*" >> %[1]s
 bodyfile=""
 for arg in "$@"; do
 	bodyfile="$arg"
@@ -218,13 +218,13 @@ JSON
 		sub="${2:-}"
 		case "$sub" in
 			create)
-				cat "$bodyfile" >> %[2]q
-				printf '\n---\n' >> %[2]q
+				cat "$bodyfile" >> %[2]s
+				printf '\n---\n' >> %[2]s
 				printf 'https://github.com/coilyco-flight-deck/ward/issues/42\n'
 				;;
 			comment)
-				cat "$bodyfile" >> %[2]q
-				printf '\n---\n' >> %[2]q
+				cat "$bodyfile" >> %[2]s
+				printf '\n---\n' >> %[2]s
 				;;
 			*)
 				printf 'unexpected gh issue subcommand: %%s\n' "$*" >&2
@@ -237,10 +237,8 @@ JSON
 		exit 1
 		;;
 esac
-`, callsLog, bodiesLog)
-	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+`, shellQuote(testShellPath(callsLog)), shellQuote(testShellPath(bodiesLog)))
+	writeTestShellCommand(t, stub, script)
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: func(string) (string, error) { return stub, nil }}}
 	return &githubClient{r: r, mode: modeClaude}, callsLog, bodiesLog
 }

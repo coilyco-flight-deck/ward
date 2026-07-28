@@ -32,12 +32,12 @@ const reviewClassEnv = "WARD_REVIEW_CLASS"
 func reviewSkillPath() string {
 	candidates := mustReadContainerAssetLines("review-skill-paths.txt")
 	for _, candidate := range candidates {
-		path := os.ExpandEnv(candidate)
+		path := filepath.Clean(os.ExpandEnv(candidate))
 		if st, err := os.Stat(path); err == nil && !st.IsDir() {
 			return path
 		}
 	}
-	return os.ExpandEnv(candidates[len(candidates)-1])
+	return filepath.Clean(os.ExpandEnv(candidates[len(candidates)-1]))
 }
 
 // reviewSummaryPath is the handoff file the final conclusion comment reads.

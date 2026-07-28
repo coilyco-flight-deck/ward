@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 	"testing"
@@ -20,13 +21,24 @@ func TestMain(m *testing.M) {
 	// (or poison) the operator's real cache.
 	tmp, err := os.MkdirTemp("", "ward-test-cache-*")
 	if err == nil {
+		os.Setenv("HOME", tmp)
+		os.Setenv("USERPROFILE", tmp)
 		if runtime.GOOS == "windows" {
 			os.Setenv("LocalAppData", tmp)
 		} else {
 			os.Setenv("XDG_CACHE_HOME", tmp)
 		}
 	}
+	cleanupCommands, commandErr := prepareTestShellCommands()
+	if commandErr != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "%v\n", commandErr)
+		if tmp != "" {
+			_ = os.RemoveAll(tmp)
+		}
+		os.Exit(1)
+	}
 	code := m.Run()
+	cleanupCommands()
 	if tmp != "" {
 		_ = os.RemoveAll(tmp)
 	}

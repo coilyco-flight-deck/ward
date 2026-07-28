@@ -15,7 +15,7 @@ import (
 )
 
 func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv(wardConfigRefEnv, "")
 
 	now := time.Date(2026, 7, 9, 22, 45, 0, 0, time.UTC)
@@ -164,7 +164,7 @@ func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 }
 
 func TestReservationCachePrunesArchivedDirectorRun(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1301}
 	dir := filepath.Join(agentLogsDir(), "director-codex-ward-1301")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -187,7 +187,7 @@ func TestReservationCachePrunesArchivedDirectorRun(t *testing.T) {
 }
 
 func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	now := time.Now().UTC()
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1033}
 	oldBase := forgejoBaseURL
@@ -274,7 +274,7 @@ func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
 }
 
 func TestAgentListMarksStalePrelaunchLaunchesCleanupNeeded(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	origTimeout := dispatchBrokerVisibilityTimeout
 	dispatchBrokerVisibilityTimeout = 25 * time.Millisecond
 	t.Cleanup(func() { dispatchBrokerVisibilityTimeout = origTimeout })
@@ -344,7 +344,7 @@ func TestAgentListMarksStalePrelaunchLaunchesCleanupNeeded(t *testing.T) {
 }
 
 func TestAgentListKeepsFailedBeforeStartRowsVisibleButExcluded(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	now := time.Now().UTC()
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1035}
 	resPath, err := agentReservationPath(ref)
@@ -409,7 +409,7 @@ func TestAgentListKeepsFailedBeforeStartRowsVisibleButExcluded(t *testing.T) {
 }
 
 func TestAgentListPrunesFailedBeforeStartRowAfterSuccessfulDrain(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	now := time.Now().UTC()
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1037}
 	resPath, err := agentReservationPath(ref)
@@ -489,7 +489,7 @@ func TestAgentListPrunesFailedBeforeStartRowAfterSuccessfulDrain(t *testing.T) {
 }
 
 func TestAgentListMarksPartialLaunchWhenReservationMarkerIsMissing(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	now := time.Now().UTC()
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1036}
 	srv := issueThreadAuthorityServer(t, []issueThreadAuthorityRow{{
@@ -560,7 +560,7 @@ func TestAgentListMarksPartialLaunchWhenReservationMarkerIsMissing(t *testing.T)
 }
 
 func TestAgentListPrunesStaleReservationCacheEntry(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	server := issueThreadAuthorityServer(t, []issueThreadAuthorityRow{{
 		Number: 1035,
 		Comments: []issueComment{
@@ -601,7 +601,7 @@ func TestAgentListPrunesStaleReservationCacheEntry(t *testing.T) {
 }
 
 func TestClearAgentReservationCacheDirRecreatesDirectory(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	dir, err := agentReservationCacheDir()
 	if err != nil {
 		t.Fatalf("agentReservationCacheDir: %v", err)
@@ -628,7 +628,7 @@ func TestClearAgentReservationCacheDirRecreatesDirectory(t *testing.T) {
 }
 
 func TestAgentListRecreatesMissingReservationCacheDir(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	dir, err := agentReservationCacheDir()
 	if err != nil {
 		t.Fatalf("agentReservationCacheDir: %v", err)
@@ -707,9 +707,7 @@ func fakeEngineerRunningDockerRunner(t *testing.T, startedAt string) *Runner {
 		"fi\n" +
 		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
 		"exit 1\n"
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	return &Runner{Runner: &shell.Runner{
 		Stderr:  io.Discard,
 		Resolve: func(_ string) (string, error) { return script, nil },

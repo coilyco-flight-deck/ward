@@ -76,10 +76,9 @@ func TestGithubDeleteIssueComment(t *testing.T) {
 	dir := t.TempDir()
 	argvFile := filepath.Join(dir, "argv")
 	ghStub := filepath.Join(dir, "gh")
-	script := "#!/bin/sh\nfor a in \"$@\"; do echo \"$a\" >> " + argvFile + "; done\necho '---' >> " + argvFile + "\n"
-	if err := os.WriteFile(ghStub, []byte(script), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+	argvPath := shellQuote(testShellPath(argvFile))
+	script := "#!/bin/sh\nfor a in \"$@\"; do echo \"$a\" >> " + argvPath + "; done\necho '---' >> " + argvPath + "\n"
+	writeTestShellCommand(t, ghStub, script)
 	r := &Runner{Runner: &shell.Runner{Resolve: func(string) (string, error) { return ghStub, nil }}}
 	c := &githubClient{r: r, mode: modeClaude}
 	if err := c.DeleteIssueComment(context.Background(), "coilyco-flight-deck", "ward", 123); err != nil {
@@ -102,10 +101,9 @@ func TestGithubLockUnlockIssue(t *testing.T) {
 	argvFile := filepath.Join(dir, "argv")
 	ghStub := filepath.Join(dir, "gh")
 	// The stub appends its args (one per line) so both calls land in one file (ward#494).
-	script := "#!/bin/sh\nfor a in \"$@\"; do echo \"$a\" >> " + argvFile + "; done\necho '---' >> " + argvFile + "\n"
-	if err := os.WriteFile(ghStub, []byte(script), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+	argvPath := shellQuote(testShellPath(argvFile))
+	script := "#!/bin/sh\nfor a in \"$@\"; do echo \"$a\" >> " + argvPath + "; done\necho '---' >> " + argvPath + "\n"
+	writeTestShellCommand(t, ghStub, script)
 	r := &Runner{Runner: &shell.Runner{Resolve: func(string) (string, error) { return ghStub, nil }}}
 	c := &githubClient{r: r, mode: modeClaude}
 

@@ -82,22 +82,18 @@ func seedStubRunner(t *testing.T, logPath string, gitFails bool) (*Runner, *stri
 		gitExit = "exit 1"
 	}
 	git := "#!/bin/sh\n" +
-		"echo \"git $*\" >> " + logPath + "\n" +
+		"echo \"git $*\" >> " + shellQuote(testShellPath(logPath)) + "\n" +
 		"# clone --mirror URL DST: create DST so the copy step has a mirror to lift\n" +
 		"for a in \"$@\"; do dst=\"$a\"; done\n" +
 		"[ \"$1\" = clone ] && mkdir -p \"$dst\"\n" +
 		gitExit + "\n"
 	docker := "#!/bin/sh\n" +
-		"echo \"docker $*\" >> " + logPath + "\n" +
+		"echo \"docker $*\" >> " + shellQuote(testShellPath(logPath)) + "\n" +
 		"# a bare `test -d` probe reports the mirror ABSENT so the seed fires; cp succeeds\n" +
 		"case \"$*\" in *' test -d '*) exit 1 ;; esac\n" +
 		"exit 0\n"
-	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(git), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(docker), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+	writeTestShellCommand(t, filepath.Join(dir, "git"), git)
+	writeTestShellCommand(t, filepath.Join(dir, "docker"), docker)
 	var errb strings.Builder
 	r := &Runner{Runner: &shell.Runner{
 		Stdout:  &strings.Builder{},

@@ -183,9 +183,7 @@ func TestResolveForgejoTokenPrefersEnv(t *testing.T) {
 func tokenStub(t *testing.T, token string) string {
 	t.Helper()
 	stub := filepath.Join(t.TempDir(), "aws")
-	if err := os.WriteFile(stub, []byte("#!/bin/sh\necho "+token+"\n"), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+	writeTestShellCommand(t, stub, "#!/bin/sh\necho "+token+"\n")
 	return stub
 }
 

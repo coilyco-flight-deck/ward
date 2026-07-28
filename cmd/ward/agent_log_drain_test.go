@@ -132,7 +132,7 @@ func TestDrainAgentRunIdempotentSkipsMarked(t *testing.T) {
 // TestWriteRedactedArtifacts lands the redacted view under the separate tree (secrets
 // scrubbed, bodies dropped) and never touches the raw agent-logs tree (ward#526).
 func TestWriteRedactedArtifacts(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	name := "ward-agent-redact-test"
 	console := []byte("boot\nleaked ghp_1234567890abcdefghijklmnopqrstuvwxyz here\ndone\n")
 	transcript := []byte(`{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/workspace/ward/x.go","content":"secret ghp_1234567890abcdefghijklmnopqrstuvwxyz body"}}]}}`)
@@ -169,7 +169,7 @@ func TestWriteRedactedArtifacts(t *testing.T) {
 // shared agentic-os buffer path with redacted, parseable JSONL rows.
 func TestWriteClaudeToolFailureRecords(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	t.Setenv("XDG_CACHE_HOME", "")
 
 	transcript := strings.Join([]string{
@@ -330,7 +330,7 @@ func TestNormalizeRunSummaryOutcome(t *testing.T) {
 
 func TestWriteDiskArtifactsAddsRunSummaryFooter(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	name := "engineer-codex-ward-526"
 	dir := filepath.Join(t.TempDir(), "archive")
 	console := []byte("boot\nward container reap: landed on main\n")
@@ -380,9 +380,7 @@ func dockerInspectStateStubDir(t *testing.T, stateJSON, envJSON string) string {
 		"  exit 0\n" +
 		"fi\n" +
 		"exit 1\n"
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	return dir
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -74,7 +75,7 @@ func TestReservationFresh(t *testing.T) {
 // TestAgentReservationRoundTrip writes a sentinel and reads it back, then
 // confirms a removed sentinel reads as absent.
 func TestAgentReservationRoundTrip(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 142}
 	path, err := agentReservationPath(ref)
 	if err != nil {
@@ -110,7 +111,7 @@ func TestAgentReservationRoundTrip(t *testing.T) {
 
 // A corrupt sentinel must read as absent so it can't permanently wedge an issue.
 func TestReadAgentReservationCorrupt(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1}
 	path, err := agentReservationPath(ref)
 	if err != nil {
@@ -131,7 +132,7 @@ func TestReadAgentReservationCorrupt(t *testing.T) {
 // acquireLocalReservation writes the cache sentinel and release removes it. The
 // issue thread owns the blocking decision now, not the local file.
 func TestAcquireLocalReservationWritesCache(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	r := &Runner{}
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 9}
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
@@ -151,7 +152,7 @@ func TestAcquireLocalReservationWritesCache(t *testing.T) {
 
 // precheckReservation refuses a fresh issue-thread hold and ignores stale cache.
 func TestPrecheckReservation(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	r := &Runner{}
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 184}
 	now := time.Now().UTC()
@@ -203,7 +204,7 @@ func TestPrecheckReservation(t *testing.T) {
 }
 
 func TestPrecheckReservationLogs(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	r := &Runner{}
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 184}
 	w := resolvedWork{Ref: ref}
@@ -223,7 +224,10 @@ func TestPrecheckReservationLogs(t *testing.T) {
 // TestAgentReservationLockSerializesConcurrentHarnesses proves the strict launch
 // lock keeps two near-simultaneous harnesses from both deciding on the same issue.
 func TestAgentReservationLockSerializesConcurrentHarnesses(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	if runtime.GOOS == "windows" {
+		t.Skip("cli-guard flock is a documented no-op on non-Unix hosts")
+	}
+	setTestHome(t, t.TempDir())
 	r := &Runner{}
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1034}
 
@@ -545,7 +549,7 @@ func TestReleaseRemoteReservation(t *testing.T) {
 // TestWaitForDispatchBrokerEngineerVisibilityReleasesFailedLaunchIntent keeps the
 // launch-intent cleanup immediate when a launch never becomes visible.
 func TestWaitForDispatchBrokerEngineerVisibilityReleasesFailedLaunchIntent(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	origTimeout := dispatchBrokerVisibilityTimeout
 	origPoll := dispatchBrokerVisibilityPoll
 	dispatchBrokerVisibilityTimeout = 25 * time.Millisecond
@@ -636,9 +640,7 @@ func dockerRunningStub(t *testing.T, name string) string {
 		"fi\n" +
 		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
 		"exit 1\n"
-	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
-		t.Fatalf("write docker stub: %v", err)
-	}
+	writeTestShellCommand(t, stub, script)
 	return stub
 }
 
@@ -651,14 +653,12 @@ func dockerAbsentStub(t *testing.T) string {
 		"fi\n" +
 		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
 		"exit 1\n"
-	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
-		t.Fatalf("write docker stub: %v", err)
-	}
+	writeTestShellCommand(t, stub, script)
 	return stub
 }
 
 func TestAcquireLocalReservationDoesNotBlockOnRunningWorkerCache(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 788}
 	container := "engineer-claude-ward-788"
 	r, _, _ := bufRunner(dockerRunningStub(t, container))
@@ -680,7 +680,7 @@ func TestAcquireLocalReservationDoesNotBlockOnRunningWorkerCache(t *testing.T) {
 }
 
 func TestAcquireLocalReservationReleaseLeavesForeignSentinel(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 789}
 	container := "engineer-claude-ward-789"
 	r, _, _ := bufRunner(dockerAbsentStub(t))
@@ -783,7 +783,7 @@ func TestPostReservationComment(t *testing.T) {
 // TestReserveIssueReportsPartialLaunchWhenReservationCommentPostFails keeps the
 // reservation-post warning actionable once the launch continues past it.
 func TestReserveIssueReportsPartialLaunchWhenReservationCommentPostFails(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv(reservationRecheckEnv, "0")
 
 	mux := http.NewServeMux()

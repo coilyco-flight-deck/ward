@@ -8,7 +8,9 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -160,6 +162,9 @@ func TestBuildAgentArgv(t *testing.T) {
 }
 
 func TestLaunchAgentReportsOOMKilled(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("launch exit breadcrumbs depend on POSIX signal semantics")
+	}
 	dir := t.TempDir()
 	docker := filepath.Join(dir, "docker")
 	setpriv := filepath.Join(dir, "setpriv")
@@ -170,12 +175,8 @@ func TestLaunchAgentReportsOOMKilled(t *testing.T) {
 		"fi\n" +
 		"exit 1\n"
 	setprivBody := "#!/bin/sh\nkill -9 $$\n"
-	if err := os.WriteFile(docker, []byte(dockerBody), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
-	if err := os.WriteFile(setpriv, []byte(setprivBody), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake setpriv: %v", err)
-	}
+	writeTestShellCommand(t, docker, dockerBody)
+	writeTestShellCommand(t, setpriv, setprivBody)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard, Resolve: shell.PathResolver}}
 	var launchErr error
@@ -258,6 +259,9 @@ func TestGooseCompletionOutput(t *testing.T) {
 }
 
 func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Goose completion reaping depends on POSIX process signal semantics")
+	}
 	preserveScratchEnv(t)
 	prevWorkspaceRoot := workspaceRoot
 	workspaceRoot = t.TempDir()
@@ -304,9 +308,7 @@ func TestRunContainerBootstrapGooseNoSessionExitsAndReaps(t *testing.T) {
 		chown:   chownBody,
 		aws:     awsBody,
 	} {
-		if err := os.WriteFile(path, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-			t.Fatalf("write %s: %v", filepath.Base(path), err)
-		}
+		writeTestShellCommand(t, path, body)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("FORGEJO_TOKEN", "")
@@ -836,7 +838,7 @@ func TestInstallReadOnlyPushGuard(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected pre-push hook: %v", err)
 		}
-		if fi.Mode().Perm()&0o100 == 0 {
+		if runtime.GOOS != "windows" && fi.Mode().Perm()&0o100 == 0 {
 			t.Errorf("pre-push hook is not executable: %v", fi.Mode())
 		}
 		body, err := os.ReadFile(hook)
@@ -992,7 +994,7 @@ func TestWriteForgejoGitCredentialHelper(t *testing.T) {
 	}
 	if fi, err := os.Stat(helper); err != nil {
 		t.Fatalf("helper missing: %v", err)
-	} else if fi.Mode().Perm()&0o100 == 0 {
+	} else if runtime.GOOS != "windows" && fi.Mode().Perm()&0o100 == 0 {
 		t.Fatalf("helper is not executable: %v", fi.Mode())
 	}
 	body, err := os.ReadFile(helper)
@@ -1008,6 +1010,9 @@ func TestWriteForgejoGitCredentialHelper(t *testing.T) {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("helper missing %q:\n%s", want, body)
 		}
+	}
+	if runtime.GOOS == "windows" {
+		return
 	}
 	seed := "protocol=https\nhost=forgejo.example\nusername=coilyco-ops\npassword=plain-text\n\n"
 	store := exec.Command("git", "credential-store", "--file="+credFile, "store")
@@ -1174,8 +1179,8 @@ func TestSurfaceScratchDir(t *testing.T) {
 	if got := surfaceScratchDir(bootstrapEnv{GitCache: "/gitcache"}); got != "/scratch" {
 		t.Fatalf("surfaceScratchDir(writable) = %q, want /scratch", got)
 	}
-	if got := surfaceScratchDir(bootstrapEnv{GitCache: "/gitcache", ReadOnly: true}); got != filepath.Join("/gitcache", "surface-scratch") {
-		t.Fatalf("surfaceScratchDir(read-only) = %q, want %q", got, filepath.Join("/gitcache", "surface-scratch"))
+	if got := surfaceScratchDir(bootstrapEnv{GitCache: containerGitcacheMnt, ReadOnly: true}); got != path.Join(containerGitcacheMnt, "surface-scratch") {
+		t.Fatalf("surfaceScratchDir(read-only) = %q, want %q", got, path.Join(containerGitcacheMnt, "surface-scratch"))
 	}
 }
 

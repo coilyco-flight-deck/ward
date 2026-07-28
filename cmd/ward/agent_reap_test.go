@@ -161,7 +161,7 @@ func TestAgentReapCommandRegistered(t *testing.T) {
 }
 
 func TestClearStalePrelaunchReservationReleasesIssueAndSentinel(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	now := time.Now().UTC()
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1035}
 	path, err := agentReservationPath(ref)
@@ -201,7 +201,7 @@ func TestClearStalePrelaunchReservationReleasesIssueAndSentinel(t *testing.T) {
 }
 
 func TestClearStalePrelaunchReservationKeepsCacheWhenRemoteReleaseFails(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1502}
 	path, err := agentReservationPath(ref)
 	if err != nil {

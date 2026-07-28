@@ -20,9 +20,7 @@ func TestResolveAgentIssueRef(t *testing.T) {
 	cwd := t.TempDir()
 	t.Setenv("COILY_INVOKE_CWD", cwd)
 	gitStub := filepath.Join(t.TempDir(), "git")
-	if err := os.WriteFile(gitStub, []byte("#!/bin/sh\necho https://forgejo.coilysiren.me/coilyco-flight-deck/ward.git\n"), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+	writeTestShellCommand(t, gitStub, "#!/bin/sh\necho https://forgejo.coilysiren.me/coilyco-flight-deck/ward.git\n")
 	withGit := &Runner{Runner: &shell.Runner{Resolve: func(bin string) (string, error) {
 		if bin == "git" {
 			return gitStub, nil
@@ -64,9 +62,7 @@ func TestResolveAgentIssueRef(t *testing.T) {
 	t.Run("bare ref with no inferable origin is an error", func(t *testing.T) {
 		// A stub `git` that exits non-zero, as it would in a directory with no origin.
 		failGit := filepath.Join(t.TempDir(), "git")
-		if err := os.WriteFile(failGit, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil { //nolint:gosec
-			t.Fatal(err)
-		}
+		writeTestShellCommand(t, failGit, "#!/bin/sh\nexit 1\n")
 		noOrigin := &Runner{Runner: &shell.Runner{Resolve: func(_ string) (string, error) {
 			return failGit, nil
 		}}}

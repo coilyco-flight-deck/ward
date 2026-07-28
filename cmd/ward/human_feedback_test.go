@@ -8,7 +8,7 @@ import (
 )
 
 func TestWardAuthoredCommentNeedsStructuredMarkerByDefault(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	human := issueComment{
 		Body: "plain human note",
 		User: struct {
@@ -31,7 +31,7 @@ func TestWardAuthoredCommentNeedsStructuredMarkerByDefault(t *testing.T) {
 
 func TestHumanFeedbackConfigExtendsAutomationAndIgnoredAuthors(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	cfgPath := filepath.Join(home, ".ward", "config.yaml")
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
@@ -65,7 +65,7 @@ func TestHumanFeedbackConfigExtendsAutomationAndIgnoredAuthors(t *testing.T) {
 }
 
 func TestParseBacklogOutcomeBlocksWhenHumanFeedbackIsNewer(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	comments := []issueComment{
 		{
 			Body:      "WARD-WORKFLOW: done ✅\n\n<details><summary>details</summary>\n\nfinished\n\n</details>",

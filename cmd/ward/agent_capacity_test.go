@@ -40,9 +40,7 @@ func engineerCountDockerStub(t *testing.T, count int) string {
 	b.WriteString("fi\n")
 	b.WriteString("printf '%s\\n' \"unexpected docker args: $*\" >&2\n")
 	b.WriteString("exit 1\n")
-	if err := os.WriteFile(stub, []byte(b.String()), 0o755); err != nil { //nolint:gosec
-		t.Fatalf("write docker stub: %v", err)
-	}
+	writeTestShellCommand(t, stub, b.String())
 	t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return stub
 }
@@ -66,9 +64,7 @@ func engineerRepoAndGlobalCountDockerStub(t *testing.T, repo string, repoCount, 
 	b.WriteString("fi\n")
 	b.WriteString("printf '%s\\n' \"unexpected docker args: $*\" >&2\n")
 	b.WriteString("exit 1\n")
-	if err := os.WriteFile(stub, []byte(b.String()), 0o755); err != nil { //nolint:gosec
-		t.Fatalf("write docker stub: %v", err)
-	}
+	writeTestShellCommand(t, stub, b.String())
 	t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return stub
 }
@@ -84,9 +80,9 @@ func engineerCapacityDelayedVisibilityDockerStub(t *testing.T, running []string)
 	}
 	stub = filepath.Join(dir, "docker")
 	script := "#!/bin/sh\n" +
-		"state=" + shellQuote(statePath) + "\n" +
-		"pending=" + shellQuote(pendingPath) + "\n" +
-		"visible=" + shellQuote(visiblePath) + "\n" +
+		"state=" + shellQuote(testShellPath(statePath)) + "\n" +
+		"pending=" + shellQuote(testShellPath(pendingPath)) + "\n" +
+		"visible=" + shellQuote(testShellPath(visiblePath)) + "\n" +
 		"cmd=$1\n" +
 		"shift\n" +
 		"case \"$cmd\" in\n" +
@@ -138,9 +134,7 @@ func engineerCapacityDelayedVisibilityDockerStub(t *testing.T, running []string)
 		"    exit 0\n" +
 		"    ;;\n" +
 		"esac\n"
-	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
-		t.Fatalf("write delayed-visibility docker stub: %v", err)
-	}
+	writeTestShellCommand(t, stub, script)
 	t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return stub, statePath, pendingPath, visiblePath
 }
@@ -149,9 +143,7 @@ func stubCommandInPath(t *testing.T, name string) string {
 	t.Helper()
 	stub := filepath.Join(t.TempDir(), name)
 	script := "#!/bin/sh\nprintf '%s\\n' \"unexpected " + name + " invocation: $*\" >&2\nexit 1\n"
-	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec
-		t.Fatalf("write %s stub: %v", name, err)
-	}
+	writeTestShellCommand(t, stub, script)
 	t.Setenv("PATH", filepath.Dir(stub)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return stub
 }
@@ -304,7 +296,7 @@ func TestEngineerContainerLimitOverrideCapacity(t *testing.T) {
 }
 
 func TestEngineerCapacityLockWaitsForVisibleContainerBeforeRelease(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "")
 	t.Setenv("WARD_TARGET_REPO", "")
@@ -416,7 +408,7 @@ workflow default=merge-remote-main {
 }
 
 func TestLaunchRepoEngineerBackpressureIgnoresStaleDockerWhenIssueThreadIsClear(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
 	srv := issueThreadAuthorityServer(t, nil)
@@ -430,7 +422,7 @@ func TestLaunchRepoEngineerBackpressureIgnoresStaleDockerWhenIssueThreadIsClear(
 }
 
 func TestLaunchRepoEngineerBackpressureOverrideCapacity(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
 	now := time.Now().UTC()
@@ -528,7 +520,7 @@ func terminalIssueComment(status string, at time.Time) issueComment {
 }
 
 func TestActiveEngineerLaunchCountUsesIssueThreadAuthority(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
 	now := time.Now().UTC()
@@ -574,7 +566,7 @@ func TestActiveEngineerLaunchCountUsesIssueThreadAuthority(t *testing.T) {
 }
 
 func TestActiveEngineerLaunchCountIgnoresLaunchIntents(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
 	now := time.Now().UTC()
@@ -620,7 +612,7 @@ func TestActiveEngineerLaunchCountIgnoresLaunchIntents(t *testing.T) {
 }
 
 func TestActiveEngineerLaunchCountIgnoresTerminalGhostRowsAndCacheClears(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
 	now := time.Now().UTC()
@@ -686,7 +678,7 @@ func TestActiveEngineerLaunchCountIgnoresTerminalGhostRowsAndCacheClears(t *test
 }
 
 func TestActiveEngineerLaunchCountIgnoresLocalCleanupNeededReservation(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
 	now := time.Now().UTC()
@@ -723,7 +715,7 @@ func TestActiveEngineerLaunchCountIgnoresLocalCleanupNeededReservation(t *testin
 }
 
 func TestActiveEngineerLaunchCountFallsBackSafelyForNonForgejoTrackers(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
 	forgejoSrv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {

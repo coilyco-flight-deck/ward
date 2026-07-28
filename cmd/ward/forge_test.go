@@ -511,17 +511,13 @@ func TestResolveGitHubTokenSourceSelects(t *testing.T) {
 func ghAuthTokenStub(t *testing.T, out string) string {
 	t.Helper()
 	stub := filepath.Join(t.TempDir(), "gh")
-	if err := os.WriteFile(stub, []byte("#!/bin/sh\nprintf '%s' '"+out+"'\n"), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+	writeTestShellCommand(t, stub, "#!/bin/sh\nprintf '%s' '"+out+"'\n")
 	return stub
 }
 
 func gitlabGlabTokenStub(t *testing.T, out string) string {
 	t.Helper()
 	stub := filepath.Join(t.TempDir(), "glab")
-	if err := os.WriteFile(stub, []byte("#!/bin/sh\nprintf '%s' '"+out+"'\n"), 0o755); err != nil { //nolint:gosec
-		t.Fatal(err)
-	}
+	writeTestShellCommand(t, stub, "#!/bin/sh\nprintf '%s' '"+out+"'\n")
 	return stub
 }

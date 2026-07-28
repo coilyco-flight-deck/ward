@@ -256,7 +256,7 @@ func TestAddFleetAttributionConfigEnv(t *testing.T) {
 }
 
 func TestAddFleetAttributionConfigEnvGitPrecedence(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 
 	repo := t.TempDir()

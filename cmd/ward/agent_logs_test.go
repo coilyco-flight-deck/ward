@@ -11,7 +11,7 @@ import (
 )
 
 func TestResolveAgentLogsSourceFallsBackToDispatchLog(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1033}
 	dispatchDir := filepath.Join(agentLogsDir(), dispatchLogsSubdir)
 	if err := os.MkdirAll(dispatchDir, 0o755); err != nil {
@@ -62,7 +62,7 @@ func TestResolveAgentLogsSourceForIssueIncludesDirectorContainer(t *testing.T) {
 }
 
 func TestResolveAgentLogsSourceForIssueFallsBackToRedactedDirectorArchive(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1301}
 	dir := filepath.Join(agentLogsRedactedDir(), "director-codex-ward-1301")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -112,9 +112,7 @@ func fakeDirectorIssueLogRunner(t *testing.T, visibleName string) *Runner {
 		"fi\n" +
 		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
 		"exit 1\n"
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { // #nosec G306 -- test fixture
-		t.Fatalf("write fake docker: %v", err)
-	}
+	writeTestShellCommand(t, script, body)
 	return &Runner{Runner: &shell.Runner{
 		Stderr:  io.Discard,
 		Resolve: func(_ string) (string, error) { return script, nil },

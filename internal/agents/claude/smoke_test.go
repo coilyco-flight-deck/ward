@@ -2,6 +2,7 @@ package claude
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -87,6 +88,9 @@ func TestClassifyClaudeModelConfigFailure(t *testing.T) {
 }
 
 func TestDiskReportAndLowDiskPaths(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("disk pressure reporting is implemented only on Unix hosts")
+	}
 	// "/" is always stat-able on the test host; a bogus path is skipped.
 	rep := diskReport([]string{"/", "/ward-nonexistent-xyz"})
 	if !strings.HasPrefix(rep, "/ ") || !strings.Contains(rep, "free of") {

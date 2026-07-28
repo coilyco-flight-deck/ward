@@ -127,6 +127,8 @@ func scopeMatches(recScope, filterScope string) bool {
 	if filterScope == "" {
 		return true
 	}
+	recScope = filepath.Clean(filepath.FromSlash(recScope))
+	filterScope = filepath.Clean(filepath.FromSlash(filterScope))
 	if recScope == filterScope {
 		return true
 	}

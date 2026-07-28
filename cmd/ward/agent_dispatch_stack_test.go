@@ -130,8 +130,7 @@ func TestDirectorExitCommandLeavesBrokerSupervised(t *testing.T) {
 
 func TestResolveDirectorStackIsStable(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	setTestHome(t, home)
 	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
 	first, err := resolveDirectorStack(repo, modeCodex)
 	if err != nil {
@@ -280,8 +279,7 @@ func TestReservationRequestMarkerMakesRecoveryIdempotent(t *testing.T) {
 
 func TestAcceptedRequestIDLaunchesExactlyOnce(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	setTestHome(t, home)
 	t.Setenv(envDispatchJournalDir, filepath.Join(home, "journals"))
 
 	original := dispatchBrokerLaunch
