@@ -7,6 +7,8 @@ description: Normalize a dictated ward agent phrase to owner/repo#N and dispatch
 
 `ward agent <role> <ref>` is a privileged op: it spins an ephemeral container that fresh-clones the repo and carries the repo's authoritative issue thread to merge under `bypassPermissions`. Mis-parsing a dictated ref silently sends an agent at the wrong issue. This skill normalizes a dictated reference into a canonical `owner/repo#N` and dispatches the engineer (successor to `ward dispatch`/`ward drive`; ward#174, ward#282; roster rename ward#347). Canonical in `coilyco-flight-deck/ward` (ward#286).
 
+Terminology: [`../../../docs/terminology.md`](../../../docs/terminology.md).
+
 ## Assumptions
 
 Fan-out happens *before* this skill (`writing-to-issues`/`tooling-sidequest` sliced the work and filed the issues). This skill takes one dictated reference to one already-open issue, resolves it, dispatches the engineer, hands off - it does not slice work or create issues.

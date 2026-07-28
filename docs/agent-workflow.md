@@ -4,6 +4,8 @@ doc_goal: Capture the landing-policy surface in one place so the run modes and r
 # ward agent workflow
 
 `--workflow` chooses how a run lands.
+For the distinction between workflow, run, landing, submitted, merge-ready,
+done, blocked, and failed, see [terminology.md](terminology.md).
 
 - `merge-remote-main` - merge to `main` and close.
 - `pull-request` - open a PR and watch it to green.
@@ -75,3 +77,4 @@ The workflow decides who is allowed to close the loop.
 - [agent-director.md](agent-director.md) - the merge-ready director lane.
 - [dispatch-review.md](dispatch-review.md) - the review gate details.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch-time checks.
+- [terminology.md](terminology.md) - workflow and terminal-outcome terms.

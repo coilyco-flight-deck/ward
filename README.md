@@ -21,6 +21,8 @@ If the orchestration itself is flaky, that is a Ward product bug, not an operato
 
 `ward agent` launches an authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow or an issue-to-PR workflow, while bounded by credential scoping and a durable audit trail. Functionally it is a manifest-backed harness driver - it knows how to launch each agent through its own CLI dialect - but the external product is the governed execution layer around it, not the driver. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
 
+Ward's operational vocabulary is defined in [`docs/terminology.md`](docs/terminology.md). Use it when a term such as dispatch, launch, run, workflow, reservation, reap, drain, role, or harness could be read more than one way.
+
 ## Who it's for
 
 - **A contributor (human or agent)** who wants every `build` / `test` / `lint` run argv-validated, audited, and gated on a clean tree - one wrapper instead of bare `make` / `go` / forge CLIs. Forge-agnostic: point it at any repo.
@@ -120,6 +122,7 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 - **The verb gate** - [exec-verb.md](docs/exec-verb.md) (the gate), [verb-fallback.md](docs/verb-fallback.md), [git-verbs.md](docs/git-verbs.md), [audit.md](docs/audit.md), [doctor.md](docs/doctor.md). The boundary is the verb gate itself, plus the container edge in the agent flow ([container-contract.md](docs/container-contract.md)).
 - **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-qa.md](docs/agent-qa.md), [agent-lifecycle.md](docs/agent-lifecycle.md), [agent-ops.md](docs/agent-ops.md).
 - **The container** - [container.md](docs/container.md), [container-lifecycle.md](docs/container-lifecycle.md) (land-or-salvage on teardown), [container-substrate.md](docs/container-substrate.md).
+- **Terminology** - [terminology.md](docs/terminology.md) defines Ward's preferred operational terms, known non-equivalences, and analogy bank.
 - **The demo image** - [docs/demo-image.md](docs/demo-image.md).
 - **Container operator surface (AOSguard)** - use `aosguard ops ...` from AOS. [aosguard-boundary.md](docs/aosguard-boundary.md) records the ownership boundary.
 - **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [golangci.md](docs/golangci.md).
@@ -145,6 +148,7 @@ Start on GitHub: file bugs and feature requests with a [new issue][new-issue], a
 
 - [docs/README.md](docs/README.md) - the docs index: every doc grouped by subsystem.
 - [docs/architecture.md](docs/architecture.md) - Ward's native boundary beside cli-guard and AOSguard.
+- [docs/terminology.md](docs/terminology.md) - Ward vocabulary, conceptual model, and analogy bank.
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
 - [docs/features-release-tooling.md](docs/features-release-tooling.md) - cross-repo tooling and release convention.

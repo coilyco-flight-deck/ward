@@ -30,6 +30,13 @@ Once that is done, contributors route dev work through the verbs your `.ward/war
 
 `ward` is a contributor-facing [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) consumer: the gate a contributor (human or agent) routes through to build, test, and lint code.
 
+Ward's canonical vocabulary lives in [docs/terminology.md](docs/terminology.md).
+When changing docs, prompts, command output, or agent instructions, use that
+page for operational distinctions such as dispatch vs launch, role vs harness,
+run vs issue, workflow vs outcome, stop vs reap, drain vs burndown, and release
+branch vs published release. Add or update terminology there before spreading a
+new synonym through the repo.
+
 Ward uses cli-guard as its policy engine and keeps its agent, container,
 repository-development, and tracker control plane native. AOS owns specgen and
 the separate [`aosguard`](docs/aosguard-boundary.md) operator CLI.
@@ -96,6 +103,7 @@ Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mi
 
 - [README.md](README.md) - human intro.
 - [docs/README.md](docs/README.md) - docs, by subsystem.
+- [docs/terminology.md](docs/terminology.md) - canonical vocabulary and analogy bank.
 - [docs/FEATURES.md](docs/FEATURES.md) - what ships today.
 - [docs/features-release-tooling.md](docs/features-release-tooling.md) - cross-repo tooling and release convention.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.

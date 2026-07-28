@@ -10,7 +10,8 @@ Ward and AOS divide the runtime into four layers.
 - `aosguard` is the AOS operator CLI.
 - `ward` is the native agent control plane.
 
-The split is about **when** each layer runs.
+The split is about **when** each layer runs. For terms that cross these
+layers, use the canonical vocabulary in [terminology.md](terminology.md).
 
 ## What that means
 
@@ -22,5 +23,6 @@ The split is about **when** each layer runs.
 ## See also
 
 - [aosguard-boundary.md](aosguard-boundary.md) - the external operator boundary.
+- [terminology.md](terminology.md) - Ward vocabulary and layer-spanning non-equivalences.
 - [agent.md](agent.md) - the guarded execution layer.
 - [exec-verb.md](exec-verb.md) - the repo dev-verb gate.

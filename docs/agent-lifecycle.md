@@ -4,6 +4,8 @@ doc_goal: Compress the launch path into one release-era guide so a reader can te
 # ward agent lifecycle
 
 The launch path is short and explicit.
+Terminology for dispatch, launch, reservation, run, and terminal outcomes lives
+in [terminology.md](terminology.md).
 
 1. Resolve the issue or ref.
 2. Run the harness install step and verify the selected binary is available.
@@ -69,3 +71,4 @@ run needs to be explained after the fact.
 - [agent-harnesses.md](agent-harnesses.md) - harness differences.
 - [agent-roles.md](agent-roles.md) - which role does what.
 - [agent-workflow.md](agent-workflow.md) - how the run lands.
+- [terminology.md](terminology.md) - lifecycle vocabulary and conceptual model.
