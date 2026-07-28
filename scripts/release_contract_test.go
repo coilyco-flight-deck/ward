@@ -106,6 +106,10 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 			t.Fatalf("release workflow should mention %q:\n%s", want, release)
 		}
 	}
+	promoteDraftJob := workflowJobSection(t, release, "promote-draft-assets:", "bump-tap-formula:")
+	if !strings.Contains(promoteDraftJob, "actions/checkout@v6") {
+		t.Fatalf("promote-draft-assets must checkout the repo before invoking scripts:\n%s", promoteDraftJob)
+	}
 	for _, ban := range []string{
 		"coilysiren/agentic-os/actions/tag-bump@main",
 		"coilysiren/agentic-os/actions/create-release@main",

@@ -24,6 +24,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [release.md](release.md) - release pipeline.
 - [release-binaries.md](release-binaries.md) - tagged binaries and checksums.
 - [promote-run-2491.md](promote-run-2491.md) - promote refspec checkpoint.
+- [release-run-2495.md](release-run-2495.md) - release checkout checkpoint.
 - [forge-linking.md](forge-linking.md) - forge-specific link targets.
 - [troubleshooting.md](troubleshooting.md) - start here on failure.
 

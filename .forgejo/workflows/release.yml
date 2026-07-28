@@ -120,6 +120,8 @@ jobs:
       FORGEJO_API: https://forgejo.coilysiren.me/api/v1/repos/coilyco-flight-deck/ward
       GITHUB_REPO: coilyco-flight-deck/ward
     steps:
+      - uses: actions/checkout@v6
+
       - name: Fetch the draft assets staged on main
         env:
           TOKEN: ${{ github.token }}
