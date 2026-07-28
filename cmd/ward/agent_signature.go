@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 )
 
 // agent_signature.go signs ward's Forgejo bodies and reaper commit with the
@@ -15,31 +16,61 @@ import (
 // HTML comment, so it stays invisible in rendered Forgejo markdown.
 const agentSignatureMarker = "<!-- ward-agent-signature -->"
 
-// agentIdentity resolves the name and (optional) pronouns a mode signs with; an
+const (
+	envAgentDisplayName = "WARD_AGENT_DISPLAY_NAME"
+	envAgentPronouns    = "WARD_AGENT_PRONOUNS"
+)
+
+// defaultAgentIdentity resolves the harness default name and pronouns; an
 // unrecognized mode resolves whole to the claude identity, not a half one.
-func (m containerMode) agentIdentity() (name, pronouns string) {
+func (m containerMode) defaultAgentIdentity() attribution.Identity {
 	switch m {
 	case modeCodex:
-		return "Codex", ""
+		return attribution.Identity{Name: "Codex"}
 	case modeOpencode:
 		// The harness renamed qwen->opencode (ward#401), but the signing persona
 		// stays "Qwen" - the backing model is who the work is attributed to.
-		return "Qwen", ""
+		return attribution.Identity{Name: "Qwen"}
 	case modeGoose:
-		return "Goose", ""
+		return attribution.Identity{Name: "Goose"}
 	case modeClaude:
-		return "Claude", "she/her"
+		return attribution.Identity{Name: "Claude", Pronouns: "she/her"}
 	default:
-		return "Claude", "she/her"
+		return attribution.Identity{Name: "Claude", Pronouns: "she/her"}
 	}
+}
+
+// resolvedAgentIdentity applies the selected role's sparse harness override over
+// the harness default. Display name and pronouns are independent fields.
+func resolvedAgentIdentity(fleet fleetconfig.Fleet, role string, mode containerMode) attribution.Identity {
+	identity := mode.defaultAgentIdentity()
+	ov := roleAgentOverride(fleet, role, string(mode))
+	if name := strings.TrimSpace(ov.DisplayName); name != "" {
+		identity.Name = name
+	}
+	if pronouns := strings.TrimSpace(ov.Pronouns); pronouns != "" {
+		identity.Pronouns = pronouns
+	}
+	return identity
+}
+
+func agentIdentityFromEnv(mode, name, pronouns string) attribution.Identity {
+	identity := containerMode(mode).defaultAgentIdentity()
+	if v := strings.TrimSpace(name); v != "" {
+		identity.Name = v
+	}
+	if v := strings.TrimSpace(pronouns); v != "" {
+		identity.Pronouns = v
+	}
+	return identity
 }
 
 // agentSigner builds the cli-guard signer for this mode: the mode's identity
 // plus ward's idempotency marker, footer tail, and Co-Authored-By email domain.
 func (m containerMode) agentSigner() attribution.Signer {
-	name, pronouns := m.agentIdentity()
+	identity := agentIdentityFromEnv(string(m), os.Getenv(envAgentDisplayName), os.Getenv(envAgentPronouns))
 	return attribution.Signer{
-		Identity: attribution.Identity{Name: name, Pronouns: pronouns},
+		Identity: identity,
 		Marker:   agentSignatureMarker,
 		Via:      "via `ward agent`",
 		Email:    fmt.Sprintf("%s@ward.agent", m),
@@ -49,19 +80,19 @@ func (m containerMode) agentSigner() attribution.Signer {
 // agentAttribution renders the one-line identity, e.g. "Claude (she/her)" when
 // pronouns are known, otherwise just "Goose".
 func (m containerMode) agentAttribution() string {
-	return lookupAgent(m).Signer().Identity.Label()
+	return m.agentSigner().Identity.Label()
 }
 
 // signBody idempotently appends the agent attribution footer to a markdown
 // body; an empty body becomes the footer alone, never empty.
 func (m containerMode) signBody(body string) string {
-	return lookupAgent(m).Signer().SignBody(body)
+	return m.agentSigner().SignBody(body)
 }
 
 // commitTrailer is the git Co-Authored-By trailer tagging a commit with the
 // agent that produced the work.
 func (m containerMode) commitTrailer() string {
-	return lookupAgent(m).Signer().CommitTrailer()
+	return m.agentSigner().CommitTrailer()
 }
 
 // currentAgentMode resolves the running context's agent from WARD_AGENT then

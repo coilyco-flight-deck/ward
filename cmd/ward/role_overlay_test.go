@@ -13,6 +13,7 @@ func clearModelEnv(t *testing.T) {
 		"WARD_CLAUDE_MODEL", "WARD_CLAUDE_REASONING_EFFORT",
 		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
 		"WARD_GOOSE_MODEL", "WARD_OPENCODE_MODEL", "WARD_OLLAMA_URL", "WARD_MODE", "WARD_AGENT",
+		"WARD_AGENT_DISPLAY_NAME", "WARD_AGENT_PRONOUNS",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_ROLE",
 	} {
 		t.Setenv(k, "")
@@ -26,20 +27,22 @@ func clearModelEnv(t *testing.T) {
 // it slots between WARD_* env and the flat default, so director diverges from engineer.
 func TestRoleOverlayResolvesModelEffort(t *testing.T) {
 	cases := []struct {
-		role                                               string
-		claudeModel, claudeEffort, codexModel, codexEffort string
+		role                                                 string
+		claudeModel, claudeEffort, codexModel, codexEffort   string
+		claudeName, claudePronouns, codexName, codexPronouns string
 	}{
 		// director: strongest model at 1M context, high effort (heartbeat lane).
-		{"director", "claude-opus-4-8[1m]", "high", "gpt-5.5", "high"},
+		{"director", "claude-opus-4-8[1m]", "high", "gpt-5.5", "high", "fabled director", "she", "solar director", "he"},
 		// engineer: cheaper/faster model at the same medium effort (parallel fan-out).
-		{"engineer", "claude-fable-5", "medium", "gpt-5.4-mini", "medium"},
+		{"engineer", "claude-fable-5", "medium", "gpt-5.4-mini", "medium", "opal engineer", "she", "terran engineer", "he"},
 		// an unknown/empty role carries no overlay: the flat default stands.
-		{"", "", "", "gpt-5.4", "medium"},
+		{"", "", "", "gpt-5.4", "medium", "Claude", "she/her", "Codex", ""},
 	}
 	for _, tc := range cases {
 		t.Run("role="+tc.role, func(t *testing.T) {
 			clearModelEnv(t)
 			t.Setenv("WARD_ROLE", tc.role)
+			t.Setenv("WARD_MODE", string(modeClaude))
 			e, err := readBootstrapEnv()
 			if err != nil {
 				t.Fatalf("readBootstrapEnv: %v", err)
@@ -47,8 +50,19 @@ func TestRoleOverlayResolvesModelEffort(t *testing.T) {
 			if e.ClaudeModel != tc.claudeModel || e.ClaudeEffort != tc.claudeEffort {
 				t.Errorf("claude = (%q,%q), want (%q,%q)", e.ClaudeModel, e.ClaudeEffort, tc.claudeModel, tc.claudeEffort)
 			}
+			if e.AgentDisplayName != tc.claudeName || e.AgentPronouns != tc.claudePronouns {
+				t.Errorf("claude identity = (%q,%q), want (%q,%q)", e.AgentDisplayName, e.AgentPronouns, tc.claudeName, tc.claudePronouns)
+			}
+			t.Setenv("WARD_MODE", string(modeCodex))
+			e, err = readBootstrapEnv()
+			if err != nil {
+				t.Fatalf("readBootstrapEnv codex: %v", err)
+			}
 			if e.CodexModel != tc.codexModel || e.CodexEffort != tc.codexEffort {
 				t.Errorf("codex = (%q,%q), want (%q,%q)", e.CodexModel, e.CodexEffort, tc.codexModel, tc.codexEffort)
+			}
+			if e.AgentDisplayName != tc.codexName || e.AgentPronouns != tc.codexPronouns {
+				t.Errorf("codex identity = (%q,%q), want (%q,%q)", e.AgentDisplayName, e.AgentPronouns, tc.codexName, tc.codexPronouns)
 			}
 		})
 	}

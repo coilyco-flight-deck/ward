@@ -131,6 +131,7 @@ func TestAgentTrustDirs(t *testing.T) {
 }
 
 func TestAgentHostCtxCarve(t *testing.T) {
+	t.Setenv(envHostGOOS, runtime.GOOS)
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
 	hc := r.agentHostCtx(context.Background())
 

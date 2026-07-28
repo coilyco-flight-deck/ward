@@ -78,6 +78,12 @@ func mergeRoleOverlays(base, override map[string]fleetconfig.RoleAgentOverride) 
 		if strings.TrimSpace(ov.Model) != "" {
 			cur.Model = strings.TrimSpace(ov.Model)
 		}
+		if strings.TrimSpace(ov.DisplayName) != "" {
+			cur.DisplayName = strings.TrimSpace(ov.DisplayName)
+		}
+		if strings.TrimSpace(ov.Pronouns) != "" {
+			cur.Pronouns = strings.TrimSpace(ov.Pronouns)
+		}
 		if strings.TrimSpace(ov.Endpoint) != "" {
 			cur.Endpoint = strings.TrimSpace(ov.Endpoint)
 		}
@@ -115,9 +121,15 @@ func roleOverlaySummary(overlays map[string]fleetconfig.RoleAgentOverride) strin
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
 		ov := overlays[name]
-		fields := make([]string, 0, 4)
+		fields := make([]string, 0, 6)
 		if strings.TrimSpace(ov.Model) != "" {
 			fields = append(fields, "model="+strings.TrimSpace(ov.Model))
+		}
+		if strings.TrimSpace(ov.DisplayName) != "" {
+			fields = append(fields, "name="+strings.TrimSpace(ov.DisplayName))
+		}
+		if strings.TrimSpace(ov.Pronouns) != "" {
+			fields = append(fields, "pronouns="+strings.TrimSpace(ov.Pronouns))
 		}
 		if strings.TrimSpace(ov.Endpoint) != "" {
 			fields = append(fields, "endpoint="+strings.TrimSpace(ov.Endpoint))

@@ -100,6 +100,7 @@ func TestResolveTailnet(t *testing.T) {
 // TestBuildUpPlanTailnet covers ward#362: the role's guardfile set selects the
 // platform mechanism and implies the ~/.aws mount.
 func TestBuildUpPlanTailnet(t *testing.T) {
+	t.Setenv(envHostGOOS, runtime.GOOS)
 	run := func(role string, args []string) upPlan {
 		var got upPlan
 		probe := &cli.Command{

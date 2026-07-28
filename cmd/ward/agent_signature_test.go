@@ -6,6 +6,8 @@ import (
 )
 
 func TestAgentAttribution(t *testing.T) {
+	t.Setenv(envAgentDisplayName, "")
+	t.Setenv(envAgentPronouns, "")
 	cases := map[containerMode]string{
 		modeClaude:   "Claude (she/her)",
 		modeCodex:    "Codex",
@@ -24,6 +26,8 @@ func TestAgentAttribution(t *testing.T) {
 }
 
 func TestSignBodyAppendsAttribution(t *testing.T) {
+	t.Setenv(envAgentDisplayName, "")
+	t.Setenv(envAgentPronouns, "")
 	body := modeClaude.signBody("Here is the work.")
 	for _, want := range []string{
 		"Here is the work.",
@@ -42,6 +46,8 @@ func TestSignBodyAppendsAttribution(t *testing.T) {
 }
 
 func TestSignBodyIsIdempotent(t *testing.T) {
+	t.Setenv(envAgentDisplayName, "")
+	t.Setenv(envAgentPronouns, "")
 	once := modeClaude.signBody("payload")
 	twice := modeClaude.signBody(once)
 	if once != twice {
@@ -57,6 +63,8 @@ func TestSignBodyIsIdempotent(t *testing.T) {
 }
 
 func TestSignBodyEmptyBecomesFooterOnly(t *testing.T) {
+	t.Setenv(envAgentDisplayName, "")
+	t.Setenv(envAgentPronouns, "")
 	for _, in := range []string{"", "   \n\t"} {
 		got := modeGoose.signBody(in)
 		if !strings.Contains(got, agentSignatureMarker) || !strings.Contains(got, "Goose") {
@@ -69,6 +77,8 @@ func TestSignBodyEmptyBecomesFooterOnly(t *testing.T) {
 }
 
 func TestCommitTrailer(t *testing.T) {
+	t.Setenv(envAgentDisplayName, "")
+	t.Setenv(envAgentPronouns, "")
 	got := modeClaude.commitTrailer()
 	want := "Co-Authored-By: Claude (she/her) <claude@ward.agent>"
 	if got != want {
@@ -76,6 +86,21 @@ func TestCommitTrailer(t *testing.T) {
 	}
 	if got := modeGoose.commitTrailer(); got != "Co-Authored-By: Goose <goose@ward.agent>" {
 		t.Errorf("goose commitTrailer() = %q", got)
+	}
+}
+
+func TestAgentSignerUsesResolvedRoleIdentity(t *testing.T) {
+	t.Setenv(envAgentDisplayName, "terran engineer")
+	t.Setenv(envAgentPronouns, "he")
+
+	body := modeCodex.signBody("done")
+	for _, want := range []string{"terran engineer (he)", "`ward agent`"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("signed body missing %q\n%s", want, body)
+		}
+	}
+	if got := modeCodex.commitTrailer(); got != "Co-Authored-By: terran engineer (he) <codex@ward.agent>" {
+		t.Fatalf("commitTrailer() = %q", got)
 	}
 }
 
