@@ -39,6 +39,8 @@ func TestRegistryCoversEveryMode(t *testing.T) {
 // TestRegistryMatchesHardcodedSwitches is the core Phase 2 contract: for every
 // mode, the registry agent's data + argv must equal the live Go switches.
 func TestRegistryMatchesHardcodedSwitches(t *testing.T) {
+	t.Setenv(envAgentDisplayName, "")
+	t.Setenv(envAgentPronouns, "")
 	const prompt = "carry it?"
 	seed := []string{"work issue #5"}
 

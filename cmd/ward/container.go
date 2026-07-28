@@ -162,7 +162,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// not be the target repo, so the container resolves it from the fresh clone (ward#580).
 
 	// Config-source env resolution fails loud here before any container spins.
-	configEnv, err := resolveLaunchConfigEnv(c.StringSlice("config"), cwd, role)
+	configEnv, err := resolveLaunchConfigEnv(c.StringSlice("config"), cwd, role, mode)
 	if err != nil {
 		return upPlan{}, err
 	}

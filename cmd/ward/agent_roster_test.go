@@ -98,6 +98,8 @@ func TestAgentRoleDefinitionsFromFleetAppliesOverlay(t *testing.T) {
 				AgentConfig: map[string]fleetconfig.RoleAgentOverride{
 					"claude": {
 						Model:           "director-preview",
+						DisplayName:     "fabled director",
+						Pronouns:        "she",
 						ReasoningEffort: "high",
 					},
 				},
@@ -122,7 +124,7 @@ func TestAgentRoleDefinitionsFromFleetAppliesOverlay(t *testing.T) {
 	if directorRow == nil {
 		t.Fatal("director row missing from resolved roster")
 	}
-	if !strings.Contains(directorRow.Modes, "Role overlays: claude{model=director-preview, reasoning-effort=high}.") {
+	if !strings.Contains(directorRow.Modes, "Role overlays: claude{model=director-preview, name=fabled director, pronouns=she, reasoning-effort=high}.") {
 		t.Fatalf("director row modes did not include the config overlay summary: %q", directorRow.Modes)
 	}
 	if defs[roleDirector].DefaultHarness != "claude" {

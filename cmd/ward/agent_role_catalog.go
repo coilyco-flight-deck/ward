@@ -344,36 +344,46 @@ func parseAgentRoleOverlayNode(n *kdl.Node) (string, fleetconfig.RoleAgentOverri
 	}
 	overlay := fleetconfig.RoleAgentOverride{}
 	for _, c := range n.Children().Nodes {
-		switch c.Name() {
-		case "model":
-			v, err := agentRoleStringArg(c, "agent-roles > role > overlay > model")
-			if err != nil {
-				return "", fleetconfig.RoleAgentOverride{}, fmt.Errorf("overlay %q: %w", name, err)
-			}
-			overlay.Model = v
-		case "endpoint":
-			v, err := agentRoleStringArg(c, "agent-roles > role > overlay > endpoint")
-			if err != nil {
-				return "", fleetconfig.RoleAgentOverride{}, fmt.Errorf("overlay %q: %w", name, err)
-			}
-			overlay.Endpoint = v
-		case "reasoning-effort":
-			v, err := agentRoleStringArg(c, "agent-roles > role > overlay > reasoning-effort")
-			if err != nil {
-				return "", fleetconfig.RoleAgentOverride{}, fmt.Errorf("overlay %q: %w", name, err)
-			}
-			overlay.ReasoningEffort = v
-		case "verbosity":
-			v, err := agentRoleStringArg(c, "agent-roles > role > overlay > verbosity")
-			if err != nil {
-				return "", fleetconfig.RoleAgentOverride{}, fmt.Errorf("overlay %q: %w", name, err)
-			}
-			overlay.Verbosity = v
-		default:
-			return "", fleetconfig.RoleAgentOverride{}, unknownAgentRoleCatalogNode("agent-roles > role > overlay "+name, c.Name(), "model | endpoint | reasoning-effort | verbosity")
+		if err := parseAgentRoleOverlayChild(&overlay, c, name); err != nil {
+			return "", fleetconfig.RoleAgentOverride{}, err
 		}
 	}
 	return name, overlay, nil
+}
+
+func parseAgentRoleOverlayChild(overlay *fleetconfig.RoleAgentOverride, n *kdl.Node, overlayName string) error {
+	field := n.Name()
+	if !agentRoleOverlayFieldAllowed(field) {
+		return unknownAgentRoleCatalogNode("agent-roles > role > overlay "+overlayName, field, "model | name | pronouns | endpoint | reasoning-effort | verbosity")
+	}
+	v, err := agentRoleStringArg(n, "agent-roles > role > overlay > "+field)
+	if err != nil {
+		return fmt.Errorf("overlay %q: %w", overlayName, err)
+	}
+	switch field {
+	case "model":
+		overlay.Model = v
+	case "name":
+		overlay.DisplayName = v
+	case "pronouns":
+		overlay.Pronouns = v
+	case "endpoint":
+		overlay.Endpoint = v
+	case "reasoning-effort":
+		overlay.ReasoningEffort = v
+	case "verbosity":
+		overlay.Verbosity = v
+	}
+	return nil
+}
+
+func agentRoleOverlayFieldAllowed(field string) bool {
+	switch field {
+	case "model", "name", "pronouns", "endpoint", "reasoning-effort", "verbosity":
+		return true
+	default:
+		return false
+	}
 }
 
 func agentRoleCapabilitiesArg(n *kdl.Node) (semanticCapabilitySet, error) {

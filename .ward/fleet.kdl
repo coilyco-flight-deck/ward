@@ -35,10 +35,14 @@ fleet {
         role engineer {
             agent claude {
                 model claude-fable-5
+                name "opal engineer"
+                pronouns she
                 reasoning-effort medium
             }
             agent codex {
                 model gpt-5.4-mini
+                name "terran engineer"
+                pronouns he
                 reasoning-effort medium
             }
         }
@@ -48,10 +52,28 @@ fleet {
             guardfiles tailscale.kdl
             agent claude {
                 model "claude-opus-4-8[1m]"
+                name "fabled director"
+                pronouns she
                 reasoning-effort high
             }
             agent codex {
                 model gpt-5.5
+                name "solar director"
+                pronouns he
+                reasoning-effort high
+            }
+        }
+        role qa {
+            agent claude {
+                model claude-opus-4-8
+                name "opal tester"
+                pronouns she
+                reasoning-effort high
+            }
+            agent codex {
+                model gpt-5.6-terra
+                name "terran tester"
+                pronouns he
                 reasoning-effort high
             }
         }

@@ -185,7 +185,7 @@ func TestResolveLaunchConfigEnvIgnoresOperatorDirectorCodexOverlay(t *testing.T)
 	t.Setenv("WARD_CODEX_REASONING_EFFORT", "")
 	t.Setenv("WARD_CODEX_VERBOSITY", "")
 
-	env, err := resolveLaunchConfigEnv(nil, "", roleDirector)
+	env, err := resolveLaunchConfigEnv(nil, "", roleDirector, modeCodex)
 	if err != nil {
 		t.Fatalf("resolveLaunchConfigEnv from baked policy: %v", err)
 	}
@@ -252,6 +252,53 @@ func TestAddFleetAttributionConfigEnv(t *testing.T) {
 	}
 	if got := env["WARD_GIT_EMAIL"]; got != "coilyco-ops@coilysiren.me" {
 		t.Errorf("WARD_GIT_EMAIL = %q, want coilyco-ops@coilysiren.me", got)
+	}
+}
+
+func TestAddAgentIdentityConfigEnv(t *testing.T) {
+	fleet := fleetconfig.Fleet{
+		Roles: []fleetconfig.Role{{
+			Name: roleEngineer,
+			AgentConfig: map[string]fleetconfig.RoleAgentOverride{
+				string(modeCodex): {DisplayName: "terran engineer", Pronouns: "he"},
+			},
+		}},
+	}
+	env := addAgentIdentityConfigEnv(map[string]string{}, fleet, roleEngineer, modeCodex)
+	if got := env[envAgentDisplayName]; got != "terran engineer" {
+		t.Fatalf("%s = %q, want terran engineer", envAgentDisplayName, got)
+	}
+	if got := env[envAgentPronouns]; got != "he" {
+		t.Fatalf("%s = %q, want he", envAgentPronouns, got)
+	}
+
+	env = addAgentIdentityConfigEnv(map[string]string{
+		envAgentDisplayName: "manual",
+		envAgentPronouns:    "they",
+	}, fleet, roleEngineer, modeCodex)
+	if got := env[envAgentDisplayName]; got != "manual" {
+		t.Fatalf("explicit display name = %q, want manual", got)
+	}
+	if got := env[envAgentPronouns]; got != "they" {
+		t.Fatalf("explicit pronouns = %q, want they", got)
+	}
+
+	env = addAgentIdentityConfigEnv(map[string]string{}, fleet, "", modeCodex)
+	if got := env[envAgentDisplayName]; got != "Codex" {
+		t.Fatalf("fallback display name = %q, want Codex", got)
+	}
+	if _, ok := env[envAgentPronouns]; ok {
+		t.Fatalf("fallback Codex pronouns should be absent, got %q", env[envAgentPronouns])
+	}
+
+	t.Setenv(envAgentDisplayName, "fabled director")
+	t.Setenv(envAgentPronouns, "she")
+	env = addAgentIdentityConfigEnv(map[string]string{}, fleet, roleEngineer, modeCodex)
+	if got := env[envAgentDisplayName]; got != "terran engineer" {
+		t.Fatalf("ambient display name leaked into sibling launch: got %q", got)
+	}
+	if got := env[envAgentPronouns]; got != "he" {
+		t.Fatalf("ambient pronouns leaked into sibling launch: got %q", got)
 	}
 }
 

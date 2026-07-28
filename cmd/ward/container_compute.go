@@ -680,7 +680,7 @@ func parseConfigOverrides(entries []string) (map[string]string, error) {
 	return out, nil
 }
 
-func resolveLaunchConfigEnv(configEntries []string, cwd, role string) (map[string]string, error) {
+func resolveLaunchConfigEnv(configEntries []string, cwd, role string, mode containerMode) (map[string]string, error) {
 	configEnv, err := parseConfigOverrides(configEntries)
 	if err != nil {
 		return nil, err
@@ -691,6 +691,7 @@ func resolveLaunchConfigEnv(configEntries []string, cwd, role string) (map[strin
 		return nil, fmt.Errorf("load selected fleet config: %w", err)
 	}
 	configEnv = addHarnessConfigEnv(configEnv, fleet, role)
+	configEnv = addAgentIdentityConfigEnv(configEnv, fleet, role, mode)
 	configEnv = addFleetAttributionConfigEnv(configEnv, fleet, cwd)
 	// Validate the staged container-topology bundle once here so a malformed live
 	// bundle fails before launch, while a missing optional file still falls back.
@@ -722,6 +723,20 @@ func addHarnessConfigEnv(env map[string]string, fleet fleetconfig.Fleet, role st
 	addConfigEnvDefault(env, "WARD_OPENCODE_MODEL", opencodeOv.Model, opencode.Model)
 	addConfigEnvDefault(env, "WARD_OLLAMA_URL", opencodeOv.Endpoint, opencode.Endpoint)
 	addConfigEnvDefault(env, "WARD_GOOSE_MODEL", gooseOv.Model, goose.Model)
+	return env
+}
+
+func addAgentIdentityConfigEnv(env map[string]string, fleet fleetconfig.Fleet, role string, mode containerMode) map[string]string {
+	if env == nil {
+		env = map[string]string{}
+	}
+	identity := resolvedAgentIdentity(fleet, role, mode)
+	if strings.TrimSpace(env[envAgentDisplayName]) == "" {
+		env[envAgentDisplayName] = identity.Name
+	}
+	if strings.TrimSpace(env[envAgentPronouns]) == "" && strings.TrimSpace(identity.Pronouns) != "" {
+		env[envAgentPronouns] = identity.Pronouns
+	}
 	return env
 }
 

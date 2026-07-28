@@ -427,6 +427,7 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"WARD_MODE", "WARD_AGENT", "WARD_CONTEXT_LEVEL", "WARD_GITCACHE", "WARD_CONTEXT_SRC",
 		"WARD_OPENCODE_MODEL", "WARD_GOOSE_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
 		"WARD_CODEX_MODEL", "WARD_CODEX_REASONING_EFFORT", "WARD_CODEX_VERBOSITY",
+		"WARD_AGENT_DISPLAY_NAME", "WARD_AGENT_PRONOUNS",
 		"WARD_AGENT_UID", "WARD_AGENT_GID", "WARD_AGENT_HOME", "WARD_BRANCH",
 		"WARD_ROLE", "WARD_TS_SOCKS5",
 		"WARD_HEADLESS", "WARD_ASK", "WARD_MIRROR_NAME", "WARD_SUBSTRATE_SKIP",
@@ -1092,11 +1093,13 @@ func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
 
 	home := t.TempDir()
 	r.composeContext(bootstrapEnv{
-		Mode:         "codex",
-		ContextLevel: "0",
-		ContextSrc:   filepath.Join(t.TempDir(), "absent"),
-		AgentHome:    home,
-		ReadOnly:     true,
+		Mode:             "codex",
+		ContextLevel:     "0",
+		ContextSrc:       filepath.Join(t.TempDir(), "absent"),
+		AgentHome:        home,
+		ReadOnly:         true,
+		AgentDisplayName: "terran engineer",
+		AgentPronouns:    "he",
 	})
 	for _, path := range []string{
 		filepath.Join(home, "AGENTS.md"),
@@ -1109,6 +1112,9 @@ func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
 		}
 		if !strings.Contains(string(data), marker) {
 			t.Errorf("%s missing read-only director doctrine", path)
+		}
+		if !strings.Contains(string(data), "Ward agent identity") || !strings.Contains(string(data), "terran engineer (he)") {
+			t.Errorf("%s missing resolved agent identity", path)
 		}
 	}
 	if target, err := os.Readlink(filepath.Join(home, ".codex", "AGENTS.md")); err == nil && target != filepath.Join("..", "AGENTS.md") {

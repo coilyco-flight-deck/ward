@@ -50,8 +50,12 @@ type bootstrapEnv struct {
 	// bare launch; WARD_CLAUDE_MODEL / WARD_CLAUDE_REASONING_EFFORT fill them.
 	ClaudeModel  string
 	ClaudeEffort string
-	GitUserName  string
-	GitUserEmail string
+	// AgentDisplayName/Pronouns are the resolved role x harness signing identity
+	// (ward#1465), separate from fleet Git author attribution.
+	AgentDisplayName string
+	AgentPronouns    string
+	GitUserName      string
+	GitUserEmail     string
 	// Role is the run's config role (WARD_ROLE, ward#620): director/engineer/qa,
 	// keying the per-role model/effort overlay resolved below. Empty means no overlay.
 	Role       string
@@ -166,12 +170,14 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	codexOv := roleAgentOverride(fleet, role, string(modeCodex))
 	opencodeOv := roleAgentOverride(fleet, role, string(modeOpencode))
 	gooseOv := roleAgentOverride(fleet, role, string(modeGoose))
+	mode := envOr("WARD_MODE", fleet.Defaults.Agent)
+	identity := resolvedAgentIdentity(fleet, role, containerMode(mode))
 	attribution := fleet.Defaults.Attribution
 	e := bootstrapEnv{
 		TargetOwner:  os.Getenv("WARD_TARGET_OWNER"),
 		TargetName:   os.Getenv("WARD_TARGET_NAME"),
 		ForgejoBase:  os.Getenv("WARD_FORGEJO_BASE"),
-		Mode:         envOr("WARD_MODE", fleet.Defaults.Agent),
+		Mode:         mode,
 		Container:    os.Getenv("WARD_CONTAINER_NAME"),
 		Issue:        0,
 		Agent:        envOr("WARD_AGENT", string(modeClaude)),
@@ -194,6 +200,8 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		ClaudeEffort: envOr("WARD_CLAUDE_REASONING_EFFORT", firstNonEmpty(claudeOv.ReasoningEffort, claude.ReasoningEffort)),
 		// Bot attribution: email is the load-bearing Forgejo match (ward#245); both
 		// default from the fleet manifest's defaults.attribution.
+		AgentDisplayName:  envOr(envAgentDisplayName, identity.Name),
+		AgentPronouns:     envOr(envAgentPronouns, identity.Pronouns),
 		GitUserName:       envOr("WARD_GIT_NAME", attribution.Name),
 		GitUserEmail:      envOr("WARD_GIT_EMAIL", attribution.Email),
 		Role:              role,
@@ -1260,6 +1268,18 @@ func interactiveIntroductionContext(e bootstrapEnv) []byte {
 	return []byte(interactiveIntroductionBlock)
 }
 
+func agentIdentityContext(e bootstrapEnv) []byte {
+	identity := agentIdentityFromEnv(e.Mode, e.AgentDisplayName, e.AgentPronouns)
+	if strings.TrimSpace(identity.Name) == "" {
+		return nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n\n---\n\n## Ward agent identity\n\n")
+	fmt.Fprintf(&b, "Sign Ward-authored issue bodies and commit trailers as %s.\n", identity.Label())
+	fmt.Fprintf(&b, "Keep Git author and committer attribution on the fleet account configured for this run.\n")
+	return []byte(b.String())
+}
+
 // readOnlyContextBlock is a read-only session's static "do not push" entry context
 // (ward#293). Kept in sync with the same block in entrypoint.sh's compose_context.
 const readOnlyContextBlock = `
@@ -1381,6 +1401,7 @@ func (r *Runner) composeContext(e bootstrapEnv) { //nolint:cyclop
 	if e.ReadOnly {
 		buf = append(buf, []byte(readOnlyContextBlock)...)
 	}
+	buf = append(buf, agentIdentityContext(e)...)
 	_ = os.WriteFile(out, buf, 0o644) // #nosec G306 -- operating context, not a secret
 	blog("composed context (level %s%s) at %s", e.ContextLevel, readOnlyTag(e.ReadOnly), out)
 	adapter := mustAgentAdapter(containerMode(e.Mode))
