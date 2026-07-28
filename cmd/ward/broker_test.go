@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
@@ -370,6 +371,50 @@ func TestBrokerServerRoundTrip(t *testing.T) {
 	}
 	if fake.dispatchCalled {
 		t.Error("number-less dispatch reached the executor; it should be refused at authz")
+	}
+}
+
+func TestBrokerDispatchSeedRefusalPrintsHandledFallback(t *testing.T) {
+	sock := shortBrokerSocket(t)
+	ln, err := newBrokerListener(sock, os.Getgid())
+	if err != nil {
+		t.Fatalf("newBrokerListener: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+
+	fake := &fakeExecutor{result: broker.Result{Detail: "tok"}}
+	srv, err := broker.NewServer(ln, fake, (&Runner{}).writeTierAuthorizer())
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = srv.Serve(ctx) }()
+	t.Setenv(envBrokerSocket, sock)
+
+	stderr := captureTestStderr(t, func() {
+		token, ok := (&Runner{}).brokerDispatchSeed(ctx, broker.Target{Owner: "coilyco", Repo: "ward"})
+		if ok || token != "" {
+			t.Fatalf("brokerDispatchSeed = %q, %v; want fallback", token, ok)
+		}
+	})
+
+	if fake.dispatchCalled {
+		t.Fatal("refused dispatch seed should not reach the executor")
+	}
+	for _, want := range []string{
+		"ward container: note: broker dispatch seed fallback handled",
+		"coilyco/ward (no issue)",
+		"broker refused (write-tier only)",
+		"continuing with env/SSM token path",
+		"non-fatal fallback",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr missing %q:\n%s", want, stderr)
+		}
+	}
+	if strings.Contains(stderr, "broker dispatch seed unavailable") {
+		t.Fatalf("stderr still uses outage-like wording:\n%s", stderr)
 	}
 }
 
