@@ -40,6 +40,8 @@ Start here when a run failed or seemed to do nothing.
 - if a `promote.yml` run on `main` fails in `go test` or another check but a
   later main push promotes successfully, treat the earlier failure as
   transient/superseded unless you can reproduce it on the current head.
+- if `promote.yml` fails after draft assets and the `ward:release` image alias
+  both publish, compare the failure with [promote-run-2491.md](promote-run-2491.md).
 - if the run vanished, the issue is usually in teardown or reap.
 - if `ward agent list --json` shows `phase: container starting` with
   `status: cleanup-needed` and an empty `started_at`, use the manual stale reservation cleanup path in
