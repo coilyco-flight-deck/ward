@@ -170,6 +170,7 @@ jobs:
       - name: Verify stable release assets before publication
         env:
           TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
         run: |
           set -euo pipefail
           bash scripts/verify-release-assets.sh
