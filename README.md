@@ -29,16 +29,10 @@ If the orchestration itself is flaky, that is a Ward product bug, not an operato
 ## What it requires
 
 - **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
-- **A Forgejo instance** for Ward's own issue and PR workflow. Ward is **Forgejo-canonical** for ward itself: it carries Forgejo issues and pushes to a Forgejo `main`, and the GitHub mirror is read-only and PR-gated. The agent driver follows the target repo's authority policy, so `coilysiren/*` can be GitHub-authoritative.
 - **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/ward:release` (release refreshes it). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
+- **Forge credentials for agent automation** when `warded` is expected to move an issue, branch, or PR in a target repo. The plain verb gate does not need tracker access.
 
 The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
-
-**Which Forgejo?** Ward defaults its native issue and PR adapters to `forgejo.coilysiren.me` and `coily*`-owned orgs. AOSguard owns standalone operator APIs and their spec configuration inside the AOS image. The forge-agnostic verb gate still runs against any repo.
-
-When a doc or example needs a concrete GitHub repo that should actually resolve,
-use `coilysiren/example` or `https://github.com/coilysiren/example`. It is a
-public placeholder target, not a deployment prerequisite.
 
 ## What it does
 
@@ -54,7 +48,7 @@ Each repo declares its verbs (and an optional `security:` policy) in [`.ward/war
 export WARD_CONFIG_REF="file://$PWD/.ward"
 ```
 
-That pairs with the same WIP/release image named above, `forgejo.coilysiren.me/coilyco-flight-deck/ward:release`. See [`docs/config-source.md`](docs/config-source.md) for the current source boundary.
+See [`docs/config-source.md`](docs/config-source.md) for the current source boundary.
 
 ## Install
 
@@ -73,13 +67,11 @@ Install from the release channel you prefer:
 - **From source.**
   `make workspace` is the local path for ward itself. It resolves a sibling `cli-guard` checkout through `go.work`; see [docs/workspace.md](docs/workspace.md).
 
-The explicit-URL form is required because the tap lives on forgejo, not github.com. The Homebrew formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The Scoop bucket installs `ward` on Windows. AOSguard is supplied by AOS for container operator work, not by Ward.
+The explicit-URL form is required because the release buckets are hosted outside GitHub. The Homebrew formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The Scoop bucket installs `ward` on Windows. AOSguard is supplied by AOS for container operator work, not by Ward.
 
-**Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] from `forgejo.coilysiren.me/coilyco-flight-deck/cli-guard`, so a plain `go build` needs that Forgejo host reachable and the repo public.
+**Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] by its canonical module path, so a plain `go build` needs that module host reachable.
 
-Each release ships the full `ward-{darwin,linux}-{amd64,arm64}` matrix + `SHA256SUMS`. Most install via Homebrew (above); a GitHub arrival grabs a checksummed binary ([release-binaries.md](docs/release-binaries.md)).
-
-**Releases live on Forgejo.** This repo is canonical on [forgejo.coilysiren.me/coilyco-flight-deck/ward](https://forgejo.coilysiren.me/coilyco-flight-deck/ward); the github.com [Releases page](https://github.com/coilyco-flight-deck/ward/releases) mirrors the same tags and checksums; changelog on Forgejo.
+Each release ships the full `ward-{darwin,linux}-{amd64,arm64}` matrix + `SHA256SUMS`. Most install via Homebrew (above); GitHub readers can grab the mirrored checksummed binaries from [GitHub Releases](https://github.com/coilyco-flight-deck/ward/releases). Canonical release automation runs on [Forgejo][ward-forgejo].
 
 ## Usage
 
@@ -116,7 +108,7 @@ A `warded` run that failed or seemed to do nothing has a single symptom-indexed 
 The boundary is easiest to keep straight by **when** each layer runs:
 
 - **[cli-guard][cli-guard]** - the **engine**. The policy-and-routing framework ward consumes (pinned via go.mod). Thin consumer, not a fork.
-- **`aosguard`** - the AOS **operator CLI**. Specgen builds its `aosguard ops <api>` REST and exec surfaces, including Forgejo, Actions, AWS, kubectl, and Tailscale. It is standalone at runtime and does not invoke or configure Ward.
+- **`aosguard`** - the AOS **operator CLI**. Specgen builds its `aosguard ops <api>` REST and exec surfaces, including forge, Actions, AWS, kubectl, and Tailscale. It is standalone at runtime and does not invoke or configure Ward.
 - **`ward`** - the native **run-time control plane**. It provides `agent`, `container`, `exec`, reservations, reaping, and PR workflow. It embeds only the AOS-authored role and launch-policy data it needs.
 
 See [`docs/architecture.md`](docs/architecture.md).
@@ -143,9 +135,9 @@ v0.x, and early on purpose. ward is a single-maintainer tool in active internal 
 
 ## Support
 
-**Canonical development happens on [Forgejo][ward-forgejo]** - `main`, the issues, and every commit live there. That instance's registration is closed, so the **GitHub mirror is the public front door for everyone except the maintainer**: file a [new issue][new-issue] there with just a GitHub account and a maintainer carries an accepted change across. If you are working directly in the canonical repo, use Forgejo issues and Forgejo `closes #N` links. For `coilysiren/*`, the agent driver resolves the authoritative tracker from the repo-authority policy instead of assuming Forgejo. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md]. License: [`LICENSE`](./LICENSE).
+Start on GitHub: file bugs and feature requests with a [new issue][new-issue], and use the public mirror as the contributor front door. Ward's canonical development and release automation still run on [Forgejo][ward-forgejo], so maintainers carry accepted GitHub work across when needed. If you are working directly in the canonical repo, use that tracker and `closes #N` links. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md]. License: [`LICENSE`](./LICENSE).
 
-[cli-guard]: https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
+[cli-guard]: https://github.com/coilyco-flight-deck/cli-guard
 [new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new
 [ward-forgejo]: https://forgejo.coilysiren.me/coilyco-flight-deck/ward
 
