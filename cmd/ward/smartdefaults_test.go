@@ -48,6 +48,7 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
     agent-workflow default="merge-remote-main" {
     }
     pr-merge-style "squash"
+    route-intake-repo "coilysiren/tasks"
 }
 `
 	reposBody := `repos {
@@ -99,6 +100,9 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	}
 	if defs.prMergeStyle != "squash" {
 		t.Errorf("bundle pr merge style = %q, want squash", defs.prMergeStyle)
+	}
+	if defs.routeIntakeRepo.slug() != "coilysiren/tasks" {
+		t.Errorf("bundle route intake repo = %q, want coilysiren/tasks", defs.routeIntakeRepo.slug())
 	}
 	if len(defs.agentWorkflowRepos) != 0 {
 		t.Errorf("bundle workflow overrides = %v, want none in the neutral starter", defs.agentWorkflowRepos)
@@ -209,6 +213,27 @@ func TestSmartDefaultsRejectsInvalidMergeStyle(t *testing.T) {
 	}
 	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil {
 		t.Fatal("invalid pr merge style selected a bundle; want a loud parse error")
+	}
+}
+
+func TestSmartDefaultsRejectsInvalidRouteIntakeRepo(t *testing.T) {
+	dir := t.TempDir()
+	defaultsBody := `defaults {
+    route-intake-repo "coilysiren/tasks/more"
+}`
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
+		t.Fatalf("write malformed defaults bundle: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
+    repo-authority default=forgejo {
+        trusted-owner "coilysiren"
+        repo "coilysiren/*" forge=github
+    }
+}`), 0o644); err != nil {
+		t.Fatalf("write repos bundle: %v", err)
+	}
+	if _, err := loadSmartDefaultsFrom(bundleConfigSource(dir)); err == nil {
+		t.Fatal("invalid route intake repo selected a bundle; want a loud parse error")
 	}
 }
 

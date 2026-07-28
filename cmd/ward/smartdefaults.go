@@ -38,6 +38,7 @@ type smartDefaults struct {
 	agentWorkflowDefault          workflowMode
 	agentWorkflowRepos            map[string]workflowMode
 	prMergeStyle                  string
+	routeIntakeRepo               targetRepo
 	trustedOwners                 []string
 	repoAuthorityDefault          forge
 	repoAuthorityRules            []repoAuthorityRule
@@ -443,9 +444,15 @@ func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:go
 			return fmt.Errorf("smart defaults: smart-defaults > pr-merge-style %q is not supported (want merge, squash, fast-forward-only, rebase, or rebase-merge; fail-closed)", v)
 		}
 		defs.prMergeStyle = v
+	case "route-intake-repo":
+		repo, err := smartDefaultsRepoArg(n, "smart-defaults > route-intake-repo")
+		if err != nil {
+			return err
+		}
+		defs.routeIntakeRepo = repo
 	default:
 		return unknownSmartDefaultsNode("smart-defaults body", n.Name(),
-			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | agent-image | agent-tag | container-memory-limit | engineer-container-limit | engineer-repo-working-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-ttl | agent-workflow | pr-merge-style")
+			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | agent-image | agent-tag | container-memory-limit | engineer-container-limit | engineer-repo-working-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-ttl | agent-workflow | pr-merge-style | route-intake-repo")
 	}
 	return nil
 }
@@ -1036,6 +1043,18 @@ func smartDefaultsStringArg(n *kdl.Node, label string) (string, error) {
 		return "", fmt.Errorf("smart defaults: %s must be non-empty (fail-closed)", label)
 	}
 	return v, nil
+}
+
+func smartDefaultsRepoArg(n *kdl.Node, label string) (targetRepo, error) {
+	slug, err := smartDefaultsStringArg(n, label)
+	if err != nil {
+		return targetRepo{}, err
+	}
+	if strings.HasSuffix(slug, ".git") || !ownerNameRe.MatchString(slug) {
+		return targetRepo{}, fmt.Errorf("smart defaults: %s must be owner/name (fail-closed)", label)
+	}
+	m := ownerNameRe.FindStringSubmatch(slug)
+	return targetRepo{Owner: m[1], Name: m[2]}, nil
 }
 
 func smartDefaultsDurationArg(n *kdl.Node, label string) (time.Duration, error) {

@@ -91,12 +91,12 @@ func TestTaskRepoRef(t *testing.T) {
 func TestRenderRepoCatalog(t *testing.T) {
 	got := renderRepoCatalog([]repoCatalogEntry{
 		{Slug: "coilyco-flight-deck/ward", Description: "contributor-facing cli-guard consumer"},
-		{Slug: "coilysiren/inbox", Description: "  "},
+		{Slug: "example-org/intake", Description: "  "},
 	})
 	if !strings.Contains(got, "coilyco-flight-deck/ward — contributor-facing cli-guard consumer") {
 		t.Errorf("catalog missing the described repo line\n got: %s", got)
 	}
-	if !strings.Contains(got, "coilysiren/inbox — (no description)") {
+	if !strings.Contains(got, "example-org/intake — (no description)") {
 		t.Errorf("a blank description should render a placeholder\n got: %s", got)
 	}
 	if renderRepoCatalog(nil) != "" {
@@ -179,10 +179,10 @@ func TestRouteIntakeBody(t *testing.T) {
 }
 
 func TestRouteChildBody(t *testing.T) {
-	intake := agentIssueRef{Owner: inboxOwner, Repo: inboxRepo, Number: 7}
+	intake := agentIssueRef{Owner: "example-org", Repo: "intake", Number: 7}
 	got := routeChildBody(modeClaude, "add a --foo flag", "wire --foo through the bar command", intake)
 	for _, want := range []string{
-		"coilysiren/inbox#7",                 // names the intake record
+		"example-org/intake#7",               // names the intake record
 		intake.url(),                         // cross-links back to it
 		"wire --foo through the bar command", // the scoping note
 		"Scoped for this repo",               // the scoping header
@@ -197,6 +197,20 @@ func TestRouteChildBody(t *testing.T) {
 	// With no scoping note the scoped header is omitted, never left dangling.
 	if strings.Contains(routeChildBody(modeClaude, "task", "  ", intake), "Scoped for this repo") {
 		t.Error("empty scoping note should omit the scoped header")
+	}
+}
+
+func TestResolveRouteTargetRejectsConfiguredIntakeRepo(t *testing.T) {
+	intake := currentSmartDefaults().routeIntakeRepo
+	if intake == (targetRepo{}) {
+		t.Fatal("baked route intake repo is empty")
+	}
+	_, reason, ok := (&Runner{}).resolveRouteTarget(routeOutcome{Verdict: routeRepo, Repo: intake.slug()})
+	if ok {
+		t.Fatalf("configured intake repo %s must not be accepted as the routed child target", intake.slug())
+	}
+	if !strings.Contains(reason, "intake repo itself") {
+		t.Fatalf("reason should name the intake repo guard, got %q", reason)
 	}
 }
 
