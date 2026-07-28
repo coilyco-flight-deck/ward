@@ -152,6 +152,46 @@ func TestBuildUpPlanDirectorSurfaceThreading(t *testing.T) {
 	}
 }
 
+func TestDirectorExplicitRepoDoesNotRequireResolvableCWD(t *testing.T) {
+	stubContainerBootstrapStage(t)
+	oldStartupCWD := startupCWD
+	startupCWD = ""
+	t.Cleanup(func() { startupCWD = oldStartupCWD })
+
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	deleted := t.TempDir()
+	if err := os.Chdir(deleted); err != nil {
+		t.Fatalf("chdir deleted cwd fixture: %v", err)
+	}
+	if err := os.RemoveAll(deleted); err != nil {
+		t.Fatalf("remove deleted cwd fixture: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(originalWD); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+
+	cmd := parseCommandForTest(t, agentScratchFlags(), []string{"surface", "--repo", "coilyco-flight-deck/ward", "--no-pull"})
+	r := &Runner{}
+	plan, cleanup, err := r.prepareScratchPlan(t.Context(), cmd, modeCodex, true, "ward agent director")
+	if err != nil {
+		t.Fatalf("prepareScratchPlan with explicit --repo and unresolvable cwd: %v", err)
+	}
+	defer cleanup()
+	if got := plan.Repo.slug(); got != "coilyco-flight-deck/ward" {
+		t.Fatalf("plan repo = %q, want coilyco-flight-deck/ward", got)
+	}
+	for _, mount := range plan.Mounts {
+		if mount.Target == containerContextMount {
+			t.Fatalf("unresolvable launch cwd must not be mounted as context: %+v", mount)
+		}
+	}
+}
+
 // resolveForgejoToken prefers an already-present FORGEJO_TOKEN so a `warded #N`
 // dispatched from inside an explore box resolves (ward#315).
 func TestResolveForgejoTokenPrefersEnv(t *testing.T) {

@@ -427,8 +427,10 @@ type mountOpts struct {
 // volume. The target repo is never mounted; the optional mounts are opt-ins.
 func leastAccessMounts(hostCwd string, opts mountOpts) []mountSpec {
 	mounts := []mountSpec{
-		{Source: hostCwd, Target: containerContextMount, ReadOnly: true, Volume: false},
 		{Source: containerGitcacheVol, Target: containerGitcacheMnt, ReadOnly: false, Volume: true},
+	}
+	if strings.TrimSpace(hostCwd) != "" {
+		mounts = append(mounts, mountSpec{Source: hostCwd, Target: containerContextMount, ReadOnly: true, Volume: false})
 	}
 	if opts.AssetsDir != "" {
 		mounts = append(mounts, mountSpec{Source: opts.AssetsDir, Target: containerWardAssets, ReadOnly: true, Volume: false})

@@ -295,13 +295,13 @@ func isCharDevice(f *os.File) bool {
 // resolveTarget returns the target repo (explicit arg, else inferred from the
 // cwd's git origin) and the cwd to mount for context.
 func (r *Runner) resolveTarget(ctx context.Context, arg string) (targetRepo, string, error) {
+	if arg != "" {
+		repo, err := parseRepoRef(arg)
+		return repo, resolveInvokeCWD(), err
+	}
 	cwd := resolveInvokeCWD()
 	if cwd == "" {
 		return targetRepo{}, "", fmt.Errorf("ward container: cannot resolve the current directory")
-	}
-	if arg != "" {
-		repo, err := parseRepoRef(arg)
-		return repo, cwd, err
 	}
 	out, err := r.Runner.Capture(ctx, "git", "-C", cwd, "remote", "get-url", "origin")
 	if err != nil {
