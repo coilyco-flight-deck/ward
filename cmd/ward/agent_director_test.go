@@ -480,7 +480,7 @@ func TestPartitionScopeEntries(t *testing.T) {
 		wantOrgs  []string
 		wantRepos []string
 	}{
-		{"orgs only", []string{"coilyco-flight-deck", "coilyco-bridge"}, []string{"coilyco-flight-deck", "coilyco-bridge"}, nil},
+		{"orgs only", []string{"coilyco-flight-deck", "coilyco-gaming"}, []string{"coilyco-flight-deck", "coilyco-gaming"}, nil},
 		{"repos only", []string{"a/b", "c/d"}, nil, []string{"a/b", "c/d"}},
 		{"mixed, order-preserving", []string{"a/b", "org", "c/d"}, []string{"org"}, []string{"a/b", "c/d"}},
 		{"de-dupes and trims blanks", []string{" org ", "org", "", "a/b", "a/b"}, []string{"org"}, []string{"a/b"}},
@@ -518,7 +518,7 @@ func TestLoadDirectorDefaultScope(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(home, ".ward"), 0o750); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
-		yaml := "director:\n  default-scope: [coilyco-flight-deck, coilyco-bridge, some/repo]\n"
+		yaml := "director:\n  default-scope: [coilyco-flight-deck, coilyco-gaming, some/repo]\n"
 		if err := os.WriteFile(filepath.Join(home, ".ward", "config.yaml"), []byte(yaml), 0o600); err != nil {
 			t.Fatalf("write config: %v", err)
 		}
@@ -526,7 +526,7 @@ func TestLoadDirectorDefaultScope(t *testing.T) {
 		if err != nil {
 			t.Fatalf("loadDirectorDefaultScope() error: %v", err)
 		}
-		if want := []string{"coilyco-flight-deck", "coilyco-bridge"}; !reflect.DeepEqual(orgs, want) {
+		if want := []string{"coilyco-flight-deck", "coilyco-gaming"}; !reflect.DeepEqual(orgs, want) {
 			t.Errorf("orgs = %v, want %v", orgs, want)
 		}
 		if want := []string{"some/repo"}; !reflect.DeepEqual(repos, want) {
@@ -1112,7 +1112,7 @@ func TestDirectorScopeIgnoresOperatorBundleBurndownRules(t *testing.T) {
     }
     burndown default=#true {
         repo "coilyco-flight-deck/infrastructure" #false
-        repo "coilyco-bridge/deploy" #false
+        repo "coilyco-gaming/eco-ops" #false
     }
 }`), 0o644); err != nil {
 		t.Fatal(err)

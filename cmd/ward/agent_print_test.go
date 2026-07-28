@@ -20,7 +20,7 @@ func TestPrintAgentPlanShowsAgentProxyAndCorrelation(t *testing.T) {
 		Issue:       861,
 		Workflow:    workflowPullRequestAndMerge,
 		WardVersion: "1.2.3",
-		ExtraRepos:  []targetRepo{{Owner: "coilyco-bridge", Name: ".github"}},
+		ExtraRepos:  []targetRepo{{Owner: "coilyco-gaming", Name: ".github"}},
 		ConfigEnv:   map[string]string{"WARD_OLLAMA_URL": "http://host.docker.internal:8082/v1"},
 	}
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 861}
@@ -36,7 +36,7 @@ func TestPrintAgentPlanShowsAgentProxyAndCorrelation(t *testing.T) {
 		"WARD_WORKFLOW=pull-request-and-merge",
 		"WARD_VERSION=1.2.3",
 		"coilyco-flight-deck/ward -> /workspace/ward",
-		"coilyco-bridge/.github -> /workspace/coilyco-bridge/.github",
+		"coilyco-gaming/.github -> /workspace/coilyco-gaming/.github",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("printAgentPlan output missing %q\n---\n%s", want, got)

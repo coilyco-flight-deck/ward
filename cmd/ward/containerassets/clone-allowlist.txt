@@ -2,6 +2,4 @@
 coilyco-flight-deck/ward
 coilyco-flight-deck/cli-guard
 coilyco-flight-deck/infrastructure
-coilyco-bridge/deploy
-coilyco-bridge/lore
 coilysiren/coilysiren

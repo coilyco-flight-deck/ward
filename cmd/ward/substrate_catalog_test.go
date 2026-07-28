@@ -25,7 +25,7 @@ func TestBuildSubstrateCatalog(t *testing.T) {
 	manifest := []substrateRepo{
 		{Owner: "coilyco-flight-deck", Name: "infrastructure", Tier: "image"},
 		{Owner: "coilyco-flight-deck", Name: "ward", Tier: "image"},
-		{Owner: "coilyco-bridge", Name: "deploy", Tier: "cache"},
+		{Owner: "coilyco-gaming", Name: "eco-ops", Tier: "cache"},
 		// A manifest repo forgejo does not return still gets an entry.
 		{Owner: "coilyco-flight-deck", Name: "ghost", Tier: "image"},
 	}
@@ -35,8 +35,8 @@ func TestBuildSubstrateCatalog(t *testing.T) {
 			{Name: "ward", FullName: "coilyco-flight-deck/ward", Description: "Harness driver"},
 			{Name: "unrelated", FullName: "coilyco-flight-deck/unrelated", Description: "not on the manifest"},
 		},
-		"coilyco-bridge": {
-			{Name: "deploy", FullName: "coilyco-bridge/deploy", Description: "deploy monorepo", Topics: []string{"helm"}},
+		"coilyco-gaming": {
+			{Name: "eco-ops", FullName: "coilyco-gaming/eco-ops", Description: "game ops", Topics: []string{"game"}},
 		},
 	}}
 
@@ -51,13 +51,12 @@ func TestBuildSubstrateCatalog(t *testing.T) {
 	if lister.calls["coilyco-flight-deck"] != 1 {
 		t.Errorf("coilyco-flight-deck listed %d times, want 1", lister.calls["coilyco-flight-deck"])
 	}
-	// Entries sort by full_name, so ghost < infrastructure < ward, then deploy? No:
-	// coilyco-bridge/deploy sorts before coilyco-flight-deck/*. Assert the order.
+	// Entries sort by full_name.
 	wantOrder := []string{
-		"coilyco-bridge/deploy",
 		"coilyco-flight-deck/ghost",
 		"coilyco-flight-deck/infrastructure",
 		"coilyco-flight-deck/ward",
+		"coilyco-gaming/eco-ops",
 	}
 	if len(cat.Repos) != len(wantOrder) {
 		t.Fatalf("got %d entries, want %d: %+v", len(cat.Repos), len(wantOrder), cat.Repos)
@@ -102,7 +101,7 @@ func TestBuildSubstrateCatalog(t *testing.T) {
 func TestFilterSubstrateTier(t *testing.T) {
 	manifest := []substrateRepo{
 		{Owner: "coilyco-flight-deck", Name: "ward", Tier: "image"},
-		{Owner: "coilyco-bridge", Name: "deploy", Tier: "cache"},
+		{Owner: "coilyco-gaming", Name: "eco-ops", Tier: "cache"},
 		{Owner: "coilyco-flight-deck", Name: "infrastructure", Tier: "image"},
 	}
 
@@ -115,8 +114,8 @@ func TestFilterSubstrateTier(t *testing.T) {
 		t.Errorf("no-op filter kept %d, want 3", len(all))
 	}
 
-	// image-tier drops the private cache-tier repo, so a public seed bake never
-	// lists the coilyco-bridge owner.
+	// image-tier drops the cache-tier repo, so a public seed bake never lists
+	// that owner solely because of a cache row.
 	img, err := filterSubstrateTier(manifest, "image")
 	if err != nil {
 		t.Fatalf("image filter: %v", err)
@@ -125,7 +124,7 @@ func TestFilterSubstrateTier(t *testing.T) {
 		t.Fatalf("image filter kept %d, want 2: %+v", len(img), img)
 	}
 	for _, repo := range img {
-		if repo.Owner == "coilyco-bridge" {
+		if repo.Owner == "coilyco-gaming" {
 			t.Errorf("cache-tier repo %s leaked past the image filter", repo.slug())
 		}
 	}
