@@ -41,8 +41,7 @@ Inventory of what `ward` ships today.
 - `ward agent issue create` files a Forgejo issue through the read-only
   director credential broker without dispatching an engineer.
 - `ward agent` roles and workflows. See [agent.md](agent.md).
-- Dispatch-health surfacing.
-- PR repair input mode.
+- Dispatch-health, PR repair input, and logs artifact selector.
 
 ## Container surface
 
