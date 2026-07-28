@@ -34,14 +34,23 @@ const (
 	composeProjectLabel       = "com.docker.compose.project"
 )
 
+// agentLogsLiveTranscriptTimeout bounds best-effort live transcript reads so
+// silent fresh containers explain state instead of waiting on an absent tree.
+var agentLogsLiveTranscriptTimeout = 2 * time.Second
+
 // agentLogSource is the resolved log source the host prints and streams from.
 type agentLogSource struct {
 	Kind           agentLogSourceKind
 	Label          string
 	Container      string
+	Ref            string
+	Phase          string
 	Path           string
 	TranscriptTree string
 	ArchiveMeta    runMeta
+	ReservedAt     time.Time
+	StartedAt      time.Time
+	StateStatus    string
 	Tail           int
 	Follow         bool
 }
@@ -236,7 +245,7 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 		if err != nil {
 			return agentLogSource{}, err
 		}
-		return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: r.containerTranscriptTree(ctx, name), Tail: tail, Follow: follow}, nil
+		return r.dockerAgentLogSource(ctx, name, ref, tail, follow), nil
 	}
 	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsDir(), drainConsoleFile, "archive path"); err != nil {
 		return agentLogSource{}, err
@@ -298,7 +307,7 @@ func (r *Runner) resolveAgentLogsSourceForRunningName(ctx context.Context, name 
 		return agentLogSource{}, fmt.Errorf("dispatch broker: refusing to read %q: it is a %q container, not a readable agent - "+
 			"logs only target %s and %s (session containers are never read here)", name, role, roleEngineer, roleDirector)
 	}
-	return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: r.containerTranscriptTree(ctx, name), Tail: tail, Follow: follow}, nil
+	return r.dockerAgentLogSource(ctx, name, agentIssueRef{}, tail, follow), nil
 }
 
 func (r *Runner) resolveCurrentComposeGroupLogs(ctx context.Context, requester string, tail int, follow bool) (agentLogGroupSource, error) {
@@ -318,9 +327,51 @@ func (r *Runner) resolveCurrentComposeGroupLogs(ctx context.Context, requester s
 	}
 	sources := make([]agentLogSource, 0, len(names))
 	for _, name := range names {
-		sources = append(sources, agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: r.containerTranscriptTree(ctx, name), Tail: tail})
+		sources = append(sources, r.dockerAgentLogSource(ctx, name, agentIssueRef{}, tail, false))
 	}
 	return agentLogGroupSource{Project: project, Sources: sources, Tail: tail}, nil
+}
+
+func (r *Runner) dockerAgentLogSource(ctx context.Context, name string, ref agentIssueRef, tail int, follow bool) agentLogSource {
+	source := agentLogSource{
+		Kind:           agentLogSourceDocker,
+		Container:      name,
+		TranscriptTree: r.containerTranscriptTree(ctx, name),
+		Tail:           tail,
+		Follow:         follow,
+	}
+	if state, ok := r.inspectContainerState(ctx, name); ok {
+		source.StateStatus = strings.TrimSpace(state.Status)
+		source.StartedAt = parseSummaryTime(strings.TrimSpace(state.StartedAt))
+		source.Phase = agentLogPhaseFromDockerState(source.StateStatus)
+	}
+	if ref.Owner == "" || ref.Repo == "" || ref.Number <= 0 {
+		return source
+	}
+	source.Ref = ref.String()
+	if phase, _, ok := dispatchLaunchPhaseForReservation(ref); ok {
+		source.Phase = phase
+	}
+	if res, ok, _ := readAgentReservationMust(ref); ok && res != nil {
+		source.ReservedAt = res.At
+		if strings.TrimSpace(source.Container) == "" {
+			source.Container = strings.TrimSpace(res.Container)
+		}
+	}
+	return source
+}
+
+func agentLogPhaseFromDockerState(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "":
+		return ""
+	case "running":
+		return agentLaunchPhaseRunning
+	case "created", "restarting", "paused":
+		return agentLaunchPhaseStarting
+	default:
+		return "container " + strings.ToLower(strings.TrimSpace(status))
+	}
 }
 
 func (r *Runner) currentComposeProject(ctx context.Context, requester string) (string, error) {
@@ -466,12 +517,12 @@ func (r *Runner) streamDockerAgentLogsSource(ctx context.Context, source agentLo
 func (r *Runner) streamEmptyDockerAgentLogsSource(ctx context.Context, source agentLogSource, w io.Writer) error {
 	tree := strings.TrimSpace(source.TranscriptTree)
 	if tree == "" {
-		_, _ = fmt.Fprintf(w, "ward agent logs: %s had no readable bytes; no readable live transcript tree for %s\n", source.String(), source.Container)
+		r.writeEmptyLiveAgentLogStatus(w, source, "(unknown)", false)
 		return nil
 	}
-	transcript := r.liveTranscriptSource(ctx, source.Container, tree)
+	transcript, timedOut := r.liveTranscriptSource(ctx, source.Container, tree)
 	if len(transcript) == 0 {
-		_, _ = fmt.Fprintf(w, "ward agent logs: %s had no readable bytes; live transcript tree at %s is empty\n", source.String(), tree)
+		r.writeEmptyLiveAgentLogStatus(w, source, tree, timedOut)
 		return nil
 	}
 	if source.Tail > 0 {
@@ -498,17 +549,79 @@ func (r *Runner) streamFileAgentLogsSource(source agentLogSource, w io.Writer) e
 	return err
 }
 
-// liveTranscriptSource pulls the current transcript tree from a live engineer
-// container and returns the concatenated jsonl the drain would eventually archive.
-func (r *Runner) liveTranscriptSource(ctx context.Context, name, transcriptTree string) []byte {
-	prevErr := r.Runner.Stderr
-	r.Runner.Stderr = io.Discard
-	out, err := r.dockerCapture(ctx, "cp", name+":"+transcriptTree, "-")
-	r.Runner.Stderr = prevErr
-	if err != nil || len(out) == 0 {
-		return nil
+func (r *Runner) writeEmptyLiveAgentLogStatus(w io.Writer, source agentLogSource, tree string, transcriptTimedOut bool) {
+	_, _ = fmt.Fprintf(w, "ward agent logs: %s had no readable bytes\n", source.String())
+	if container := strings.TrimSpace(source.Container); container != "" {
+		_, _ = fmt.Fprintf(w, "container: %s\n", container)
 	}
-	return extractTranscriptFromTar(out)
+	if ref := strings.TrimSpace(source.Ref); ref != "" {
+		_, _ = fmt.Fprintf(w, "ref: %s\n", ref)
+	}
+	if phase := strings.TrimSpace(source.Phase); phase != "" {
+		_, _ = fmt.Fprintf(w, "phase: %s\n", phase)
+	}
+	now := time.Now().UTC()
+	switch {
+	case !source.ReservedAt.IsZero():
+		_, _ = fmt.Fprintf(w, "reservation age: %s (reserved at %s)\n",
+			conciseDuration(now.Sub(source.ReservedAt)), source.ReservedAt.UTC().Format(time.RFC3339))
+	case !source.StartedAt.IsZero():
+		_, _ = fmt.Fprintf(w, "start age: %s (started at %s)\n",
+			conciseDuration(now.Sub(source.StartedAt)), source.StartedAt.UTC().Format(time.RFC3339))
+	}
+	suffix := ""
+	if transcriptTimedOut && agentLogsLiveTranscriptTimeout > 0 {
+		suffix = fmt.Sprintf("; read timed out after %s", conciseDuration(agentLogsLiveTranscriptTimeout))
+	}
+	_, _ = fmt.Fprintf(w, "transcript: no readable live transcript exists yet (checked %s%s)\n", tree, suffix)
+}
+
+// liveTranscriptSource pulls the current transcript tree from a live engineer.
+// The bool reports whether the bounded read timed out.
+func (r *Runner) liveTranscriptSource(ctx context.Context, name, transcriptTree string) ([]byte, bool) {
+	readCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type transcriptReadResult struct {
+		out []byte
+		err error
+	}
+	done := make(chan transcriptReadResult, 1)
+	go func() {
+		rr := *r
+		if r.Runner != nil {
+			inner := *r.Runner
+			inner.Stderr = io.Discard
+			rr.Runner = &inner
+		}
+		out, err := rr.dockerCapture(readCtx, "cp", name+":"+transcriptTree, "-")
+		done <- transcriptReadResult{out: out, err: err}
+	}()
+
+	if agentLogsLiveTranscriptTimeout <= 0 {
+		res := <-done
+		if res.err != nil || len(res.out) == 0 {
+			return nil, false
+		}
+		return extractTranscriptFromTar(res.out), false
+	}
+
+	timer := time.NewTimer(agentLogsLiveTranscriptTimeout)
+	defer timer.Stop()
+	select {
+	case res := <-done:
+		timedOut := errors.Is(readCtx.Err(), context.DeadlineExceeded) || errors.Is(res.err, context.DeadlineExceeded)
+		if res.err != nil || len(res.out) == 0 {
+			return nil, timedOut
+		}
+		return extractTranscriptFromTar(res.out), timedOut
+	case <-timer.C:
+		cancel()
+		return nil, true
+	case <-ctx.Done():
+		cancel()
+		return nil, errors.Is(ctx.Err(), context.DeadlineExceeded)
+	}
 }
 
 // allAgentContainersForIssue lists every live or exited readable agent container that
