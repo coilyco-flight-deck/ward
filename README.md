@@ -46,7 +46,15 @@ Wraps a project's dev verbs behind cli-guard's policy gate. Every ward-managed r
 
 **Enforcement depth is platform-conditional.** On **Linux** sandboxed verbs run inside cli-guard's sandbox jail, so the gate holds at arbitrary process depth. On **macOS and Windows** - what the brew-first path predominantly serves - enforcement is **depth-0** (the harness allowlist only): a child spawned by a gated verb can invoke a wrapped tool without re-entering the gate, a known limitation by design. See [`docs/exec-verb.md`](docs/exec-verb.md) (Enforcement depth by platform).
 
-Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema see [`docs/ward-yaml.md`](docs/ward-yaml.md). `ward setup` pre-bakes the selected runtime source, and [`ward doctor`](docs/doctor.md) validates that the selected runtime config is operational.
+Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema see [`docs/ward-yaml.md`](docs/ward-yaml.md). Ward's native agent policy is baked into the binary and release image, and [`ward doctor`](docs/doctor.md) validates that the selected runtime config is operational.
+
+`WARD_CONFIG_REF` is retained for compatibility with older launch-time config flows, but normal Ward launches do not need it. When an example needs a concrete Ward-owned value, point it at this repo's policy bundle while running from a Ward checkout:
+
+```sh
+export WARD_CONFIG_REF="file://$PWD/.ward"
+```
+
+That pairs with the same WIP/release image named above, `forgejo.coilysiren.me/coilyco-flight-deck/ward:release`. See [`docs/config-source.md`](docs/config-source.md) for the current source boundary.
 
 ## Install
 

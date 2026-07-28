@@ -11,5 +11,8 @@ help, and version independent of an operator configuration checkout.
 spec configuration inside the AOS image and exposes its generated APIs through
 `aosguard ops ...`.
 
+For compatibility examples that still need a Ward-owned value, use this repo's
+own policy bundle from a checkout: `WARD_CONFIG_REF=file://$PWD/.ward`.
+
 Ward retains typed Forgejo, GitHub, and Shortcut adapters only where its own
 issue-to-merge workflow needs them. Those adapters do not route through AOSguard.
