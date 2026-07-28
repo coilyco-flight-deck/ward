@@ -1201,6 +1201,7 @@ func TestReservationReleaseCommentBodyGate(t *testing.T) {
 func TestGateRecovery(t *testing.T) {
 	for _, c := range []struct{ gate, wantLabel, wantRecov string }{
 		{"auth", "auth smoke test", "Refresh the host claude login"},
+		{"claude-quota", "Claude account/token quota", "account limit to reset"},
 		{"ollama-probe", "ollama reachability probe", "Ollama endpoint up"},
 		{"codex-probe", "codex launch probe", "codex config/auth"},
 		{"model-config", "model-config pre-launch gate", "Update the model environment"},

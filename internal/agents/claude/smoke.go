@@ -3,10 +3,12 @@ package claude
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -31,6 +33,36 @@ var authErrorMarkers = []string{
 	"authentication_error",
 	"unauthorized",
 	"please run /login",
+}
+
+const claudeQuotaGate = "claude-quota"
+
+// quotaErrorMarkers catch account/subscription exhaustion separately from auth
+// rejection and opaque startup failures (ward#1500).
+var quotaErrorMarkers = []string{
+	"account limit",
+	"billing hard limit",
+	"credit balance",
+	"insufficient_quota",
+	"limit reached",
+	"monthly limit",
+	"quota",
+	"quota_exceeded",
+	"rate limit",
+	"rate_limit_error",
+	"token limit",
+	"too many requests",
+	"usage limit",
+	"usage_limit_error",
+}
+
+var claudeProbeRedactionRules = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)((?:access|refresh|id)[_-]?token\\?["']?\s*[:=]\s*\\?["'])[^\\"',\s}]+`),
+	regexp.MustCompile(`(?i)((?:api[_-]?key|authorization|x-api-key|anthropic-api-key)\\?["']?\s*[:=]\s*\\?["'])[^\\"',\s}]+`),
+	regexp.MustCompile(`\bsk-ant-api\d{0,2}-[A-Za-z0-9-]{20,120}\b`),
+	regexp.MustCompile(`\bsk-[A-Za-z0-9-]{10,100}\b`),
+	regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9_]{20,90}\b`),
+	regexp.MustCompile(`\b(ey[A-Za-z0-9_\-=]{10,}\.){2}[A-Za-z0-9_\-=]{10,}\b`),
 }
 
 // PreLaunchCheck ports smoke_test_claude_auth: a bounded claude probe whose
@@ -67,10 +99,7 @@ func (a Agent) PreLaunchCheck(rc agentsapi.RunCtx) error {
 		return fmt.Errorf("auth smoke test: claude -p did not respond within 90s - a startup hang, not necessarily an auth problem (ward#222, ward#273). Likely causes: a full disk (claude cannot write ~/.claude), network, or a slow cold start. Disk: %s. If disk is low, free space on the Docker host; otherwise refresh the host claude login (re-run 'claude' on the host) and relaunch. WARD_SMOKE_TEST_SKIP=1 bypasses", diskReport(smokeTestDiskPaths))
 	}
 	if code != 0 || strings.TrimSpace(out) == "" {
-		if looksLikeAuthError(stderr) || looksLikeAuthError(out) {
-			return fmt.Errorf("auth smoke test: claude -p rejected the credentials (exit %d) - they are unusable in-container (ward#222). Refresh the host claude login (re-run 'claude' on the host) and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses", code)
-		}
-		return fmt.Errorf("auth smoke test: claude -p produced no usable output (exit %d) without an auth error - more likely a disk/network/startup problem than credentials (ward#222, ward#273). Disk: %s. WARD_SMOKE_TEST_SKIP=1 bypasses", code, diskReport(smokeTestDiskPaths))
+		return classifyClaudeProbeFailure(out, stderr, code, diskReport(smokeTestDiskPaths))
 	}
 	rc.Log("auth smoke test: claude responded, auth OK")
 	return nil
@@ -100,7 +129,120 @@ func classifyClaudeModelConfigFailure(model, out, stderr string, code int) error
 	return agentsapi.NewGateError(modelconfig.GateName, fmt.Errorf("claude model %q was rejected by the launch probe (ward#670): %s", model, oneLine(combined)))
 }
 
+func classifyClaudeProbeFailure(out, stderr string, code int, disk string) error {
+	detail := claudeProbeDiagnostic(out, stderr)
+	if looksLikeAuthError(detail) {
+		return fmt.Errorf("auth smoke test: claude -p rejected the credentials (exit %d) - they are unusable in-container (ward#222). Detail: %s. Refresh the host claude login (re-run 'claude' on the host) and relaunch; WARD_SMOKE_TEST_SKIP=1 bypasses", code, detail)
+	}
+	if looksLikeQuotaError(detail) {
+		return agentsapi.NewGateError(claudeQuotaGate, fmt.Errorf("auth smoke test: claude -p hit a Claude account/token/quota limit (exit %d, ward#1500): %s. Wait for the Claude account limit to reset or switch harness/account, then re-dispatch; WARD_SMOKE_TEST_SKIP=1 bypasses", code, detail))
+	}
+	if detail != "" {
+		return fmt.Errorf("auth smoke test: unknown Claude prelaunch failure: claude -p exited %d with no usable output and no auth/quota marker (ward#1500). Probe output: %s. Disk: %s. WARD_SMOKE_TEST_SKIP=1 bypasses", code, detail, disk)
+	}
+	return fmt.Errorf("auth smoke test: unknown Claude prelaunch failure: claude -p exited %d with no usable output and no auth/quota marker (ward#1500). Disk: %s. WARD_SMOKE_TEST_SKIP=1 bypasses", code, disk)
+}
+
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+func looksLikeQuotaError(s string) bool {
+	l := strings.ToLower(s)
+	for _, m := range quotaErrorMarkers {
+		if strings.Contains(l, m) {
+			return true
+		}
+	}
+	return false
+}
+
+func claudeProbeDiagnostic(out, stderr string) string {
+	var parts []string
+	for _, raw := range []string{out, stderr} {
+		parts = append(parts, structuredClaudeProbeMessages(raw)...)
+	}
+	combined := strings.TrimSpace(out + "\n" + stderr)
+	if combined != "" {
+		parts = append(parts, combined)
+	}
+	return capProbeDetail(redactClaudeProbeSecrets(oneLine(strings.Join(parts, " "))))
+}
+
+func structuredClaudeProbeMessages(raw string) []string {
+	var out []string
+	for _, candidate := range jsonCandidates(raw) {
+		var v any
+		if err := json.Unmarshal([]byte(candidate), &v); err != nil {
+			continue
+		}
+		collectClaudeJSONMessages(v, &out)
+	}
+	return out
+}
+
+func jsonCandidates(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var candidates []string
+	if strings.HasPrefix(raw, "{") || strings.HasPrefix(raw, "[") {
+		candidates = append(candidates, raw)
+	}
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "{") || strings.HasPrefix(line, "[") {
+			candidates = append(candidates, line)
+		}
+	}
+	return candidates
+}
+
+func collectClaudeJSONMessages(v any, out *[]string) {
+	switch x := v.(type) {
+	case map[string]any:
+		for _, key := range []string{"message", "detail", "details", "reason", "type", "code", "status"} {
+			if val, ok := x[key]; ok {
+				appendJSONDiagnosticValue(val, out)
+			}
+		}
+		if val, ok := x["error"]; ok {
+			appendJSONDiagnosticValue(val, out)
+		}
+	case []any:
+		for _, item := range x {
+			collectClaudeJSONMessages(item, out)
+		}
+	}
+}
+
+func appendJSONDiagnosticValue(v any, out *[]string) {
+	switch x := v.(type) {
+	case string:
+		x = strings.TrimSpace(x)
+		if x != "" {
+			*out = append(*out, x)
+		}
+	case float64:
+		*out = append(*out, fmt.Sprintf("%.0f", x))
+	case map[string]any, []any:
+		collectClaudeJSONMessages(x, out)
+	}
+}
+
+func redactClaudeProbeSecrets(s string) string {
+	for _, re := range claudeProbeRedactionRules {
+		s = re.ReplaceAllString(s, "${1}[REDACTED]")
+	}
+	return s
+}
+
+func capProbeDetail(s string) string {
+	const maxProbeDetailBytes = 500
+	if len(s) <= maxProbeDetailBytes {
+		return s
+	}
+	return strings.TrimSpace(s[:maxProbeDetailBytes]) + "..."
+}
 
 // setprivPrefix builds the launch prefix that drops to the agent uid/gid with
 // init-groups and pins HOME (`setpriv ... env HOME=<home>`), matching core's.

@@ -1057,6 +1057,9 @@ func gateRecovery(gate string) (label, recovery string) {
 	case "auth":
 		return "auth smoke test (claude credentials)",
 			"Refresh the host claude login (re-run `claude` on the host to re-auth), then re-dispatch."
+	case "claude-quota":
+		return "Claude account/token quota pre-launch gate",
+			"Wait for the Claude account limit to reset or switch harness/account, then re-dispatch."
 	case "ollama-probe":
 		return "ollama reachability probe (local-model harness)",
 			"Bring the goose/opencode Ollama endpoint up and reachable from the container (or pass `--ts-sidecar`), then re-dispatch."

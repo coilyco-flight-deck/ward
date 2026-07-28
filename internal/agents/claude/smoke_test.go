@@ -87,6 +87,89 @@ func TestClassifyClaudeModelConfigFailure(t *testing.T) {
 	}
 }
 
+func TestClassifyClaudeProbeFailure(t *testing.T) {
+	cases := []struct {
+		name     string
+		stdout   string
+		stderr   string
+		want     string
+		wantGate string
+	}{
+		{
+			name:   "auth failure from stderr",
+			stderr: "Error: Not logged in. Please run /login",
+			want:   "rejected the credentials",
+		},
+		{
+			name:     "quota failure from structured stdout",
+			stdout:   `{"type":"error","error":{"type":"rate_limit_error","message":"Claude account token limit reached until 5pm"}}`,
+			want:     "Claude account/token/quota limit",
+			wantGate: claudeQuotaGate,
+		},
+		{
+			name:     "quota failure from stderr string",
+			stderr:   "Your Claude usage limit has been reached. Please try again later.",
+			want:     "usage limit",
+			wantGate: claudeQuotaGate,
+		},
+		{
+			name:   "opaque exit one",
+			want:   "unknown Claude prelaunch failure",
+			stderr: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := classifyClaudeProbeFailure(tc.stdout, tc.stderr, 1, "/ 10.0GiB free of 20.0GiB")
+			if err == nil {
+				t.Fatal("expected failure")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %q, want it to contain %q", err, tc.want)
+			}
+			gotGate, hasGate := err.(interface{ GateName() string })
+			if tc.wantGate == "" {
+				if hasGate {
+					t.Fatalf("unexpected gate %q for %v", gotGate.GateName(), err)
+				}
+				return
+			}
+			if !hasGate || gotGate.GateName() != tc.wantGate {
+				t.Fatalf("gate = %q,%v; want %q,true", func() string {
+					if !hasGate {
+						return ""
+					}
+					return gotGate.GateName()
+				}(), hasGate, tc.wantGate)
+			}
+		})
+	}
+}
+
+func TestClaudeProbeDiagnosticExtractsStructuredPayload(t *testing.T) {
+	got := claudeProbeDiagnostic("", `noise
+{"type":"error","status":429,"error":{"type":"rate_limit_error","message":"Claude token limit reached"}}`)
+	for _, want := range []string{"rate_limit_error", "Claude token limit reached", "429"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("diagnostic = %q, want it to contain %q", got, want)
+		}
+	}
+}
+
+func TestClaudeProbeDiagnosticRedactsSecrets(t *testing.T) {
+	raw := `{"error":{"message":"failed with accessToken=\"secret-token\" and sk-ant-api03-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnop"}}`
+	got := claudeProbeDiagnostic("", raw)
+	for _, leaked := range []string{"secret-token", "sk-ant-api03-abcdefghijklmnopqrstuvwxyz"} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("diagnostic leaked %q: %s", leaked, got)
+		}
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("diagnostic did not show redaction marker: %s", got)
+	}
+}
+
 func TestDiskReportAndLowDiskPaths(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("disk pressure reporting is implemented only on Unix hosts")
