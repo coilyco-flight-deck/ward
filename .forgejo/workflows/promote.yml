@@ -184,7 +184,7 @@ jobs:
           host="${SERVER#*://}"
           # Plain push: git refuses a non-fast-forward, so a diverged release
           # branch fails loud here instead of being silently rewritten.
-          git push "${proto}://oauth2:${PROMOTE_TOKEN}@${host}/${REPO}.git" HEAD:release
+          git push "${proto}://oauth2:${PROMOTE_TOKEN}@${host}/${REPO}.git" HEAD:refs/heads/release
           echo "promoted $(git rev-parse --short HEAD) to release"
 
       - name: Alert Telegram on main failure

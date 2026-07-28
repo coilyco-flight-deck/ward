@@ -54,10 +54,14 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		"SOURCE_TOKEN: ${{ github.token }}",
 		"TARGET_USER: coilyco-ops",
 		"TARGET_TOKEN: ${{ secrets.REGISTRY_TOKEN }}",
+		"HEAD:refs/heads/release",
 	} {
 		if !strings.Contains(promote, want) {
 			t.Fatalf("promote workflow should mention %q:\n%s", want, promote)
 		}
+	}
+	if strings.Contains(promote, "HEAD:release") {
+		t.Fatalf("promote workflow must fully qualify the release branch ref when pushing detached HEAD:\n%s", promote)
 	}
 	for _, forbidden := range []string{
 		"AOS_SPECS_TAG",
