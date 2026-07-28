@@ -2145,6 +2145,10 @@ func maybeDumpSeed(w io.Writer, seed string, quiet bool) {
 	if quiet {
 		return
 	}
+	if requestID := brokeredDispatchRequestID(); requestID != "" {
+		writeln(w, summarizedSeedLogBlock(seed, requestID))
+		return
+	}
 	writeln(w, seedLogBlock(seed))
 }
 
@@ -2163,6 +2167,8 @@ func carryingLine(label string, ref agentIssueRef, title string) string {
 func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode containerMode, surface string, w resolvedWork, justification string, preflight preflightOutcome, preflightRead string) error { //nolint:gocyclo,cyclop,gocognit,funlen
 	label := agentCmdline(mode, surface)
 	ref, title, seed := w.Ref, w.Title, w.Seed
+	decisionLog := brokeredDispatchActive()
+	decisionWriter := dispatchDecisionWriter(decisionLog)
 
 	// Fail a doomed in-container dispatch loudly at bring-up, not at the raw
 	// `exec: "docker"` lookup later (ward#321); --print warns but still renders.
@@ -2170,32 +2176,72 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		if c.Bool("print") {
 			writef(os.Stderr, "%s: warning: %s\n", label, reason)
 		} else {
+			logDispatchDecision(os.Stderr, "host", "docker-access", "refused: %s", firstLine(reason))
 			return fmt.Errorf("%s: %s", label, reason)
 		}
+	} else if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "docker-access", "passed")
 	}
 
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "backpressure-open-pr", "checking pre-plan repo queue gate")
+	}
 	if err := r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w); err != nil {
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "backpressure-open-pr", "deferred: %s", firstLine(err.Error()))
+		}
 		return err
 	}
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "backpressure-open-pr", "passed")
+		logDispatchDecision(os.Stderr, "host", "backpressure-repo-engineers", "checking pre-plan active engineer gate")
+	}
 	if err := r.maybeLaunchRepoEngineerBackpressure(ctx, label, w.Ref, c); err != nil {
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "backpressure-repo-engineers", "deferred: %s", firstLine(err.Error()))
+		}
 		return err
+	}
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "backpressure-repo-engineers", "passed")
+		logDispatchDecision(os.Stderr, "host", "capacity", "checking global engineer limit override=%t", c.Bool("override-capacity"))
 	}
 	if !c.Bool("print") {
 		if err := r.enforceEngineerContainerLimit(ctx, label, c.Bool("override-capacity")); err != nil {
+			if decisionLog {
+				logDispatchDecision(os.Stderr, "host", "capacity", "deferred: %s", firstLine(err.Error()))
+			}
 			return err
 		}
+	}
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "capacity", "passed")
+		logDispatchDecision(os.Stderr, "host", "assets", "staging ward assets version=%s source=%s", emptyDefault(strings.TrimSpace(c.String("ward-version")), Version), emptyDefault(c.String("ward-source"), "package"))
 	}
 
 	// A detached run leaves its assets for the next sweep (it cannot delete the
 	// still-mounted dir on return), so the cleanup hook is discarded.
 	assetsDir, _, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 	if err != nil {
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "assets", "failed: %s", firstLine(err.Error()))
+		}
 		return err
+	}
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "assets", "ready at %s", assetsDir)
 	}
 
 	plan, err := buildAgentPlan(c, mode, ref, w.Branch, seed, assetsDir)
 	if err != nil {
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "plan", "failed: %s", firstLine(err.Error()))
+		}
 		return fmt.Errorf("%s: %w", label, err)
+	}
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "plan", "container=%s image=%s branch=%s workflow=%s ward=%s",
+			plan.Name, plan.Image, plan.Branch, plan.Workflow.orDefault(), wardVersionLaunchLabel(plan.WardVersion, plan.WardVersionSource))
 	}
 	writef(os.Stderr, "%s: launch plan ready for %s (container=%s branch=%s readOnly=%t tailnet=%t/%t)\n",
 		label, ref, plan.Name, plan.Branch, c.Bool("detach"), plan.HostNet, plan.TSSidecar)
@@ -2220,25 +2266,57 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		seed = joinNonEmptyBlocks(launchPreflight, seed)
 		plan.AgentArgs = []string{seed}
 	}
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "seed", "prepared %s; payload omitted from decision log", seedSummary(seed))
+		logDispatchDecision(os.Stderr, "host", "reservation", "checking issue reservation override=%t skip_preflight=%t", overrideReservation(c), plan.SkipPreflight)
+	}
 	var release func()
 	var partialLaunch error
 	if err := r.withAgentRepoLaunchLock(w.Ref.repoSlug(), func() error {
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "repo-lock", "acquired for %s", w.Ref.repoSlug())
+			logDispatchDecision(os.Stderr, "host", "backpressure-open-pr", "rechecking under repo launch lock")
+		}
 		if err := r.launchOpenPRBackpressureCheck(ctx, label, w.Ref.repoSlug(), openPRBackpressureApplies(c, w)); err != nil {
+			if decisionLog {
+				logDispatchDecision(os.Stderr, "host", "backpressure-open-pr", "deferred under lock: %s", firstLine(err.Error()))
+			}
 			return err
 		}
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "backpressure-open-pr", "passed under lock")
+			logDispatchDecision(os.Stderr, "host", "backpressure-repo-engineers", "rechecking under repo launch lock")
+		}
 		if err := r.launchRepoEngineerBackpressureCheck(ctx, label, w.Ref, c.Bool("override-capacity")); err != nil {
+			if decisionLog {
+				logDispatchDecision(os.Stderr, "host", "backpressure-repo-engineers", "deferred under lock: %s", firstLine(err.Error()))
+			}
 			return err
+		}
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "backpressure-repo-engineers", "passed under lock")
 		}
 		if !c.Bool("print") {
 			if err := r.enforceEngineerContainerLimit(ctx, label, c.Bool("override-capacity")); err != nil {
+				if decisionLog {
+					logDispatchDecision(os.Stderr, "host", "capacity", "deferred under lock: %s", firstLine(err.Error()))
+				}
 				return err
 			}
+		}
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "capacity", "passed under lock")
 		}
 		return r.withAgentReservationLock(ref, func() error {
 			var reserveErr error
 			release, partialLaunch, reserveErr = r.reserveIssue(ctx, label, mode, ref, plan.Name, plan.Branch, justification, seedCtx, overrideReservation(c), plan.SkipPreflight)
 			if reserveErr == nil && dispatchLaunchReservationTracking(ctx) {
 				registerDispatchLaunchReservationRelease(ref, release)
+			}
+			if decisionLog && reserveErr != nil {
+				logDispatchDecision(os.Stderr, "host", "reservation", "deferred: %s", firstLine(reserveErr.Error()))
+			} else if decisionLog {
+				logDispatchDecision(os.Stderr, "host", "reservation", "held for %s container=%s", ref, plan.Name)
 			}
 			return reserveErr
 		})
@@ -2260,44 +2338,87 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	// Ready the ward-tailnet network before the sweep + pull burn, so a host missing it
 	// gets it created here (idempotent), not a raw 125 mid-launch (ward#597).
 	if plan.SkipPreflight {
+		logDispatchDecision(decisionWriter, "host", "launch-preflight", "skipped launch-adjacent probes")
 		logLaunchPreflightSkips(label, plan, c.Bool("no-pull"))
 	} else {
+		logDispatchDecision(decisionWriter, "host", "tailnet", "checking host_net=%t ts_sidecar=%t", plan.HostNet, plan.TSSidecar)
 		if err := r.preflightTailnet(ctx, plan); err != nil {
+			logDispatchDecision(decisionWriter, "host", "tailnet", "failed: %s", firstLine(err.Error()))
 			return err
 		}
+		logDispatchDecision(decisionWriter, "host", "tailnet", "ready")
 	}
 
 	// Reclaim dead containers' writable layers before adding one more, so the
 	// agent fleet can't exhaust the docker disk and wedge new launches (ward#272).
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "stale-sweep", "checking exited ward containers")
+	}
 	r.sweepStaleContainers(ctx)
 
 	// The engineer name is deterministic, so an exited same-issue corpse in the
 	// keep-N window would block the name; clear it for reuse (ward#364).
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "name-reuse", "checking exited deterministic container %s", plan.Name)
+	}
 	r.clearExitedContainer(ctx, plan.Name)
 	switch {
 	case plan.SkipPreflight && !c.Bool("no-pull"):
 		logLaunchImageDecision(label, plan, c.Bool("no-pull"))
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "image", "pull skipped by --skip-preflight image=%s", plan.Image)
+		}
 	case !plan.SkipPreflight && !c.Bool("no-pull"):
 		logLaunchImageDecision(label, plan, c.Bool("no-pull"))
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "image", "pull start image=%s", plan.Image)
+		}
 		r.pullAgentImage(ctx, plan, label)
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "image", "pull finished or local fallback selected image=%s", plan.Image)
+		}
 	default:
 		writef(os.Stderr, "%s: image pull skipped for %s (--no-pull)\n", label, plan.Image)
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "image", "pull skipped by --no-pull image=%s", plan.Image)
+		}
 	}
 	// Resolve host-side agent harness creds before the env-file.
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "credentials", "resolving launch credentials for mode=%s forge=%s", mode, plan.Forge)
+	}
 	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
 	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
 	if err != nil {
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "env-file", "failed: %s", firstLine(err.Error()))
+		}
 		return err
+	}
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "env-file", "ready path=%s credential_lines=%d", envFile, len(launchCreds))
 	}
 	writef(os.Stderr, "%s: wrote launch env file for %s\n", label, ref)
 	defer cleanupEnv()
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "container-create", "starting docker create/run path in_container=%t interactive=%t", inContainer(), plan.Interactive)
+	}
 	if err := r.createAgentContainer(ctx, plan, envFile); err != nil {
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "container-create", "failed: %s", firstLine(err.Error()))
+		}
 		return err
 	}
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "container-create", "created_or_started name=%s", plan.Name)
+	}
 	if !plan.Interactive {
+		logDispatchDecision(decisionWriter, "host", "container-visibility", "checking name=%s", plan.Name)
 		if err := r.engineerLaunchVisible(ctx, plan.Name); err != nil {
+			logDispatchDecision(decisionWriter, "host", "container-visibility", "failed: %s", firstLine(err.Error()))
 			return err
 		}
+		logDispatchDecision(decisionWriter, "host", "container-visibility", "confirmed name=%s", plan.Name)
 	}
 	// The container is up: disarm the reservation rollback so it now lives for the
 	// container's lifetime (ward#570).
@@ -2307,10 +2428,21 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if !inContainer() || os.Getenv(envPersistentDispatchBroker) == "1" {
 		// A persistent broker survives its child waiter. Ephemeral in-container
 		// dispatch still relies on the next sweep's idempotent drain.
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "drain-waiter", "spawn for %s", plan.Name)
+		}
 		r.spawnDrainWaiter(plan.Name)
+	} else if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "drain-waiter", "skipped in ephemeral in-container dispatch")
 	}
 	if partialLaunch != nil {
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "launch-complete", "partial launch warning: %s", firstLine(partialLaunch.Error()))
+		}
 		return partialLaunch
+	}
+	if decisionLog {
+		logDispatchDecision(os.Stderr, "host", "launch-complete", "container startup handed off to harness name=%s", plan.Name)
 	}
 	return nil
 }

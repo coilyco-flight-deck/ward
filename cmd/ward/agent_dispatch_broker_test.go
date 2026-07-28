@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -1679,7 +1680,12 @@ func TestRunHostDispatchBrokerRequestDetachesAfterHostLaunchStarts(t *testing.T)
 // TestRunHostDispatchBrokerRequestReportsLaterLaunchFailureThroughArtifact locks the
 // detach contract: an accepted response still finalizes host failures in its artifact.
 func TestRunHostDispatchBrokerRequestReportsLaterLaunchFailureThroughArtifact(t *testing.T) {
-	setTestHome(t, t.TempDir())
+	home, err := os.MkdirTemp("", "ward-dispatch-failure-home-*")
+	if err != nil {
+		t.Fatalf("temp home: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	setTestHome(t, home)
 	done := make(chan struct{})
 	recoveryStarted := make(chan struct{})
 	restored := make(chan struct{})
@@ -2666,6 +2672,170 @@ func TestDispatchArtifactPersistsMetaSummaryAndLookup(t *testing.T) {
 	}
 	if src.Kind != agentLogSourceFile || src.Path != paths.ConsolePath {
 		t.Fatalf("role lookup resolved %#v, want dispatch artifact %q", src, paths.ConsolePath)
+	}
+}
+
+func TestStartHostDispatchBrokerRequestDecisionArtifactShape(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	r := fakeEngineerVisibilityDockerRunner(t, "engineer-codex-ward-1469", 1)
+
+	origLaunch := dispatchBrokerLaunch
+	origRestoreHook := dispatchStdioRestoreHook
+	finished := make(chan struct{})
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchStdioRestoreHook = origRestoreHook
+	})
+	dispatchStdioRestoreHook = func() {
+		select {
+		case <-finished:
+		default:
+			close(finished)
+		}
+	}
+	dispatchBrokerLaunch = func(_ context.Context, req dispatchBrokerRequest) error {
+		if got := brokeredDispatchRequestID(); got != req.RequestID {
+			t.Fatalf("brokered launch env request id = %q, want %q", got, req.RequestID)
+		}
+		logDispatchDecision(os.Stderr, "host", "plan", "container=engineer-codex-ward-1469 image=ward/dev-base")
+		maybeDumpSeed(os.Stderr, strings.Repeat("full issue body should not dominate\n", 24), false)
+		return nil
+	}
+
+	req := dispatchBrokerRequest{
+		Role:      "engineer",
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1469", "--harness", "codex"},
+		Requester: "director-codex-host",
+		Token:     "nonce-shape",
+	}
+	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+	if err != nil {
+		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
+	}
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("dispatch artifact was not finalized")
+	}
+	waitForDispatchArtifactSummary(t, filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile), "outcome: launched")
+
+	raw, err := os.ReadFile(logPath) // #nosec G304 -- test-owned artifact path
+	if err != nil {
+		t.Fatalf("read raw dispatch console: %v", err)
+	}
+	redactedPath := filepath.Join(agentLogsRedactedDir(), dispatchArtifactsSubdir, filepath.Base(filepath.Dir(logPath)), dispatchArtifactRedactedConsole)
+	redacted, err := os.ReadFile(redactedPath) // #nosec G304 -- test-owned artifact path
+	if err != nil {
+		t.Fatalf("read redacted dispatch console: %v", err)
+	}
+	for _, body := range []string{string(raw), string(redacted)} {
+		for _, want := range []string{
+			"ward dispatch decision: component=broker checkpoint=request-accepted",
+			"ward dispatch decision: component=broker checkpoint=backpressure-open-pr passed",
+			"ward dispatch decision: component=host checkpoint=plan container=engineer-codex-ward-1469",
+			"ward dispatch decision: component=broker checkpoint=visibility confirmed",
+			"----- seeded prompt summary -----",
+			"seed omitted from this host decision log",
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("dispatch console missing %q:\n%s", want, body)
+			}
+		}
+		for _, unwanted := range []string{"----- seeded prompt -----", "full issue body should not dominate"} {
+			if strings.Contains(body, unwanted) {
+				t.Fatalf("dispatch console should collapse seed payload %q:\n%s", unwanted, body)
+			}
+		}
+	}
+}
+
+func TestStartHostDispatchBrokerRequestDeferredDecisionArtifact(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	oldBase := forgejoBaseURL
+	t.Cleanup(func() { forgejoBaseURL = oldBase })
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/issues", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("type") != "pulls" {
+			t.Fatalf("unexpected issue feed query: %s", r.URL.RawQuery)
+		}
+		rows := make([]map[string]any, 0, 7)
+		for i := 1; i <= 7; i++ {
+			rows = append(rows, map[string]any{
+				"number":       i,
+				"title":        "PR",
+				"body":         "body",
+				"state":        "open",
+				"html_url":     "https://forgejo.example/coilyco-flight-deck/ward/pulls/1",
+				"pull_request": map[string]any{"url": "https://forgejo.example/coilyco-flight-deck/ward/pulls/1"},
+				"labels":       []map[string]any{},
+			})
+		}
+		_ = json.NewEncoder(w).Encode(rows)
+	})
+	for i := 1; i <= 7; i++ {
+		i := i
+		mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/pulls/"+strconv.Itoa(i), func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]any{"mergeable": true})
+		})
+	}
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	forgejoBaseURL = srv.URL
+
+	origLaunch := dispatchBrokerLaunch
+	origRestoreHook := dispatchStdioRestoreHook
+	finished := make(chan struct{})
+	t.Cleanup(func() {
+		dispatchBrokerLaunch = origLaunch
+		dispatchStdioRestoreHook = origRestoreHook
+	})
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
+		t.Fatal("launch should not run after broker-time open PR backpressure")
+		return nil
+	}
+	dispatchStdioRestoreHook = func() {
+		select {
+		case <-finished:
+		default:
+			close(finished)
+		}
+	}
+
+	req := dispatchBrokerRequest{
+		Role:      "engineer",
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1470", "--harness", "codex"},
+		Requester: "director-codex-host",
+		Token:     "nonce-deferred",
+	}
+	logPath, err := (&Runner{}).startHostDispatchBrokerRequest(context.Background(), req)
+	if err != nil {
+		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
+	}
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("deferred dispatch artifact was not finalized")
+	}
+	summary := waitForDispatchArtifactSummary(t,
+		filepath.Join(filepath.Dir(logPath), dispatchArtifactSummaryFile),
+		"outcome: deferred-open-pr", "open-pr-backpressure")
+	if !strings.Contains(summary, "outcome: deferred-open-pr") {
+		t.Fatalf("summary missing deferred-open-pr:\n%s", summary)
+	}
+	raw, err := os.ReadFile(logPath) // #nosec G304 -- test-owned artifact path
+	if err != nil {
+		t.Fatalf("read deferred dispatch console: %v", err)
+	}
+	body := string(raw)
+	for _, want := range []string{
+		"ward dispatch decision: component=broker checkpoint=request-accepted",
+		"ward dispatch decision: component=broker checkpoint=backpressure-open-pr checking",
+		"ward dispatch decision: component=broker checkpoint=backpressure-open-pr deferred",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("deferred dispatch console missing %q:\n%s", want, body)
+		}
 	}
 }
 

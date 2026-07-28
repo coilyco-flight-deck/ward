@@ -233,6 +233,7 @@ func TestDispatchEngineerArgv(t *testing.T) {
 // TestDirectorDispatchQuietsSeedConsole covers ward#519: director forwards --quiet-seed
 // so the in-process engineer's seed dump stays off the shared console, direct keeps it.
 func TestDirectorDispatchQuietsSeedConsole(t *testing.T) {
+	t.Setenv(envDispatchRequestID, "")
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 519}
 	seed := agentSeedPrompt(ref, "quiet the seed", "the frozen task text", "", true, nil)
 
