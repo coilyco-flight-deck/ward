@@ -2084,6 +2084,9 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, branc
 	plan.Interactive = false
 	plan.TTY = false
 	plan.DispatchRequestID = strings.TrimSpace(os.Getenv(envDispatchRequestID))
+	if err := validateLandingLaunchGitIdentity(plan.ConfigEnv); err != nil {
+		return upPlan{}, err
+	}
 	return plan, nil
 }
 

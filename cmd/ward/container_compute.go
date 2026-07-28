@@ -799,6 +799,20 @@ func warnLaunchGitIdentityPlaceholder(name, email string) {
 	})
 }
 
+func validateLandingLaunchGitIdentity(env map[string]string) error {
+	name := strings.TrimSpace(env["WARD_GIT_NAME"])
+	email := strings.TrimSpace(env["WARD_GIT_EMAIL"])
+	if name == "" || email == "" {
+		return fmt.Errorf("launch git identity is incomplete (%q <%s>); set git user.name/user.email or WARD_GIT_NAME/WARD_GIT_EMAIL before launching a landing-capable engineer run; %s",
+			name, email, setupNextStep)
+	}
+	if containsExamplePlaceholder(name) || containsExamplePlaceholder(email) {
+		return fmt.Errorf("launch git identity still uses the baked placeholder %q <%s>; set git user.name/user.email or WARD_GIT_NAME/WARD_GIT_EMAIL before launching a landing-capable engineer run; %s",
+			name, email, setupNextStep)
+	}
+	return nil
+}
+
 // resolveLaunchGitIdentity prefers a real fleet attribution, then repo-local git
 // config, then global git config, and finally keeps the baked placeholder.
 func resolveLaunchGitIdentity(cwd, fallback, key string) string {

@@ -318,3 +318,48 @@ func TestAddFleetAttributionConfigEnvGitPrecedence(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildAgentPlanGitIdentity(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "missing-gitconfig"))
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("WARD_GIT_NAME", "")
+	t.Setenv("WARD_GIT_EMAIL", "")
+
+	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/ward#1589"})
+	ref := wardRef(1589)
+
+	t.Run("refuses baked placeholder before launch", func(t *testing.T) {
+		t.Setenv("COILY_INVOKE_CWD", t.TempDir())
+		_, err := buildAgentPlan(cmd, modeCodex, ref, "issue-1589", "seed", t.TempDir())
+		if err == nil {
+			t.Fatal("buildAgentPlan succeeded with only baked placeholder git identity")
+		}
+		for _, want := range []string{"launch git identity still uses the baked placeholder", "WARD_GIT_NAME/WARD_GIT_EMAIL", "restart warded"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("buildAgentPlan error missing %q:\n%v", want, err)
+			}
+		}
+	})
+
+	t.Run("repo git config replaces baked placeholder", func(t *testing.T) {
+		repo := t.TempDir()
+		runGit(t, repo, "init")
+		runGit(t, repo, "config", "user.name", "repo bot")
+		runGit(t, repo, "config", "user.email", "repo-bot@invalid.local")
+		t.Setenv("COILY_INVOKE_CWD", repo)
+
+		plan, err := buildAgentPlan(cmd, modeCodex, ref, "issue-1589", "seed", repo)
+		if err != nil {
+			t.Fatalf("buildAgentPlan with repo git identity: %v", err)
+		}
+		env := plan.wardEnv()
+		if got := env["WARD_GIT_NAME"]; got != "repo bot" {
+			t.Fatalf("WARD_GIT_NAME = %q, want repo bot", got)
+		}
+		if got := env["WARD_GIT_EMAIL"]; got != "repo-bot@invalid.local" {
+			t.Fatalf("WARD_GIT_EMAIL = %q, want repo-bot@invalid.local", got)
+		}
+	})
+}
