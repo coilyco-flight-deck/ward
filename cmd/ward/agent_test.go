@@ -435,16 +435,16 @@ func TestSeedLogBlock(t *testing.T) {
 // done-condition to every granted repo, pushed AND verified landed (plus the steer).
 func TestAgentSeedPromptGrantedRepos(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 291}
-	extra := []targetRepo{{Owner: "coilyco-bridge", Name: "agentic-os-kai"}}
+	extra := []targetRepo{{Owner: "coilyco-gaming", Name: "eco-protos"}}
 	got := agentSeedPrompt(ref, "fix it", "do the thing", "", true, extra)
 	for _, want := range []string{
-		"coilyco-bridge/agentic-os-kai",            // the grant is named
-		"/workspace/coilyco-bridge/agentic-os-kai", // the grant path is explicit
-		"/workspace/ward",                          // primary cwd remains clear
-		"VERIFIED to have",                         // the verify-landed done-condition
-		"local HEAD must match",                    // the concrete check
-		"silently rejected",                        // why it matters
-		"native issue in that repo",                // the ward#291 steer
+		"coilyco-gaming/eco-protos",            // the grant is named
+		"/workspace/coilyco-gaming/eco-protos", // the grant path is explicit
+		"/workspace/ward",                      // primary cwd remains clear
+		"VERIFIED to have",                     // the verify-landed done-condition
+		"local HEAD must match",                // the concrete check
+		"silently rejected",                    // why it matters
+		"native issue in that repo",            // the ward#291 steer
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("granted-repo seed missing %q\n got: %s", want, got)
@@ -526,7 +526,7 @@ func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
 func TestOwnerAllowed(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
 	r := &Runner{}
-	for _, ok := range []string{"coilysiren", "coilyco-bridge", "coilyco-flight-deck"} {
+	for _, ok := range []string{"coilysiren", "coilyco-gaming", "coilyco-flight-deck"} {
 		if !r.ownerAllowed(ok) {
 			t.Errorf("ownerAllowed(%q) = false, want true", ok)
 		}
@@ -734,13 +734,13 @@ func TestParsePreflightVerdict(t *testing.T) {
 		{"empty", "", verdictUnknown, "", ""},
 		{"prose only", "This needs more thought before anyone takes it on.", verdictUnknown, "", ""},
 		// WRONG-REPO (ward#159): captures the target repo + the trailing reason.
-		{"wrong-repo with reason", "This is an ops verb.\nWRONG-REPO: coilyco-bridge/coily - belongs with ops", verdictWrongRepo, "belongs with ops", "coilyco-bridge/coily"},
+		{"wrong-repo with reason", "This is an ops verb.\nWRONG-REPO: coilyco-gaming/eco-ops - belongs with ops", verdictWrongRepo, "belongs with ops", "coilyco-gaming/eco-ops"},
 		{"wrong-repo no hyphen", "WRONG REPO coilyco-flight-deck/cli-guard: engine change", verdictWrongRepo, "engine change", "coilyco-flight-deck/cli-guard"},
-		{"wrong-repo run together", "WRONGREPO coilyco-bridge/coily", verdictWrongRepo, "", "coilyco-bridge/coily"},
-		{"wrong-repo bare repo only", "WRONG-REPO: coilyco-bridge/coily", verdictWrongRepo, "", "coilyco-bridge/coily"},
-		{"wrong-repo markdown bold", "**WRONG-REPO: coilyco-bridge/coily - move it**", verdictWrongRepo, "move it", "coilyco-bridge/coily"},
+		{"wrong-repo run together", "WRONGREPO coilyco-gaming/eco-ops", verdictWrongRepo, "", "coilyco-gaming/eco-ops"},
+		{"wrong-repo bare repo only", "WRONG-REPO: coilyco-gaming/eco-ops", verdictWrongRepo, "", "coilyco-gaming/eco-ops"},
+		{"wrong-repo markdown bold", "**WRONG-REPO: coilyco-gaming/eco-ops - move it**", verdictWrongRepo, "move it", "coilyco-gaming/eco-ops"},
 		{"wrong-repo without a repo is not a verdict", "WRONG-REPO: it goes elsewhere", verdictUnknown, "", ""},
-		{"wrong-repo beats nogo on the same line concept", "NO-GO: hmm\nWRONG-REPO: coilyco-bridge/coily - clearer", verdictWrongRepo, "clearer", "coilyco-bridge/coily"},
+		{"wrong-repo beats nogo on the same line concept", "NO-GO: hmm\nWRONG-REPO: coilyco-gaming/eco-ops - clearer", verdictWrongRepo, "clearer", "coilyco-gaming/eco-ops"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -800,7 +800,7 @@ func TestWrongRepoTarget(t *testing.T) {
 		wantName  string
 		wantOK    bool
 	}{
-		{"coilyco-bridge/coily", "coilyco-bridge", "coily", true},
+		{"coilyco-gaming/eco-ops", "coilyco-gaming", "eco-ops", true},
 		{"  coilyco-flight-deck/cli-guard  ", "coilyco-flight-deck", "cli-guard", true},
 		{"", "", "", false},
 		{"noslash", "", "", false},
@@ -902,16 +902,16 @@ func TestBlindfireIssueBody(t *testing.T) {
 }
 
 func TestPreflightWrongRepoComment(t *testing.T) {
-	filed := agentIssueRef{Owner: "coilyco-bridge", Repo: "coily", Number: 42}
-	got := preflightWrongRepoComment(modeClaude, "engineer", filed, "ops verb", "It's ops.\nWRONG-REPO: coilyco-bridge/coily - ops verb")
+	filed := agentIssueRef{Owner: "coilyco-gaming", Repo: "eco-ops", Number: 42}
+	got := preflightWrongRepoComment(modeClaude, "engineer", filed, "ops verb", "It's ops.\nWRONG-REPO: coilyco-gaming/eco-ops - ops verb")
 	if visible := visibleLinesBeforeDetails(got); visible != "WARD-WORKFLOW: pre-flight-wrong-repo 🎯" {
 		t.Fatalf("preflightWrongRepoComment visible line = %q\n%s", visible, got)
 	}
 	for _, want := range []string{
-		"WRONG-REPO",           // names the verdict
-		"coilyco-bridge/coily", // the target repo slug
-		filed.url(),            // links the freshly-filed issue
-		"ops verb",             // the reason
+		"WRONG-REPO",             // names the verdict
+		"coilyco-gaming/eco-ops", // the target repo slug
+		filed.url(),              // links the freshly-filed issue
+		"ops verb",               // the reason
 		"No container was launched here",
 		"--skip-preflight", // how to override if the routing is wrong
 		"<details>",        // folds the read away

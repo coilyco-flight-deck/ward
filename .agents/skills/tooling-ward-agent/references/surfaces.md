@@ -20,7 +20,7 @@ The detached run backgrounds by design: the container backgrounds and the call r
 
 ## Examples
 
-* "coily dispatch coily-siren coily-issue 125" -> `ward agent engineer coilyco-bridge/coily#125`
-* "dispatch coily co ai 313" -> `ward agent engineer coilyco-bridge/agentic-os-kai#313`
+* "dispatch ward 125" -> `ward agent engineer coilyco-flight-deck/ward#125`
+* "dispatch eco ops 313" -> `ward agent engineer coilyco-gaming/eco-ops#313`
 * "fire an agent on ward 56" -> `ward agent engineer coilyco-flight-deck/ward#56`
 * "open one for me on backend 12" -> engineer has no attach surface; for hands-on work drive the director: `ward agent director --repo coilyco-flight-deck/backend`

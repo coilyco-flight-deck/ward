@@ -19,25 +19,25 @@ Do NOT fire when the user already typed a clean `owner/repo#N` or an issue URL -
 
 ## Step 1: refresh the registry
 
-`data/repo-registry.md` in `coilyco-bridge/agentic-os-kai` carries each active repo's canonical `owner/repo`, regenerated daily (`sync-repo-registry.yml`), so the local checkout lags. Read the live copy before resolving:
+`data/repo-registry.md` in `coilyco-flight-deck/agentic-os` carries each active repo's canonical `owner/repo`, regenerated daily (`sync-repo-registry.yml`), so the local checkout lags. Read the live copy before resolving:
 
 ```bash
-gh api repos/coilyco-bridge/agentic-os-kai/contents/data/repo-registry.md --jq '.content' | base64 -d
+gh api repos/coilyco-flight-deck/agentic-os/contents/data/repo-registry.md --jq '.content' | base64 -d
 ```
 
 If `gh` is unreachable, fall back to local with a one-line caveat to Kai.
 
 ## Step 2: resolve the ref
 
-Lowercase the repo tokens, strip hyphens/spaces, fuzzy-match the registry's repo column, and take the **owner from the matched row** - repos span four orgs, so the owner is per-repo, not a fixed default. The full filler list and the baked-in voice-collision table (e.g. "coily" alone -> `coilyco-bridge/coily`, "coily co ai" -> `coilyco-bridge/agentic-os-kai`) live in [`references/normalization.md`](references/normalization.md). Use it, do not guess.
+Lowercase the repo tokens, strip hyphens/spaces, fuzzy-match the registry's repo column, and take the **owner from the matched row** - repos span three orgs, so the owner is per-repo, not a fixed default. The full filler list and the baked-in voice-collision table live in [`references/normalization.md`](references/normalization.md). Use it, do not guess.
 
 ## Step 3: confirm, or refuse and explain
 
 Confirm one line with the issue title from the relevant tracker API (`aosguard ops forgejo issue view <owner> <repo> <N>`, or `gh issue view <ref>` for a GitHub ref):
 
-> Resolved: `coilyco-bridge/coily#125` - "<title>". Send an agent?
+> Resolved: `coilyco-flight-deck/ward#125` - "<title>". Send an agent?
 
-Skip confirmation only on a unique, unambiguous match; ALWAYS confirm when two repos fuzzy-match. Refuse (naming the failing condition) if the issue is closed, the owner is outside the four-fleet-org trust set (see `references/normalization.md`), the repo did not resolve, or the lookup errors.
+Skip confirmation only on a unique, unambiguous match; ALWAYS confirm when two repos fuzzy-match. Refuse (naming the failing condition) if the issue is closed, the owner is outside the three-fleet-org trust set (see `references/normalization.md`), the repo did not resolve, or the lookup errors.
 
 ## Step 4: dispatch the engineer
 

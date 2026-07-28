@@ -24,7 +24,7 @@ func TestTransientResolveErr(t *testing.T) {
 		},
 		{
 			name:    "forgejo 403 envelope is permanent",
-			err:     errors.New("forgejo: get issue coilyco-bridge/lore#2: exit status 3: GET https://... -> 403 Forbidden: {}"),
+			err:     errors.New("forgejo: get issue coilyco-gaming/lore#2: exit status 3: GET https://... -> 403 Forbidden: {}"),
 			wantRet: false,
 		},
 		{

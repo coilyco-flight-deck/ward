@@ -532,7 +532,7 @@ func TestParseExtraRepos(t *testing.T) {
 	}
 
 	// Duplicate basenames across owners coexist in owner-qualified directories.
-	got, err = parseExtraRepos([]string{"coilyco-flight-deck/.github", "coilyco-bridge/.github", "coilyco-bridge/.github.git"}, target)
+	got, err = parseExtraRepos([]string{"coilyco-flight-deck/.github", "coilyco-gaming/.github", "coilyco-gaming/.github.git"}, target)
 	if err != nil {
 		t.Fatalf("duplicate basenames should resolve: %v", err)
 	}
@@ -542,7 +542,7 @@ func TestParseExtraRepos(t *testing.T) {
 	if gotPath := grantedRepoWorkspaceDir(containerWorkspace, got[0]); gotPath != "/workspace/coilyco-flight-deck/.github" {
 		t.Errorf("first grant path = %q", gotPath)
 	}
-	if gotPath := grantedRepoWorkspaceDir(containerWorkspace, got[1]); gotPath != "/workspace/coilyco-bridge/.github" {
+	if gotPath := grantedRepoWorkspaceDir(containerWorkspace, got[1]); gotPath != "/workspace/coilyco-gaming/.github" {
 		t.Errorf("second grant path = %q", gotPath)
 	}
 

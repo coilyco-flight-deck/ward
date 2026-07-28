@@ -796,7 +796,7 @@ func TestCloneExtraReposWithSameBasename(t *testing.T) {
 	workspace := useTestWorkspaceRoot(t)
 	cloneBase := t.TempDir()
 	gitCache := t.TempDir()
-	owners := []string{"coilyco-flight-deck", "coilyco-bridge"}
+	owners := []string{"coilyco-flight-deck", "coilyco-gaming"}
 	for _, owner := range owners {
 		seedBranchResumeRepo(t, cloneBase, ".github")
 		from := filepath.Join(cloneBase, "owner", ".github.git")

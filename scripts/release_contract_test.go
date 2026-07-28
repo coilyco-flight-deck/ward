@@ -110,6 +110,9 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 	if !strings.Contains(promoteDraftJob, "actions/checkout@v6") {
 		t.Fatalf("promote-draft-assets must checkout the repo before invoking scripts:\n%s", promoteDraftJob)
 	}
+	if !strings.Contains(promoteDraftJob, "RELEASE_TAG: ${{ needs.release.outputs.tag }}") {
+		t.Fatalf("promote-draft-assets must pass the stable release tag into verify-release-assets.sh:\n%s", promoteDraftJob)
+	}
 	for _, ban := range []string{
 		"coilysiren/agentic-os/actions/tag-bump@main",
 		"coilysiren/agentic-os/actions/create-release@main",
