@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -31,7 +32,7 @@ func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
 		Project:    "ward-coilyco-flight-deck-codex",
 		BrokerName: "ward-coilyco-flight-deck-codex-broker",
 	}
-	body, err := renderDirectorStackCompose(plan, stack, `X:\tmp\ward.env`, `X:\home\.ward`)
+	body, err := renderDirectorStackCompose(plan, stack, `X:\tmp\broker.env`, `X:\tmp\director.env`, `X:\home\.ward`)
 	if err != nil {
 		t.Fatalf("renderDirectorStackCompose: %v", err)
 	}
@@ -56,6 +57,9 @@ func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
 	}
 	if strings.Contains(text, plan.DispatchBrokerToken) {
 		t.Fatal("Compose output contains the broker token")
+	}
+	if !strings.Contains(text, `- X:\tmp\broker.env`) || !strings.Contains(text, `- X:\tmp\director.env`) {
+		t.Fatalf("Compose output does not carry separate service env files:\n%s", text)
 	}
 	if strings.Contains(text, "network_mode: host") {
 		t.Fatal("Compose director cannot use host networking with broker service DNS")
@@ -150,6 +154,25 @@ func TestResolveDirectorStackIsStable(t *testing.T) {
 		filepath.Base(first.EnvPath) != directorStackEnvFile ||
 		filepath.Base(first.AssetsDir) != directorStackAssets {
 		t.Fatalf("unexpected persistent paths: %#v", first)
+	}
+}
+
+func TestPolicyBoundaryDirectorStackTeardownRemovesCredentialState(t *testing.T) {
+	dir := t.TempDir()
+	stack := directorStack{
+		EnvPath:         filepath.Join(dir, directorStackEnvFile),
+		DirectorEnvPath: filepath.Join(dir, directorAgentEnvFile),
+	}
+	for _, path := range []string{stack.EnvPath, stack.DirectorEnvPath} {
+		if err := os.WriteFile(path, []byte("synthetic-secret"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cleanupDirectorStackEnvFiles(stack)
+	for _, path := range []string{stack.EnvPath, stack.DirectorEnvPath} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("stack credential state still exists at %s: %v", path, err)
+		}
 	}
 }
 

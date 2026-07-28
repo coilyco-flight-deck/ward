@@ -74,7 +74,7 @@ func TestAgentIssueCreateUsesBrokerAndDoesNotDispatch(t *testing.T) {
 
 func TestAgentIssueCreateRequiresBrokerAccess(t *testing.T) {
 	t.Setenv(envBrokerSocket, "")
-	_, err := brokerFileIssue(context.Background(), targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, "title", "body")
+	_, err := (&Runner{}).brokerFileIssue(context.Background(), targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, "title", "body")
 	if err == nil {
 		t.Fatal("brokerFileIssue without broker unexpectedly succeeded")
 	}

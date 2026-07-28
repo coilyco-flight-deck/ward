@@ -409,6 +409,35 @@ func writeAgentCredEnvLines(f *os.File, cleanup func(), creds []agentsapi.EnvLin
 	return nil
 }
 
+// writeAgentEnvFile gives a director only its selected harness credential.
+// Forgejo stays in the sibling broker's separate environment (ward#1612).
+func writeAgentEnvFile(creds []agentsapi.EnvLine) (path string, cleanup func(), err error) {
+	dir, err := ensureLaunchStagingDir()
+	if err != nil {
+		return "", func() {}, err
+	}
+	sweepStaleLaunchEnvFiles(dir)
+	f, err := os.CreateTemp(dir, launchEnvFilePrefix+"director-*")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("ward container: create director env-file: %w", err)
+	}
+	path = f.Name()
+	cleanup = func() { _ = os.Remove(path) }
+	if cherr := f.Chmod(0o600); cherr != nil {
+		_ = f.Close()
+		cleanup()
+		return "", func() {}, fmt.Errorf("ward container: secure director env-file: %w", cherr)
+	}
+	if err := writeAgentCredEnvLines(f, cleanup, creds); err != nil {
+		return "", func() {}, err
+	}
+	if cerr := f.Close(); cerr != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("ward container: close director env-file: %w", cerr)
+	}
+	return path, cleanup, nil
+}
+
 // launchEnvFilePrefix is the temp-name prefix for the docker --env-file; a shared
 // const so the stale-orphan sweep can recognize leftovers written by launchStagingDir.
 const launchEnvFilePrefix = "ward-forgejo-env-"

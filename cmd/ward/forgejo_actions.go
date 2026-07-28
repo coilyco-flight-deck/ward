@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/coilyco-flight-deck/ward/internal/contracts"
 )
@@ -75,7 +74,7 @@ func (c *forgejoClient) PullRequestMerged(ctx context.Context, owner, repo strin
 		return false, err
 	}
 	req.Header.Set("Authorization", "token "+token)
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return false, err
 	}

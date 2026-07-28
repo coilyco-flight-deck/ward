@@ -35,8 +35,11 @@ See [agent-check-placement.md](agent-check-placement.md) for the current broker-
 
 ## Credentials and context
 
-Host-side credentials are resolved before the container starts. The run then
-inherits the selected harness context level and mount set.
+Host-side credentials are resolved before the container starts. Engineer and
+QA runs receive the existing Git and harness channels. A Compose director gets
+only its selected harness channel and broker capability. Its sibling broker
+alone receives the Forgejo credential. The run then inherits the selected
+harness context level and mount set.
 
 ## Split-stack repositories
 

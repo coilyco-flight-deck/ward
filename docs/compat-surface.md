@@ -45,6 +45,9 @@ States mean:
 ## Config and auth sources
 
 - Ward native policy is baked into the release. AOSguard owns its own operator-spec configuration.
+- Compose directors use Ward's native sibling broker for authenticated Forgejo
+  operations. The broker snapshots the host-resolved token and exposes only
+  Ward's allowlisted request shapes, never the credential.
 - `~/.ward/fleet.local.kdl` - shipped operator-local overlay. `cmd/ward/fleetlocal.go`.
 - `WARD_GITHUB_TOKEN_SOURCE`, `env`, `gh`, `app` - shipped GitHub token path. `cmd/ward/forge.go`, `cmd/ward/github_app.go`.
 - `SHORTCUT_API_TOKEN` - shipped operator input. `cmd/ward/shortcut_ops.go`, `cmd/ward/forgejo_ops.go`.

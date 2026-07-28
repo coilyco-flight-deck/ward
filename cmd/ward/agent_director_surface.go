@@ -86,8 +86,10 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		return err
 	}
 	var launchCreds []agentsapi.EnvLine
+	var directorCreds []agentsapi.EnvLine
 	if readOnly {
 		launchCreds = r.resolveDirectorStackCreds(ctx, &plan, mode)
+		directorCreds = r.resolveLaunchCreds(ctx, &plan, mode)
 	} else {
 		launchCreds = r.resolveLaunchCreds(ctx, &plan, mode)
 	}
@@ -96,6 +98,15 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		return err
 	}
 	defer cleanupEnv()
+	var directorEnvFile string
+	if readOnly {
+		var cleanupDirectorEnv func()
+		directorEnvFile, cleanupDirectorEnv, err = writeAgentEnvFile(directorCreds)
+		if err != nil {
+			return err
+		}
+		defer cleanupDirectorEnv()
+	}
 
 	// Pre-launch gate before the fullscreen TUI (ward#366); see docs/agent-gate.md.
 	// proceed=false means an upgrade re-launch superseded this process's launch.
@@ -111,7 +122,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		if serr != nil {
 			return fmt.Errorf("%s: resolve director stack: %w", label, serr)
 		}
-		return r.runDirectorStack(ctx, plan, stack, envFile)
+		return r.runDirectorStack(ctx, plan, stack, envFile, directorEnvFile)
 	}
 	return r.createAgentContainer(ctx, plan, envFile)
 }

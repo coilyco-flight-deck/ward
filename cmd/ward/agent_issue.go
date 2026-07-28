@@ -14,7 +14,7 @@ import (
 )
 
 // agent_issue.go wires non-dispatch issue creation for read-only directors.
-// It uses the root credential broker and deliberately has no launch fallback.
+// Compose uses the sibling broker; older containers retain the Unix path.
 
 func agentIssueCommand() *cli.Command {
 	return &cli.Command{
@@ -74,7 +74,7 @@ func (r *Runner) runAgentIssueCreate(ctx context.Context, c *cli.Command) error 
 		return fmt.Errorf("%s: %w", label, err)
 	}
 
-	res, err := brokerFileIssue(ctx, repo, title, body)
+	res, err := r.brokerFileIssue(ctx, repo, title, body)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, classifyBrokerIssueCreateError(err))
 	}
@@ -109,7 +109,11 @@ func issueCreateBody(path string) (string, error) {
 	return body, nil
 }
 
-func brokerFileIssue(ctx context.Context, repo targetRepo, title, body string) (broker.Result, error) {
+func (r *Runner) brokerFileIssue(ctx context.Context, repo targetRepo, title, body string) (broker.Result, error) {
+	if nativeForgejoBrokerEnabled() {
+		number, err := r.hostForgejoClient(ctx).CreateIssue(ctx, repo.Owner, repo.Name, title, body)
+		return broker.Result{Number: number}, err
+	}
 	session, ok := newBrokerSession()
 	if !ok {
 		return broker.Result{}, errBrokerMissingAccess

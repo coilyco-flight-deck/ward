@@ -240,6 +240,9 @@ type forgejoClient struct {
 // not consult WARD_CONFIG_REF or shell through generated ops leaves (ward#929).
 func (r *Runner) hostForgejoClient(ctx context.Context) *forgejoClient {
 	cl := &forgejoClient{r: r, mode: currentAgentMode(), baseURL: forgejoBaseURL}
+	if nativeForgejoBrokerEnabled() {
+		return cl
+	}
 	if tok, err := r.resolveForgejoToken(ctx, broker.Target{}, forgeForgejo); err == nil && strings.TrimSpace(tok) != "" {
 		cl.token = tok
 	}
@@ -262,6 +265,11 @@ func (c *forgejoClient) withToken(token string) *forgejoClient {
 // apiToken resolves the Forgejo API token for direct HTTP calls, preferring an
 // already-pinned token and falling back to the regular Forgejo token resolver.
 func (c *forgejoClient) apiToken(ctx context.Context) (string, error) {
+	if nativeForgejoBrokerEnabled() {
+		// The director's native HTTP transport authenticates to the sibling
+		// broker. It never asks that broker to vend the Forgejo credential.
+		return "", nil
+	}
 	if tok := strings.TrimSpace(c.token); tok != "" {
 		return tok, nil
 	}
@@ -279,10 +287,20 @@ func (c *forgejoClient) apiToken(ctx context.Context) (string, error) {
 // optionalAPIToken returns a token already in this process. Read paths may use
 // it when present, but they do not fail closed when no token is configured.
 func (c *forgejoClient) optionalAPIToken() string {
+	if nativeForgejoBrokerEnabled() {
+		return ""
+	}
 	if tok := strings.TrimSpace(c.token); tok != "" {
 		return tok
 	}
 	return ""
+}
+
+func (c *forgejoClient) httpClient() *http.Client {
+	if nativeForgejoBrokerEnabled() {
+		return nativeForgejoHTTPClient()
+	}
+	return &http.Client{Timeout: forgejoHTTPTimeout}
 }
 
 func (c *forgejoClient) apiBaseURL() string {
@@ -318,7 +336,7 @@ func (c *forgejoClient) doJSON(ctx context.Context, method string, segments []st
 	if err := c.addAPIHeaders(ctx, req, body != nil, requireToken); err != nil {
 		return nil, err
 	}
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +356,7 @@ func (c *forgejoClient) getRaw(ctx context.Context, segments []string) ([]byte, 
 	}
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "text/plain")
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +466,7 @@ func (c *forgejoClient) getPullRequestMergeability(ctx context.Context, owner, r
 		baseURL = forgejoBaseURL
 	}
 	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d", baseURL, url.PathEscape(owner), url.PathEscape(repo), number)
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := c.httpClient()
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
 		raw, retryable, err := c.getPullRequestMergeabilityOnce(ctx, client, endpoint, owner, repo, number)
@@ -598,7 +616,7 @@ func (c *forgejoClient) CreatePullRequest(ctx context.Context, owner, repo, head
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -690,7 +708,7 @@ func (c *forgejoClient) MergePullRequestWithHeadAndStyle(ctx context.Context, ow
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return err
 	}
@@ -738,7 +756,7 @@ func (c *forgejoClient) GetBranch(ctx context.Context, owner, repo, name string)
 	}
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "application/json")
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -773,7 +791,7 @@ func (c *forgejoClient) GetCommitTreeSHA(ctx context.Context, owner, repo, sha s
 	}
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "application/json")
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -811,7 +829,7 @@ func (c *forgejoClient) GetCommitCombinedStatus(ctx context.Context, owner, repo
 	}
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "application/json")
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -842,7 +860,7 @@ func (c *forgejoClient) GetPullRequest(ctx context.Context, owner, repo string, 
 		return nil, err
 	}
 	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d", baseURL, url.PathEscape(owner), url.PathEscape(repo), index)
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := c.httpClient()
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
 		pr, retryable, err := c.getPullRequestOnce(ctx, client, endpoint, owner, repo, index, token)

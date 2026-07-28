@@ -137,6 +137,9 @@ const (
 	dispatchActionCIRuns = "ci-runs"
 	// dispatchActionCIRerun reruns one Actions run natively (ward#1067).
 	dispatchActionCIRerun = "ci-rerun"
+	// dispatchActionForgejo carries one Ward-native Forgejo request from a
+	// credential-free director to the privileged broker (ward#1612).
+	dispatchActionForgejo = "forgejo"
 )
 
 const staleLaunchCleanupResultPrefix = "stale-launch-cleared:"
@@ -198,6 +201,9 @@ type dispatchBrokerRequest struct {
 	// Token is the per-launch shared secret the surface echoes back so the host
 	// broker authenticates the dial (the TCP port has no socket file perms).
 	Token string `json:"token,omitempty"`
+	// Forgejo carries the bounded Ward-native request for the forgejo action.
+	// It contains no authorization header or transferable credential.
+	Forgejo *nativeForgejoRequest `json:"forgejo,omitempty"`
 	// BrokerID is stamped by the accepting service so only that Compose project
 	// reconciles the request after a restart.
 	BrokerID string `json:"broker_id,omitempty"`
@@ -227,6 +233,13 @@ type dispatchBrokerResponse struct {
 	// LogPath is the host path the served run's stdout/stderr were redirected to,
 	// so the requesting surface can name it without any bytes hitting the TTY (ward#389).
 	LogPath string `json:"log_path,omitempty"`
+	// Status and Body carry the bounded upstream Forgejo response for the
+	// credential-free native client.
+	Status      int    `json:"status,omitempty"`
+	Body        []byte `json:"body,omitempty"`
+	ContentType string `json:"content_type,omitempty"`
+	// ErrorKind distinguishes broker authentication, network, and policy errors.
+	ErrorKind string `json:"error_kind,omitempty"`
 }
 
 // dispatchStdioMu serializes the process-global os.Stdout/os.Stderr swap that keeps
@@ -302,7 +315,7 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(req.Token), []byte(token)) != 1 {
-		writeDispatchBrokerResponse(conn, "", "", "", errors.New("dispatch broker: token rejected"))
+		writeDispatchBrokerAuthFailure(conn)
 		return
 	}
 	if req.Requester == "" {
@@ -319,6 +332,14 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	}
 	if dispatchAction(req.Action) == dispatchActionList {
 		r.runDispatchBrokerList(ctx, conn, req)
+		return
+	}
+	if dispatchAction(req.Action) == dispatchActionForgejo {
+		// The broker stamps authority from its own service environment. It does
+		// not trust a client-supplied role or requester (ward#1612).
+		req.Role = strings.TrimSpace(os.Getenv("WARD_ROLE"))
+		req.Requester = requester
+		r.runDispatchBrokerForgejo(ctx, conn, req)
 		return
 	}
 	if prWorkflowDispatchActions[dispatchAction(req.Action)] {
@@ -338,6 +359,17 @@ func writeDispatchBrokerResponse(conn net.Conn, logPath, requestID, phase string
 		resp.Error = err.Error()
 	}
 	if data, merr := json.Marshal(resp); merr == nil {
+		_, _ = conn.Write(data)
+	}
+}
+
+func writeDispatchBrokerAuthFailure(conn net.Conn) {
+	resp := dispatchBrokerResponse{
+		OK:        false,
+		Error:     "dispatch broker: capability rejected",
+		ErrorKind: nativeForgejoErrorAuth,
+	}
+	if data, err := json.Marshal(resp); err == nil {
 		_, _ = conn.Write(data)
 	}
 }
@@ -1226,10 +1258,12 @@ func validateDispatchBrokerRequest(req dispatchBrokerRequest) error {
 		return validateDispatchBrokerList(req)
 	case dispatchActionLogs:
 		return validateDispatchBrokerLogs(req)
+	case dispatchActionForgejo:
+		return validateDispatchBrokerForgejo(req)
 	case dispatchActionLaunch:
 		return validateDispatchBrokerLaunch(req)
 	default:
-		return fmt.Errorf("dispatch broker: action %q refused (allowed: launch, stop, list, logs, ping)", req.Action)
+		return fmt.Errorf("dispatch broker: action %q refused (allowed: launch, stop, list, logs, ping, forgejo)", req.Action)
 	}
 }
 

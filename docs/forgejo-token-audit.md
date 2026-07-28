@@ -3,6 +3,8 @@
 Ward keeps the raw `FORGEJO_TOKEN` read surface small and documented.
 
 - the token is read in the resolver path.
+- current Compose directors route the native Forgejo client through the
+  sibling broker and never resolve the raw token in the director process.
 - the surrounding docs explain where the credential is seeded and why.
 - the audit keeps the write path from quietly growing new secret reads.
 

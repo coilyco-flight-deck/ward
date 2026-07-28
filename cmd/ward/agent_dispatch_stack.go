@@ -16,17 +16,19 @@ const (
 	directorStacksSubdir = "director-stacks"
 	directorStackFile    = "compose.yaml"
 	directorStackEnvFile = "launch.env"
+	directorAgentEnvFile = "director.env"
 	directorStackAssets  = "assets"
 	directorStackMaxName = 55
 )
 
 type directorStack struct {
-	Project     string
-	Dir         string
-	ComposePath string
-	EnvPath     string
-	AssetsDir   string
-	BrokerName  string
+	Project         string
+	Dir             string
+	ComposePath     string
+	EnvPath         string
+	DirectorEnvPath string
+	AssetsDir       string
+	BrokerName      string
 }
 
 type composeDocument struct {
@@ -81,12 +83,13 @@ func resolveDirectorStack(repo targetRepo, mode containerMode) (directorStack, e
 	project := directorStackProjectName(repo, mode)
 	dir := filepath.Join(global, directorStacksSubdir, project)
 	return directorStack{
-		Project:     project,
-		Dir:         dir,
-		ComposePath: filepath.Join(dir, directorStackFile),
-		EnvPath:     filepath.Join(dir, directorStackEnvFile),
-		AssetsDir:   filepath.Join(dir, directorStackAssets),
-		BrokerName:  project + "-broker",
+		Project:         project,
+		Dir:             dir,
+		ComposePath:     filepath.Join(dir, directorStackFile),
+		EnvPath:         filepath.Join(dir, directorStackEnvFile),
+		DirectorEnvPath: filepath.Join(dir, directorAgentEnvFile),
+		AssetsDir:       filepath.Join(dir, directorStackAssets),
+		BrokerName:      project + "-broker",
 	}, nil
 }
 
@@ -126,7 +129,7 @@ func normalizeDirectorStackNetwork(plan *upPlan) {
 	}
 }
 
-func renderDirectorStackCompose(plan upPlan, stack directorStack, envFile, globalDir string) ([]byte, error) {
+func renderDirectorStackCompose(plan upPlan, stack directorStack, brokerEnvFile, directorEnvFile, globalDir string) ([]byte, error) {
 	directorEnv := plan.wardEnv()
 	delete(directorEnv, envDispatchBrokerToken)
 	directorEnv[envDispatchBrokerAddr] = dispatchBrokerServiceAddress
@@ -172,7 +175,7 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, envFile, globa
 				Restart:       "unless-stopped",
 				Entrypoint:    containerEntrypointPath,
 				Environment:   brokerEnv,
-				EnvFile:       []string{envFile},
+				EnvFile:       []string{brokerEnvFile},
 				Volumes:       brokerMounts,
 				Networks:      networks,
 				Labels: map[string]string{
@@ -197,7 +200,7 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, envFile, globa
 				ContainerName: plan.Name,
 				Entrypoint:    containerEntrypointPath,
 				Environment:   directorEnv,
-				EnvFile:       []string{envFile},
+				EnvFile:       []string{directorEnvFile},
 				Volumes:       mounts,
 				Networks:      networks,
 				Labels:        labelsMap(plan.labels()),
@@ -251,28 +254,39 @@ func appendLaunchEnvSecret(path, key, value string) error {
 	return writeEnvLine(f, func() {}, key, value, "broker secret")
 }
 
-func (r *Runner) runDirectorStack(ctx context.Context, plan upPlan, stack directorStack, envFile string) error {
+func (r *Runner) runDirectorStack(ctx context.Context, plan upPlan, stack directorStack, brokerEnvFile, directorEnvFile string) error { //nolint:gocyclo,cyclop
 	token, err := newDispatchBrokerToken()
 	if err != nil {
 		return fmt.Errorf("ward director stack: mint broker token: %w", err)
 	}
 	plan.DispatchBrokerAddr = dispatchBrokerServiceAddress
 	plan.DispatchBrokerToken = token
-	if err := appendLaunchEnvSecret(envFile, envDispatchBrokerToken, token); err != nil {
+	if err := appendLaunchEnvSecret(brokerEnvFile, envDispatchBrokerToken, token); err != nil {
 		return fmt.Errorf("ward director stack: write broker token: %w", err)
 	}
-	envBody, err := os.ReadFile(envFile) // #nosec G304 -- Ward-owned launch env path
+	if err := appendLaunchEnvSecret(directorEnvFile, envDispatchBrokerToken, token); err != nil {
+		return fmt.Errorf("ward director stack: write director broker capability: %w", err)
+	}
+	envBody, err := os.ReadFile(brokerEnvFile) // #nosec G304 -- Ward-owned launch env path
 	if err != nil {
 		return fmt.Errorf("ward director stack: read launch environment: %w", err)
 	}
 	if err := os.WriteFile(stack.EnvPath, envBody, 0o600); err != nil {
 		return fmt.Errorf("ward director stack: persist launch environment: %w", err)
 	}
+	defer cleanupDirectorStackEnvFiles(stack)
+	directorEnvBody, err := os.ReadFile(directorEnvFile) // #nosec G304 -- Ward-owned launch env path
+	if err != nil {
+		return fmt.Errorf("ward director stack: read director environment: %w", err)
+	}
+	if err := os.WriteFile(stack.DirectorEnvPath, directorEnvBody, 0o600); err != nil {
+		return fmt.Errorf("ward director stack: persist director environment: %w", err)
+	}
 	globalDir, err := config.GlobalDir()
 	if err != nil {
 		return fmt.Errorf("ward director stack: resolve persistent state: %w", err)
 	}
-	body, err := renderDirectorStackCompose(plan, stack, stack.EnvPath, globalDir)
+	body, err := renderDirectorStackCompose(plan, stack, stack.EnvPath, stack.DirectorEnvPath, globalDir)
 	if err != nil {
 		return fmt.Errorf("ward director stack: render compose file: %w", err)
 	}
@@ -293,6 +307,11 @@ func (r *Runner) runDirectorStack(ctx context.Context, plan upPlan, stack direct
 	}
 	fmt.Fprintf(os.Stderr, "ward director stack: director exited; broker %s remains supervised\n", stack.BrokerName)
 	return nil
+}
+
+func cleanupDirectorStackEnvFiles(stack directorStack) {
+	_ = os.Remove(stack.EnvPath)
+	_ = os.Remove(stack.DirectorEnvPath)
 }
 
 func (r *Runner) runAttachedDirectorStack(ctx context.Context, commands directorStackCommands) error {

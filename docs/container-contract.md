@@ -47,11 +47,13 @@ failure contract.
 
 ## Read-only director credentials
 
-`WARD_READONLY=1` starts the root Forgejo credential broker and exports its
-group-readable `WARD_BROKER_SOCK` to the dropped director. The socket is a
-capability, not a credential: `FORGEJO_TOKEN` is omitted from the director
-process and remains root-only for the broker/reaper. See [broker.md](broker.md)
-for its authorized operations and rotation recovery.
+`WARD_READONLY=1` starts the privileged Compose broker and exports
+`WARD_DISPATCH_BROKER_ADDR` plus a per-stack capability to the director.
+`FORGEJO_TOKEN` exists only in the broker service environment. It is absent
+from the director container environment, dropped process, argv, and projected
+home. Ward's native Forgejo client sends only explicitly allowlisted request
+shapes through the broker. See [broker.md](broker.md) for authorization and
+failure behavior.
 
 ## What it does not cover
 

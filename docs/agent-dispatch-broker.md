@@ -23,6 +23,8 @@ same Compose application.
 - The broker persists token-stripped accepted requests and artifacts under
   `~/.ward`, which is mounted into the broker independently of its container
   writable layer.
+- Native director Forgejo requests share this service under the credential and
+  authorization contract in [broker.md](broker.md).
 - The director mints a request ID before the first dial and reuses it when a
   response is lost. The same ID with the same launch shape returns the existing
   artifact. The same ID with different arguments is rejected.
@@ -58,6 +60,7 @@ command in the foreground.
 - keeping a newer caller from silently falling back to a stale host default.
 - making the launch version visible before the engineer container starts.
 - keeping brokered dispatch separate from the director and terminal lifecycles.
+- keeping Forgejo credentials outside the director container and home.
 - carrying the request-shape checks that happen before a launch is forwarded,
   and feeding the driftable rows in
   [agent-check-placement.md](agent-check-placement.md) back through the broker
