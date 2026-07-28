@@ -9,9 +9,10 @@ The director surface is the read-only control plane for runs.
 - It can keep a backlog moving without writing implementation code.
 - It can also run against one exact issue ref or Forgejo issue URL without
   widening into the repo backlog.
-* `~/.ward/config.yaml` provides implicit repo scope. Explicit `--repo` / `--org`
-  values override it. The director does not need the current directory to be a
-  git repo, and AOSguard configuration cannot alter its native policy.
+* `~/.ward/config.yaml` provides implicit scope; `--repo` / `--org` override it.
+  If an attached no-scope director has no `director.default-scope`, Ward prompts
+  for a repo/org default and saves it. Headless launches still fail closed. The
+  director needs no git cwd; AOSguard config cannot alter native policy.
 - By default it prints status from the stored ledger, then opens the attached
   read-only surface without enumerating the live issue backlog. Add `--burndown`
   to run the autonomous dispatch heartbeat, or `--triage` to opt into startup issue inventory.
@@ -21,12 +22,6 @@ The director surface is the read-only control plane for runs.
 - It is the surface that hosts the merge-ready workflow for PR landings.
 - It distinguishes a fresh reservation hold from a stale one so dead runs do
   not block burndown forever.
-
-## Why it exists
-
-- Interactive work should not share the detached engineer path.
-- Supervisory work needs a read-only session with brokered access.
-- Merge follow-up needs a lane that can verify checks before merge.
 
 ## Typical uses
 
@@ -54,6 +49,7 @@ There is no separate public `warded surface` command:
 
 ```bash
 warded director --repo owner/name
+warded director # prompts once for repo/org default scope if none is configured
 warded director --burndown --repo owner/name # autonomous drain
 ```
 

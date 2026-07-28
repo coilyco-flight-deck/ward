@@ -38,8 +38,9 @@ warded engineer #98 --print
 5. drop `--print` only after the command shape looks right.
 
 If you are starting from a fresh host-local setup, run `ward setup` once to
-create `~/.ward/config.yaml`, replace the placeholder scope, and restart
-`warded` before the next launch.
+create `~/.ward/config.yaml`. For the director surface, an attached
+`warded director` with no `--repo` or `--org` prompts once for a repo or org
+default and saves it as `director.default-scope`.
 
 ## What not to expect
 

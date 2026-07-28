@@ -569,6 +569,9 @@ func TestResolveDirectorScopeUsesConfigWithoutGitCwd(t *testing.T) {
 func TestResolveDirectorScopeWithoutConfigDoesNotProbeGit(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
+	prevAttached := directorScopeSetupAttached
+	directorScopeSetupAttached = func() bool { return false }
+	t.Cleanup(func() { directorScopeSetupAttached = prevAttached })
 
 	cmd := &cli.Command{Name: "director", Flags: directorFlags(), Action: func(context.Context, *cli.Command) error { return nil }}
 	if err := cmd.Run(t.Context(), []string{"director"}); err != nil {
@@ -581,6 +584,83 @@ func TestResolveDirectorScopeWithoutConfigDoesNotProbeGit(t *testing.T) {
 	_, err := r.resolveDirectorScope(t.Context(), cmd, "ward agent director")
 	if err == nil || !strings.Contains(err.Error(), "no --repo/--org given and no director.default-scope in ~/.ward/config.yaml") {
 		t.Fatalf("resolveDirectorScope error = %v, want missing config/default-scope message", err)
+	}
+}
+
+func TestResolveDirectorScopePromptsAndSavesRepoDefault(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	t.Setenv("COILY_INVOKE_CWD", t.TempDir())
+	prevAttached := directorScopeSetupAttached
+	directorScopeSetupAttached = func() bool { return true }
+	t.Cleanup(func() { directorScopeSetupAttached = prevAttached })
+
+	var stderr bytes.Buffer
+	cmd := &cli.Command{Name: "director", Flags: directorFlags(), Action: func(context.Context, *cli.Command) error { return nil }}
+	if err := cmd.Run(t.Context(), []string{"director"}); err != nil {
+		t.Fatalf("parse director args: %v", err)
+	}
+	r := &Runner{Runner: &shell.Runner{
+		Stdin:  strings.NewReader("1\ncoilyco-flight-deck/ward, some/repo\n"),
+		Stderr: &stderr,
+		Resolve: func(bin string) (string, error) {
+			t.Fatalf("resolveDirectorScope must not probe %q after prompted repo scope", bin)
+			return "", fmt.Errorf("unexpected binary %q", bin)
+		},
+	}}
+	got, err := r.resolveDirectorScope(t.Context(), cmd, "ward agent director")
+	if err != nil {
+		t.Fatalf("resolveDirectorScope: %v", err)
+	}
+	want := []string{"coilyco-flight-deck/ward", "some/repo"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolved scope = %v, want %v", got, want)
+	}
+
+	body, err := os.ReadFile(filepath.Join(home, ".ward", "config.yaml"))
+	if err != nil {
+		t.Fatalf("read prompted config: %v", err)
+	}
+	for _, want := range []string{"director:", "default-scope:", "coilyco-flight-deck/ward", "some/repo"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("prompted config missing %q:\n%s", want, string(body))
+		}
+	}
+	for _, want := range []string{"Choose a default director scope", "Repo scope", "saved director.default-scope"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("prompt output missing %q:\n%s", want, stderr.String())
+		}
+	}
+}
+
+func TestWriteDirectorDefaultScopePreservesOtherConfig(t *testing.T) {
+	path := writeTestWardGlobalConfig(t, strings.Join([]string{
+		"agent:",
+		"  review:",
+		"    skip: [qa]",
+		"container:",
+		"  memory-limit: 4g",
+		"director:",
+		"  default-scope:",
+		"    - old/repo",
+		"",
+	}, "\n"))
+
+	if err := writeDirectorDefaultScope([]string{"coilyco-flight-deck", "coilyco-gaming"}); err != nil {
+		t.Fatalf("writeDirectorDefaultScope: %v", err)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config after write: %v", err)
+	}
+	got := string(body)
+	for _, want := range []string{"agent:", "review:", "skip:", "qa", "container:", "memory-limit: 4g", "director:", "default-scope:", "coilyco-flight-deck", "coilyco-gaming"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("config after write missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "old/repo") {
+		t.Fatalf("old director.default-scope survived replacement:\n%s", got)
 	}
 }
 
