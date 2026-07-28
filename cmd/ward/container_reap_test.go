@@ -945,6 +945,126 @@ func TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages(t *testing.T) {
 	}
 }
 
+func TestReapTargetTreeLandedDirectToMainRechecksOriginMainCloseRefBeforeSalvage(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-28T09:55:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	baseline := mustGitRev(t, work, "HEAD")
+
+	prov := runProvenance{
+		RunID:        "engineer-codex-ward-1606",
+		Repo:         "coilyco-flight-deck/ward",
+		Issue:        1606,
+		ReservedAt:   "2026-07-28T10:12:26Z",
+		BaselineMain: baseline,
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The closing commit is on main but has a skewed committer timestamp, so
+	// the reaper must re-check origin/main before fabricating an empty salvage.
+	runGitCommitAt(t, work, "2026-07-28T10:00:00Z", "feat.txt", "feat\n", "land reaper fix\n\ncloses #1606")
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 1606, Launched: true, Workflow: workflowDirectToMain}
+	stderr := captureTestStderr(t, func() {
+		if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+			t.Fatalf("reapTargetTree on an already-pushed closing ref: %v", err)
+		}
+	})
+	if !strings.Contains(stderr, "trusting remote main before salvage") {
+		t.Fatalf("stderr missing origin/main recheck proof:\n%s", stderr)
+	}
+	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("already-pushed closing ref must not create an empty salvage branch, got: %q", string(out))
+	}
+}
+
+func TestReapTargetTreeDoneOutcomeSuppressesEmptySalvageWhenMainHasCloseRef(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-28T10:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+	runGitCommitAt(t, work, "2026-07-28T10:15:00Z", "feat.txt", "feat\n", "land issue 1605\n\ncloses #1605")
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
+	landed := mustGitRev(t, work, "HEAD")
+
+	// Simulate the bad proof state from ward#1605: main already contains the
+	// closing reference, but the saved baseline no longer leaves a provenance range.
+	prov := runProvenance{
+		RunID:        "engineer-codex-ward-1605",
+		Repo:         "coilyco-flight-deck/ward",
+		Issue:        1605,
+		ReservedAt:   "2026-07-28T10:05:00Z",
+		BaselineMain: landed,
+	}
+	provData, err := json.Marshal(prov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, runProvenanceFile), provData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	upAt := time.Date(2026, 7, 28, 10, 5, 0, 0, time.UTC)
+	prev := listReapIssueComments
+	listReapIssueComments = func(context.Context, *Runner, reapEnv) ([]issueComment, error) {
+		return []issueComment{
+			{Body: "WARD-WORKFLOW: done ✅\n\n<details><summary>details</summary>\n\nPushed main with closes #1605.\n\n</details>", CreatedAt: upAt.Add(20 * time.Minute)},
+		}, nil
+	}
+	t.Cleanup(func() { listReapIssueComments = prev })
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{
+		Owner:     "coilyco-flight-deck",
+		Name:      "ward",
+		Base:      "https://forgejo.coilysiren.me",
+		Mode:      "codex",
+		Token:     "test-token",
+		Issue:     1605,
+		Launched:  true,
+		UpAt:      upAt.Format(time.RFC3339),
+		Workflow:  workflowDirectToMain,
+		Container: "engineer-codex-ward-1605",
+	}
+	stderr := captureTestStderr(t, func() {
+		if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+			t.Fatalf("reapTargetTree with done outcome and no diff: %v", err)
+		}
+	})
+	if !strings.Contains(stderr, "already carries closes #1605 after a done outcome") {
+		t.Fatalf("stderr missing done-outcome empty-salvage proof:\n%s", stderr)
+	}
+	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("done + no-diff closing ref must not create a salvage branch, got: %q", string(out))
+	}
+}
+
 // TestReapTargetTreeWorkflowBoundaryDoesNotSalvage covers the clean workflow boundary.
 // Pull-request, pull-request-and-merge, and remote-branch-only runs land there.
 func TestReapTargetTreeWorkflowBoundaryDoesNotSalvage(t *testing.T) {

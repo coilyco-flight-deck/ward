@@ -221,11 +221,25 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		if env.Launched && env.Workflow.landsOnMain() && env.Issue != 0 {
 			prov, perr := r.readRunProvenance(work)
 			if perr != nil {
+				if r.completedMainProofBeforeBlocking(ctx, work, env, nil) {
+					fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
+					if releaseReservation {
+						r.releaseReservationIfUnstarted(ctx, env)
+					}
+					return nil
+				}
 				fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable on already-landed merge-remote-main run: %v\n", perr)
 				return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot,
 					reapDecision{Gate: "provenance missing or unreadable on already-landed merge-remote-main run", ProvState: "missing or unreadable", CommitState: commitState})
 			}
 			if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
+				if r.completedMainProofBeforeBlocking(ctx, work, env, &prov) {
+					fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
+					if releaseReservation {
+						r.releaseReservationIfUnstarted(ctx, env)
+					}
+					return nil
+				}
 				fmt.Fprintf(os.Stderr, "ward container reap: already-landed merge-remote-main run is missing closes #%d; salvaging instead of returning success\n", env.Issue)
 				return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
 					reapDecision{Gate: "missing same-repo closing reference on already-landed merge-remote-main run", ProvState: "present", CommitState: commitState, Landed: false})
@@ -596,6 +610,72 @@ func (r *Runner) runProvenanceLanded(ctx context.Context, work string, prov runP
 		}
 	}
 	return false
+}
+
+func (r *Runner) completedMainProofBeforeBlocking(ctx context.Context, work string, env reapEnv, prov *runProvenance) bool {
+	if env.Issue == 0 {
+		return false
+	}
+	if prov != nil && strings.TrimSpace(prov.BaselineMain) != "" {
+		if r.issueClosingReferenceInRange(ctx, work, env.Issue, prov.BaselineMain+"..origin/main") {
+			fmt.Fprintf(os.Stderr, "ward container reap: origin/main carries closes #%d in the run baseline range; trusting remote main before salvage\n", env.Issue)
+			return true
+		}
+	}
+	if !r.doneOutcomeAfterRunStart(ctx, env) {
+		return false
+	}
+	if !r.issueClosingReferenceInRange(ctx, work, env.Issue, "origin/main") {
+		return false
+	}
+	if !r.salvagePullRequestWouldBeEmpty(ctx, work) {
+		return false
+	}
+	fmt.Fprintf(os.Stderr, "ward container reap: origin/main already carries closes #%d after a done outcome; treating empty salvage as non-blocking\n", env.Issue)
+	return true
+}
+
+var listReapIssueComments = func(ctx context.Context, r *Runner, env reapEnv) ([]issueComment, error) {
+	if env.Token == "" {
+		return nil, fmt.Errorf("no FORGEJO_TOKEN to read issue comments")
+	}
+	switch env.Forge {
+	case forgeGitLab:
+		cl := r.hostGitLabClient(ctx, containerMode(env.Mode))
+		cl.token = env.Token
+		return cl.ListIssueComments(ctx, env.Owner, env.Name, env.Issue)
+	case forgeForgejo, forgeGitHub:
+		cl := r.hostForgejoClient(ctx)
+		return cl.withMode(containerMode(env.Mode)).withToken(env.Token).ListIssueComments(ctx, env.Owner, env.Name, env.Issue)
+	default:
+		cl := r.hostForgejoClient(ctx)
+		return cl.withMode(containerMode(env.Mode)).withToken(env.Token).ListIssueComments(ctx, env.Owner, env.Name, env.Issue)
+	}
+}
+
+func (r *Runner) doneOutcomeAfterRunStart(ctx context.Context, env reapEnv) bool {
+	if !env.Launched || env.Issue == 0 {
+		return false
+	}
+	if strings.TrimSpace(env.UpAt) == "" {
+		return false
+	}
+	upAt, err := time.Parse(time.RFC3339, strings.TrimSpace(env.UpAt))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: cannot parse WARD_CONTAINER_UP for done-outcome recheck: %v\n", err)
+		return false
+	}
+	comments, err := listReapIssueComments(ctx, r, env)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ward container reap: could not read issue comments for done-outcome recheck on #%d: %v\n", env.Issue, err)
+		return false
+	}
+	outcome, ok := latestBacklogOutcomeCommentAfter(comments, upAt)
+	if !ok {
+		return false
+	}
+	o, ok := backlogOutcomeOfComment(outcome.Body)
+	return ok && strings.EqualFold(strings.TrimSpace(o.Status), "done")
 }
 
 func closingReferenceRepairSafe(prov runProvenance, env reapEnv) bool {
