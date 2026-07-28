@@ -5,6 +5,7 @@
 ## What it checks
 
 - smart-defaults and repo-authority policy.
+- route-mode intake repo policy (`route-intake-repo` in the bundled smart defaults).
 - baked fleet defaults and required roles.
 - native launch assets.
 - placeholder or example values that should not survive in an operating deployment.

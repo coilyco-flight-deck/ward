@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
@@ -113,6 +114,12 @@ func printDoctorReport(report doctorReport) {
 const doctorAllowPlaceholdersEnv = "WARD_DOCTOR_ALLOW_PLACEHOLDERS"
 
 func validateSmartDefaultsOperational(defs smartDefaults, allowPlaceholders bool) error {
+	if defs.routeIntakeRepo == (targetRepo{}) {
+		return fmt.Errorf("smart defaults: route-intake-repo is required for route mode (fail-closed)")
+	}
+	if !allowPlaceholders && containsExamplePlaceholder(defs.routeIntakeRepo.slug()) {
+		return fmt.Errorf("smart defaults: route-intake-repo %q still looks like a placeholder", defs.routeIntakeRepo.slug())
+	}
 	for repo, wf := range defs.agentWorkflowRepos {
 		if !allowPlaceholders && containsExamplePlaceholder(repo) {
 			return fmt.Errorf("smart defaults: agent-workflow repo %q still looks like a placeholder", repo)
@@ -132,6 +139,9 @@ func validateRepoAuthorityOperational(defs smartDefaults, allowPlaceholders bool
 		if !allowPlaceholders && containsExamplePlaceholder(owner) {
 			return fmt.Errorf("smart defaults: repo-authority trusted-owner %q still looks like a placeholder", owner)
 		}
+	}
+	if defs.routeIntakeRepo != (targetRepo{}) && !slices.Contains(defs.trustedOwners, defs.routeIntakeRepo.Owner) {
+		return fmt.Errorf("smart defaults: route-intake-repo %q owner is not in repo-authority trusted-owner (fail-closed)", defs.routeIntakeRepo.slug())
 	}
 	if len(defs.repoAuthorityRules) == 0 {
 		return fmt.Errorf("smart defaults: repo-authority needs at least one repo routing rule (fail-closed)")

@@ -72,7 +72,5 @@ preserve the parent container's host source as a read-only bind.
 * The bundle grants no command, credential, network, permission, or writable
   filesystem capability.
 
-Cross-repository composition is tracked in
-[inbox#267](https://forgejo.coilysiren.me/coilysiren/inbox/issues/267), and this
-consumer slice is tracked in
+Cross-repository composition on Ward's side is tracked in
 [ward#1511](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1511).

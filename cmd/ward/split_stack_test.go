@@ -49,7 +49,7 @@ func TestSplitStackCompactRefUsesBakedTracker(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
     repo-authority default=forgejo {
         trusted-owner "coilysiren"
-        repo "coilysiren/inbox" forge=forgejo tracker=forgejo
+        repo "coilysiren/site" forge=forgejo tracker=forgejo
     }
 }`), 0o644); err != nil {
 		t.Fatal(err)
@@ -59,11 +59,11 @@ func TestSplitStackCompactRefUsesBakedTracker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := defs.authorityForRepo("coilysiren", "inbox").Tracker; got != trackerGitHub {
+	if got := defs.authorityForRepo("coilysiren", "site").Tracker; got != trackerGitHub {
 		t.Fatalf("baked tracker = %s, want github", got)
 	}
 
-	ref, err := parseAgentIssueRef("coilysiren/inbox#247")
+	ref, err := parseAgentIssueRef("coilysiren/site#247")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,13 +16,6 @@ import (
 // agent_route.go adds ROUTE mode to the engineer freeform mode (ward#347, was task;
 // ward#164): a freeform task with no repo routes to one live-surveyed.
 
-const (
-	// inboxOwner / inboxRepo is the intake repo every routed task lands in first,
-	// capturing the literal ask before it's routed onward.
-	inboxOwner = "coilysiren"
-	inboxRepo  = "inbox"
-)
-
 // routeSurveyTimeout caps the one-shot route survey so a wedged host agent can't
 // hold the dispatch hostage after the intake record is already filed.
 const routeSurveyTimeout = 3 * time.Minute
@@ -90,9 +83,13 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 	}
 
 	title := taskTitle(taskText)
+	intakeRepo, err := r.routeIntakeRepo(label)
+	if err != nil {
+		return err
+	}
 
 	if c.Bool("print") {
-		return printAgentTaskRoutePlan(c, mode, taskText, title)
+		return printAgentTaskRoutePlan(c, mode, taskText, title, intakeRepo)
 	}
 
 	// ROUTE always detaches the eventual run, so host dispatch is the last
@@ -104,11 +101,11 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	// 1. File the intake record - the literal ask, captured before routing.
-	intakeNum, err := cl.CreateIssue(ctx, inboxOwner, inboxRepo, title, routeIntakeBody(mode, taskText))
+	intakeNum, err := cl.CreateIssue(ctx, intakeRepo.Owner, intakeRepo.Name, title, routeIntakeBody(mode, taskText))
 	if err != nil {
-		return fmt.Errorf("%s: file intake issue in %s/%s: %w", label, inboxOwner, inboxRepo, err)
+		return fmt.Errorf("%s: file intake issue in %s: %w", label, intakeRepo.slug(), err)
 	}
-	intake := agentIssueRef{Owner: inboxOwner, Repo: inboxRepo, Number: intakeNum, Tracker: trackerForgejo}
+	intake := agentIssueRef{Owner: intakeRepo.Owner, Repo: intakeRepo.Name, Number: intakeNum, Tracker: trackerForgejo}
 	fmt.Fprintf(os.Stderr, "%s: filed intake %s - %s\n", label, intake, intake.url())
 
 	// 2. Survey the fleet live + route (a one-shot agent call over a live catalog).
@@ -121,7 +118,7 @@ func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode con
 		return r.bounceRouteToHuman(ctx, cl, label, mode, intake, routeBounceReason(outcome), read)
 	}
 
-	// Validate the routed target: a trusted owner, and never the inbox itself.
+	// Validate the routed target: a trusted owner, and never the intake repo itself.
 	target, reason, ok := r.resolveRouteTarget(outcome)
 	if !ok {
 		return r.bounceRouteToHuman(ctx, cl, label, mode, intake, reason, read)
@@ -177,6 +174,17 @@ func (r *Runner) routeSurveyPreconditions(mode containerMode, taskText, label st
 	return nil
 }
 
+func (r *Runner) routeIntakeRepo(label string) (targetRepo, error) {
+	repo := currentSmartDefaults().routeIntakeRepo
+	if repo == (targetRepo{}) {
+		return targetRepo{}, fmt.Errorf("%s: route mode needs smart-defaults route-intake-repo (fail-closed)", label)
+	}
+	if !r.ownerAllowed(repo.Owner) {
+		return targetRepo{}, fmt.Errorf("%s: route-intake-repo %s is outside trusted owners (%s)", label, repo.slug(), strings.Join(r.trustedOwners(), ", "))
+	}
+	return repo, nil
+}
+
 // routeBounceReason renders the human-bounce reason for a non-REPO survey
 // verdict: an explicit UNCLEAR note, or the no-clear-verdict fallback.
 func routeBounceReason(outcome routeOutcome) string {
@@ -186,12 +194,13 @@ func routeBounceReason(outcome routeOutcome) string {
 	return outcome.Note
 }
 
-// resolveRouteTarget validates the survey's routed repo: a trusted owner that is
-// never the inbox itself. On rejection it returns the human-bounce reason and false.
+// resolveRouteTarget validates the survey's routed repo: trusted owner, not
+// the intake repo. On rejection it returns the human-bounce reason and false.
 func (r *Runner) resolveRouteTarget(outcome routeOutcome) (targetRepo, string, bool) {
 	target, ok := wrongRepoTarget(outcome.Repo)
-	if !ok || !r.ownerAllowed(target.Owner) || (target.Owner == inboxOwner && target.Name == inboxRepo) {
-		reason := fmt.Sprintf("survey routed to an unusable target %q (it must be a trusted owner - %s - and not the inbox itself)",
+	intakeRepo := currentSmartDefaults().routeIntakeRepo
+	if !ok || !r.ownerAllowed(target.Owner) || target == intakeRepo {
+		reason := fmt.Sprintf("survey routed to an unusable target %q (it must be a trusted owner - %s - and not the intake repo itself)",
 			outcome.Repo, strings.Join(r.trustedOwners(), ", "))
 		return targetRepo{}, reason, false
 	}
@@ -234,10 +243,11 @@ func (r *Runner) surveyRoute(ctx context.Context, mode containerMode, taskText s
 	return parseRouteVerdict(read), read, nil
 }
 
-// surveyRepoCatalog lists routable repos across the primary orgs (dropping
-// archived/empty + the inbox); a per-owner list failure is skipped, not fatal.
+// surveyRepoCatalog lists routable repos across the primary orgs, minus
+// archived/empty repos and the configured intake repo.
 func (r *Runner) surveyRepoCatalog(ctx context.Context) []repoCatalogEntry {
 	cl := r.hostForgejoClient(ctx)
+	intakeRepo := currentSmartDefaults().routeIntakeRepo
 	var entries []repoCatalogEntry
 	for _, owner := range r.trustedOwners() {
 		repos, err := cl.listOwnerRepos(ctx, owner)
@@ -249,7 +259,7 @@ func (r *Runner) surveyRepoCatalog(ctx context.Context) []repoCatalogEntry {
 			if rb.Archived || rb.Empty {
 				continue
 			}
-			if owner == inboxOwner && rb.Name == inboxRepo {
+			if (targetRepo{Owner: owner, Name: rb.Name}) == intakeRepo {
 				continue
 			}
 			entries = append(entries, repoCatalogEntry{Slug: owner + "/" + rb.Name, Description: strings.TrimSpace(rb.Description)})
@@ -416,7 +426,7 @@ func routeUnclearComment(mode containerMode, reason, read string) string {
 
 // printAgentTaskRoutePlan renders the intake record that *would* be filed and the
 // downstream route flow, filing nothing and running nothing - ROUTE's dry-run.
-func printAgentTaskRoutePlan(c *cli.Command, mode containerMode, taskText, title string) error {
+func printAgentTaskRoutePlan(c *cli.Command, mode containerMode, taskText, title string, intakeRepo targetRepo) error {
 	out := c.Root().Writer
 	if out == nil {
 		out = os.Stdout
@@ -424,7 +434,7 @@ func printAgentTaskRoutePlan(c *cli.Command, mode containerMode, taskText, title
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s (print, route mode)\n", agentCmdline(mode, "engineer"))
 	fmt.Fprintf(&b, "mode:    route (no explicit owner/repo given)\n")
-	fmt.Fprintf(&b, "intake:  %s/%s (the literal task is filed here first, then routed live)\n", inboxOwner, inboxRepo)
+	fmt.Fprintf(&b, "intake:  %s (the literal task is filed here first, then routed live)\n", intakeRepo.slug())
 	fmt.Fprintf(&b, "title:   %s\n", title)
 	fmt.Fprintf(&b, "----- intake issue to file -----\ntitle: %s\n\n%s\n----- end -----\n", title, routeIntakeBody(mode, taskText))
 	fmt.Fprintf(&b, "# then, live: survey repos across %s, file a scoped child issue in the routed repo,\n", strings.Join(currentSmartDefaults().trustedOwnerList(), ", "))

@@ -204,6 +204,9 @@ func renderSmartDefaultsBlock(defs smartDefaults) string {
 	if defs.prMergeStyle != "" {
 		fmt.Fprintf(&b, "    pr-merge-style %q\n", defs.prMergeStyle)
 	}
+	if defs.routeIntakeRepo != (targetRepo{}) {
+		fmt.Fprintf(&b, "    route-intake-repo %q\n", defs.routeIntakeRepo.slug())
+	}
 	b.WriteString("}\n")
 	return b.String()
 }
