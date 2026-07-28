@@ -74,15 +74,32 @@ func (r *Runner) brokerDispatchSeed(ctx context.Context, target broker.Target) (
 	}
 	res, err := session.do(ctx, broker.Request{Op: broker.OpDispatch, Target: target})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container: broker dispatch seed unavailable (%v); falling back to the env/SSM token path (ward#334)\n", err)
+		fmt.Fprintf(os.Stderr, "ward container: note: broker dispatch seed fallback handled for %s (%v); continuing with env/SSM token path (non-fatal fallback, ward#334)\n", brokerTargetLabel(target), err)
 		return "", false
 	}
 	token = strings.TrimSpace(res.Detail)
 	if token == "" {
-		fmt.Fprintln(os.Stderr, "ward container: broker returned an empty dispatch seed; falling back to the env/SSM token path (ward#334)")
+		fmt.Fprintf(os.Stderr, "ward container: note: broker dispatch seed fallback handled for %s (broker returned an empty dispatch seed); continuing with env/SSM token path (non-fatal fallback, ward#334)\n", brokerTargetLabel(target))
 		return "", false
 	}
 	return token, true
+}
+
+func brokerTargetLabel(target broker.Target) string {
+	owner := strings.TrimSpace(target.Owner)
+	repo := strings.TrimSpace(target.Repo)
+	switch {
+	case owner == "" && repo == "":
+		return "unknown target (missing owner/repo)"
+	case owner == "":
+		return repo + " (missing owner)"
+	case repo == "":
+		return owner + " (missing repo)"
+	case target.Number > 0:
+		return fmt.Sprintf("%s/%s#%d", owner, repo, target.Number)
+	default:
+		return fmt.Sprintf("%s/%s (no issue)", owner, repo)
+	}
 }
 
 // planDispatchTarget builds the broker dispatch target from a child launch plan -
