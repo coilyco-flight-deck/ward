@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -136,6 +137,46 @@ func TestReapVerdict(t *testing.T) {
 				t.Error("reapVerdict returned an empty reason")
 			}
 		})
+	}
+}
+
+func TestEngineerLaunchVisibleReportsCreatedDockerState(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"case \"$1\" in\n" +
+		"  ps) exit 0 ;;\n" +
+		"  inspect) printf '%s\\n' '{\"Status\":\"created\",\"StartedAt\":\"0001-01-01T00:00:00Z\",\"Error\":\"smoke-test death\"}' ; exit 0 ;;\n" +
+		"esac\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	writeTestShellCommand(t, script, body)
+	r := &Runner{Runner: &shell.Runner{
+		Stdout:  &bytes.Buffer{},
+		Stderr:  io.Discard,
+		Resolve: func(string) (string, error) { return script, nil },
+	}}
+	oldTimeout := engineerLaunchVisibilityTimeout
+	oldPoll := engineerLaunchVisibilityPoll
+	engineerLaunchVisibilityTimeout = time.Millisecond
+	engineerLaunchVisibilityPoll = time.Millisecond
+	t.Cleanup(func() {
+		engineerLaunchVisibilityTimeout = oldTimeout
+		engineerLaunchVisibilityPoll = oldPoll
+	})
+
+	err := r.engineerLaunchVisible(context.Background(), "engineer-codex-ward-1609")
+	if err == nil {
+		t.Fatal("engineerLaunchVisible unexpectedly succeeded")
+	}
+	for _, want := range []string{
+		"engineer engineer-codex-ward-1609 did not become visible",
+		"docker state=created",
+		"docker error=smoke-test death",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("launch visibility error missing %q:\n%s", want, err)
+		}
 	}
 }
 

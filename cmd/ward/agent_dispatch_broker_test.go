@@ -1786,11 +1786,24 @@ func TestCommentFailedDispatch(t *testing.T) {
 	if f.unlocked != 1 {
 		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
 	}
-	if len(f.comments) != 0 {
-		t.Fatalf("commentIssue called %d times, want 0", len(f.comments))
+	if len(f.comments) != 1 {
+		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
 	}
 	if got := fmt.Sprintf("%v", f.deleted); got != "[11]" {
 		t.Fatalf("deleted comments = %s, want [11]", got)
+	}
+	body := f.comments[0]
+	for _, want := range []string{
+		"WARD-WORKFLOW: failed",
+		"launch failure details",
+		"Attempted harness: `codex`",
+		"Attempted run: `ward agent engineer coilyco-flight-deck/ward#689 --harness codex --skip-preflight`",
+		"Broker artifact: `/tmp/ward/dispatch.log`",
+		"No salvage branch was created or advertised",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("failed dispatch comment missing %q\n%s", want, body)
+		}
 	}
 }
 
@@ -1826,11 +1839,14 @@ func TestCommentFailedDispatchSkipsStopOnDockerNameConflict(t *testing.T) {
 	if f.unlocked != 1 {
 		t.Fatalf("unlockIssue called %d times, want 1", f.unlocked)
 	}
-	if len(f.comments) != 0 {
-		t.Fatalf("commentIssue called %d times, want 0", len(f.comments))
+	if len(f.comments) != 1 {
+		t.Fatalf("commentIssue called %d times, want 1", len(f.comments))
 	}
 	if got := fmt.Sprintf("%v", f.deleted); got != "[11]" {
 		t.Fatalf("deleted comments = %s, want [11]", got)
+	}
+	if !strings.Contains(f.comments[0], "WARD-WORKFLOW: failed") {
+		t.Fatalf("failed dispatch comment missing failed status:\n%s", f.comments[0])
 	}
 	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
 		t.Fatalf("docker stop was invoked for the conflict case, log = %q", readFile(t, logPath))
@@ -1955,6 +1971,37 @@ func TestStopFailedDispatchContainerStopsTheAttemptedEngineer(t *testing.T) {
 	}
 	if !strings.Contains(log, "stop "+name) {
 		t.Fatalf("stop helper did not stop the attempted container:\n%s", log)
+	}
+}
+
+func TestStopFailedDispatchContainerRemovesCreatedAttemptedEngineer(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "docker.log")
+	name := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, 1609)
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$*\" >> " + shellQuote(testShellPath(logPath)) + "\n" +
+		"case \"$1\" in\n" +
+		"  ps) exit 0 ;;\n" +
+		"  inspect) printf '%s\\n' '{\"Status\":\"created\",\"StartedAt\":\"0001-01-01T00:00:00Z\",\"Error\":\"smoke-test death\"}' ;;\n" +
+		"  rm) exit 0 ;;\n" +
+		"esac\n" +
+		"exit 0\n"
+	writeTestShellCommand(t, script, body)
+	r := &Runner{Runner: &shell.Runner{
+		Stdout:  &bytes.Buffer{},
+		Stderr:  &bytes.Buffer{},
+		Resolve: func(string) (string, error) { return script, nil },
+	}}
+
+	r.stopFailedDispatchContainer(context.Background(), modeCodex, agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1609}, roleEngineer, name)
+
+	log := readFile(t, logPath)
+	if !strings.Contains(log, "inspect --format {{json .State}} "+name) {
+		t.Fatalf("cleanup helper did not inspect the non-running container:\n%s", log)
+	}
+	if !strings.Contains(log, "rm -f "+name) {
+		t.Fatalf("cleanup helper did not remove the created attempted container:\n%s", log)
 	}
 }
 

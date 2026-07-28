@@ -544,6 +544,7 @@ type dockerContainerState struct {
 	OOMKilled  bool   `json:"OOMKilled"`
 	StartedAt  string `json:"StartedAt"`
 	FinishedAt string `json:"FinishedAt"`
+	Error      string `json:"Error"`
 }
 
 // inspectContainerState reads the container's inspected Docker state and returns
