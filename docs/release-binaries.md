@@ -6,6 +6,9 @@ Each release publishes a tagged binary matrix plus checksums.
 - `SHA256SUMS` is published with the release.
 - The matrix is built once on `main` as a draft release, then promoted to the
   public release tag without rebuilding.
+- The promotion job verifies staged platform bytes against `SHA256SUMS`, then
+  reads the uploaded stable assets back through the same byte resolver before
+  the release becomes public.
 - The release pages on Forgejo and GitHub mirror the same artifacts.
 - Ward does not publish moving `release` or `latest` aliases for these binary
   artifacts; consumers install the tagged release assets directly.
@@ -29,6 +32,8 @@ Each release publishes a tagged binary matrix plus checksums.
 - the binaries are named by platform and architecture.
 - the tags match the release tag on Forgejo.
 - the mirror copies the same release payload, not a different build.
+- the GitHub mirror consumes the verified `dist` set from promotion, not a
+  fresh fetch or rebuild.
 - Homebrew on macOS and Scoop on Windows install the matching Linux binary as
   an unexposed sidecar. `ward agent` copies that same-version binary into each
   Linux container instead of depending on its own published release at launch.

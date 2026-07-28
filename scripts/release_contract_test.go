@@ -91,7 +91,8 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 	for _, want := range []string{
 		"draft-${{ github.sha }}",
 		"promote-draft-assets",
-		"fetched ${name} from ${DRAFT_TAG}",
+		"scripts/promote-draft-assets.sh",
+		"scripts/verify-release-assets.sh",
 		"scripts/forgejo-release-asset.sh",
 		"scripts/release-tag.sh",
 		"TAG_PUSH_TOKEN",
@@ -179,6 +180,7 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		"matrix once",
 		"retags the already-built",
 		"draft assets",
+		"read back through the same resolver again",
 	} {
 		if !strings.Contains(docs, want) {
 			t.Fatalf("release docs should mention %q:\n%s", want, docs)
@@ -187,6 +189,10 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 
 	if !strings.Contains(docs, "the Scoop bucket bump is best-effort") {
 		t.Fatalf("release docs should mention best-effort Scoop policy:\n%s", docs)
+	}
+
+	if !strings.Contains(docs, "read back through the same resolver again") {
+		t.Fatalf("release docs should describe the verification boundary:\n%s", docs)
 	}
 
 	for _, want := range []string{
@@ -755,6 +761,150 @@ func TestForgejoReleaseAssetHelperPassesMultilineBodiesThrough(t *testing.T) {
 	}
 }
 
+func TestPromoteDraftAssetsVerifiesAndStagesRawBytes(t *testing.T) {
+	srv := newPromotionReleaseTestServer(t)
+	script := filepath.Join(repoRoot(t), "scripts", "promote-draft-assets.sh")
+	dist := t.TempDir()
+	cmd := exec.Command("bash", script)
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(),
+		"DRAFT_TAG=draft-testsha",
+		"FORGEJO_API="+srv.URL+"/api/v1/repos/coilyco-flight-deck/ward",
+		"TOKEN=secret",
+		"DIST_DIR="+dist,
+		"MIN_PLATFORM_BYTES=16",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("promote-draft-assets.sh failed: %v\noutput: %s", err, out)
+	}
+	for _, name := range []string{
+		"SHA256SUMS",
+		"ward-linux-amd64",
+		"ward-linux-amd64.sha256",
+		"ward-linux-arm64",
+		"ward-linux-arm64.sha256",
+	} {
+		if _, err := os.Stat(filepath.Join(dist, name)); err != nil {
+			t.Fatalf("verified dist missing %s: %v", name, err)
+		}
+	}
+	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/tags/draft-testsha"); got != 6 {
+		t.Fatalf("draft release lookup count = %d, want 6", got)
+	}
+	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/99/assets?per_page=100"); got != 6 {
+		t.Fatalf("draft asset list count = %d, want 6", got)
+	}
+	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/1"); got != 1 {
+		t.Fatalf("draft metadata fetch count = %d, want 1", got)
+	}
+	if got := srv.count("GET /attachments/draft/1"); got != 1 {
+		t.Fatalf("draft attachment fetch count = %d, want 1", got)
+	}
+	if got := srv.count("GET /attachments/draft/2"); got != 1 {
+		t.Fatalf("draft binary fetch count = %d, want 1", got)
+	}
+}
+
+func TestPromoteDraftAssetsRejectsBadDraftPayloads(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mut  func(*promotionReleaseTestServer)
+	}{
+		{
+			name: "metadata payload",
+			mut: func(s *promotionReleaseTestServer) {
+				s.draftAssetsByName["ward-linux-amd64"].body = []byte(`{"id":1,"name":"ward-linux-amd64","browser_download_url":"` + s.URL + `/attachments/draft/1"}`)
+			},
+		},
+		{
+			name: "truncated binary",
+			mut: func(s *promotionReleaseTestServer) {
+				s.draftAssetsByName["ward-linux-arm64"].body = []byte("tiny-binary")
+			},
+		},
+		{
+			name: "missing asset",
+			mut: func(s *promotionReleaseTestServer) {
+				delete(s.draftAssetsByName, "ward-linux-arm64.sha256")
+				s.draftAssetOrder = []string{
+					"ward-linux-amd64",
+					"ward-linux-amd64.sha256",
+					"ward-linux-arm64",
+					"SHA256SUMS",
+				}
+			},
+		},
+		{
+			name: "duplicate name",
+			mut: func(s *promotionReleaseTestServer) {
+				s.draftAssetOrder = append(s.draftAssetOrder, "ward-linux-amd64")
+			},
+		},
+		{
+			name: "checksum mismatch",
+			mut: func(s *promotionReleaseTestServer) {
+				s.draftAssetsByName["SHA256SUMS"].body = []byte(strings.ReplaceAll(string(s.draftAssetsByName["SHA256SUMS"].body), s.draftHash("ward-linux-amd64"), strings.Repeat("f", 64)))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newPromotionReleaseTestServer(t)
+			tc.mut(srv)
+			dist := t.TempDir()
+			cmd := exec.Command("bash", filepath.Join(repoRoot(t), "scripts", "promote-draft-assets.sh"))
+			cmd.Dir = repoRoot(t)
+			cmd.Env = append(os.Environ(),
+				"DRAFT_TAG=draft-testsha",
+				"FORGEJO_API="+srv.URL+"/api/v1/repos/coilyco-flight-deck/ward",
+				"TOKEN=secret",
+				"DIST_DIR="+dist,
+				"MIN_PLATFORM_BYTES=16",
+			)
+			out, err := cmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("promote-draft-assets.sh succeeded unexpectedly:\n%s", out)
+			}
+			if got := srv.count("POST /api/v1/repos/coilyco-flight-deck/ward/releases/100/assets"); got != 0 {
+				t.Fatalf("stable upload count = %d, want 0", got)
+			}
+		})
+	}
+}
+
+func TestVerifyReleaseAssetsReadsBackStableBytes(t *testing.T) {
+	srv := newPromotionReleaseTestServer(t)
+	dist := t.TempDir()
+	if out, err := runPromoteDraftAssets(t, srv, dist); err != nil {
+		t.Fatalf("prepare draft assets failed: %v\noutput: %s", err, out)
+	}
+	script := filepath.Join(repoRoot(t), "scripts", "verify-release-assets.sh")
+	cmd := exec.Command("bash", script)
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(),
+		"RELEASE_TAG=v0.1.0",
+		"FORGEJO_API="+srv.URL+"/api/v1/repos/coilyco-flight-deck/ward",
+		"TOKEN=secret",
+		"DIST_DIR="+dist,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("verify-release-assets.sh failed: %v\noutput: %s", err, out)
+	}
+	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/tags/v0.1.0"); got != 6 {
+		t.Fatalf("stable release lookup count = %d, want 6", got)
+	}
+	if got := srv.count("GET /api/v1/repos/coilyco-flight-deck/ward/releases/100/assets?per_page=100"); got != 6 {
+		t.Fatalf("stable asset list count = %d, want 6", got)
+	}
+	if got := srv.count("GET /attachments/stable/11"); got != 1 {
+		t.Fatalf("stable attachment fetch count = %d, want 1", got)
+	}
+	if got := srv.count("GET /attachments/stable/12"); got != 1 {
+		t.Fatalf("stable binary fetch count = %d, want 1", got)
+	}
+}
+
 type draftReleaseTestServer struct {
 	*httptest.Server
 	mu             sync.Mutex
@@ -914,6 +1064,201 @@ func newReleaseAssetTestServer(t *testing.T) *releaseAssetTestServer {
 	s.Server = httptest.NewServer(mux)
 	t.Cleanup(s.Close)
 	return s
+}
+
+type promotionReleaseTestServer struct {
+	*httptest.Server
+	mu                 sync.Mutex
+	counts             map[string]int
+	draftAssetsByName  map[string]*promotionTestAsset
+	stableAssetsByName map[string]*promotionTestAsset
+	draftAssetOrder    []string
+	stableAssetOrder   []string
+}
+
+type promotionTestAsset struct {
+	id   int
+	name string
+	body []byte
+}
+
+func newPromotionReleaseTestServer(t *testing.T) *promotionReleaseTestServer {
+	t.Helper()
+	amd64 := bytes.Repeat([]byte("amd64-release-bytes-"), 70000)
+	amd64 = append(amd64, bytes.Repeat([]byte("a"), 120)...) // keep the body well above the tiny threshold
+	arm64 := bytes.Repeat([]byte("arm64-release-bytes-"), 70000)
+	arm64 = append(arm64, bytes.Repeat([]byte("b"), 132)...)
+	amd64Hash := sha256.Sum256(amd64)
+	arm64Hash := sha256.Sum256(arm64)
+	amd64Sum := hex.EncodeToString(amd64Hash[:])
+	arm64Sum := hex.EncodeToString(arm64Hash[:])
+	sums := amd64Sum + "  ward-linux-amd64\n" + arm64Sum + "  ward-linux-arm64\n"
+
+	draftAssets := []promotionTestAsset{
+		{id: 1, name: "ward-linux-amd64", body: amd64},
+		{id: 2, name: "ward-linux-amd64.sha256", body: []byte(amd64Sum + "\n")},
+		{id: 3, name: "ward-linux-arm64", body: arm64},
+		{id: 4, name: "ward-linux-arm64.sha256", body: []byte(arm64Sum + "\n")},
+		{id: 5, name: "SHA256SUMS", body: []byte(sums)},
+	}
+	stableAssets := []promotionTestAsset{
+		{id: 11, name: "ward-linux-amd64", body: amd64},
+		{id: 12, name: "ward-linux-amd64.sha256", body: []byte(amd64Sum + "\n")},
+		{id: 13, name: "ward-linux-arm64", body: arm64},
+		{id: 14, name: "ward-linux-arm64.sha256", body: []byte(arm64Sum + "\n")},
+		{id: 15, name: "SHA256SUMS", body: []byte(sums)},
+	}
+
+	s := &promotionReleaseTestServer{
+		counts:             make(map[string]int),
+		draftAssetsByName:  make(map[string]*promotionTestAsset),
+		stableAssetsByName: make(map[string]*promotionTestAsset),
+	}
+	for _, asset := range draftAssets {
+		cp := asset
+		s.draftAssetsByName[asset.name] = &cp
+		s.draftAssetOrder = append(s.draftAssetOrder, asset.name)
+	}
+	for _, asset := range stableAssets {
+		cp := asset
+		s.stableAssetsByName[asset.name] = &cp
+		s.stableAssetOrder = append(s.stableAssetOrder, asset.name)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/tags/draft-testsha", func(w http.ResponseWriter, r *http.Request) {
+		s.record(r)
+		_, _ = io.WriteString(w, `{"id":99,"tag_name":"draft-testsha","draft":true}`)
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/tags/v0.1.0", func(w http.ResponseWriter, r *http.Request) {
+		s.record(r)
+		_, _ = io.WriteString(w, `{"id":100,"tag_name":"v0.1.0","draft":false}`)
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets", func(w http.ResponseWriter, r *http.Request) {
+		s.record(r)
+		s.writeAssetList(w, s.draftAssetOrder, s.draftAssetsByName)
+	})
+	mux.HandleFunc("/api/v1/repos/coilyco-flight-deck/ward/releases/100/assets", func(w http.ResponseWriter, r *http.Request) {
+		s.record(r)
+		s.writeAssetList(w, s.stableAssetOrder, s.stableAssetsByName)
+	})
+	for _, id := range []int{1, 2, 3, 4, 5} {
+		id := id
+		mux.HandleFunc(fmt.Sprintf("/api/v1/repos/coilyco-flight-deck/ward/releases/99/assets/%d", id), func(w http.ResponseWriter, r *http.Request) {
+			s.record(r)
+			asset := s.assetByID(true, id)
+			_, _ = io.WriteString(w, `{"id":`+strconv.Itoa(asset.id)+`,"name":"`+asset.name+`","browser_download_url":"`+s.URL+`/attachments/draft/`+strconv.Itoa(asset.id)+`","type":"attachment"}`)
+		})
+		mux.HandleFunc(fmt.Sprintf("/attachments/draft/%d", id), func(w http.ResponseWriter, r *http.Request) {
+			s.record(r)
+			asset := s.assetByID(true, id)
+			_, _ = w.Write(asset.body)
+		})
+	}
+	for _, id := range []int{11, 12, 13, 14, 15} {
+		id := id
+		mux.HandleFunc(fmt.Sprintf("/api/v1/repos/coilyco-flight-deck/ward/releases/100/assets/%d", id), func(w http.ResponseWriter, r *http.Request) {
+			s.record(r)
+			asset := s.assetByID(false, id)
+			_, _ = io.WriteString(w, `{"id":`+strconv.Itoa(asset.id)+`,"name":"`+asset.name+`","browser_download_url":"`+s.URL+`/attachments/stable/`+strconv.Itoa(asset.id)+`","type":"attachment"}`)
+		})
+		mux.HandleFunc(fmt.Sprintf("/attachments/stable/%d", id), func(w http.ResponseWriter, r *http.Request) {
+			s.record(r)
+			asset := s.assetByID(false, id)
+			_, _ = w.Write(asset.body)
+		})
+	}
+	s.Server = httptest.NewServer(mux)
+	t.Cleanup(s.Close)
+	return s
+}
+
+func (s *promotionReleaseTestServer) assetByID(draft bool, id int) *promotionTestAsset {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var assets map[string]*promotionTestAsset
+	if draft {
+		assets = s.draftAssetsByName
+	} else {
+		assets = s.stableAssetsByName
+	}
+	for _, asset := range assets {
+		if asset.id == id {
+			return asset
+		}
+	}
+	return nil
+}
+
+func (s *promotionReleaseTestServer) draftHash(name string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	asset := s.draftAssetsByName[name]
+	if asset == nil {
+		return ""
+	}
+	body := string(asset.body)
+	if strings.HasSuffix(name, ".sha256") {
+		return strings.TrimSpace(body)
+	}
+	sum := sha256.Sum256(asset.body)
+	return hex.EncodeToString(sum[:])
+}
+
+func (s *promotionReleaseTestServer) writeAssetList(w http.ResponseWriter, order []string, assets map[string]*promotionTestAsset) {
+	if len(order) == 0 {
+		_, _ = w.Write([]byte(`[]`))
+		return
+	}
+	var b strings.Builder
+	b.WriteString("[")
+	for i, name := range order {
+		asset := assets[name]
+		if asset == nil {
+			continue
+		}
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(`{"id":`)
+		b.WriteString(strconv.Itoa(asset.id))
+		b.WriteString(`,"name":"`)
+		b.WriteString(asset.name)
+		b.WriteString(`"}`)
+	}
+	b.WriteString("]")
+	_, _ = w.Write([]byte(b.String()))
+}
+
+func (s *promotionReleaseTestServer) count(key string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.counts[key]
+}
+
+func (s *promotionReleaseTestServer) record(r *http.Request) {
+	key := r.Method + " " + r.URL.Path
+	if r.URL.RawQuery != "" {
+		key += "?" + r.URL.RawQuery
+	}
+	s.mu.Lock()
+	s.counts[key]++
+	s.mu.Unlock()
+}
+
+func runPromoteDraftAssets(t *testing.T, srv *promotionReleaseTestServer, dist string) (string, error) {
+	t.Helper()
+	cmd := exec.Command("bash", filepath.Join(repoRoot(t), "scripts", "promote-draft-assets.sh"))
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(),
+		"DRAFT_TAG=draft-testsha",
+		"FORGEJO_API="+srv.URL+"/api/v1/repos/coilyco-flight-deck/ward",
+		"TOKEN=secret",
+		"DIST_DIR="+dist,
+		"MIN_PLATFORM_BYTES=16",
+	)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 func (s *releaseAssetTestServer) count(key string) int {

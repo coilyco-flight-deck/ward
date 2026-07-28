@@ -12,6 +12,9 @@ Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.c
   draft assets to the public version, and updates install channels under a
   no-cancel concurrency queue: promoted shas release in sequence, never
   overlap-and-cancel.
+- the stable release is published only after the staged bytes are fetched
+  through the raw-byte resolver, checked against `SHA256SUMS`, uploaded, and
+  read back through the same resolver again.
 - `promote.yml` also refreshes the `ward:release` container image alias before
   promotion with a registry copy helper, and `release.yml` verifies that alias
   resolves before it publishes.
@@ -44,6 +47,8 @@ Ward releases are Forgejo-canonical and two-stage ([ward#1117](https://forgejo.c
   `release`.
 - Ward publishes immutable version tags and checksums, not moving `release` or
   `latest` aliases.
+- stage-two promotion rejects metadata-shaped payloads and does not mark the
+  release public until the uploaded files round-trip through the byte resolver.
 - the Scoop bucket bump is best-effort: if the write token is absent or the
   bucket push fails, the Forgejo release still stays green and the manifest can
   be retried separately.

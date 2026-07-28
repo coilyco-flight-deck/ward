@@ -125,41 +125,8 @@ jobs:
           TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p dist
-          rel_json=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
-            "${FORGEJO_API}/releases/tags/${DRAFT_TAG}")
-          rel_id=$(printf '%s' "$rel_json" | node -e '
-            process.stdout.write(String(JSON.parse(require("fs").readFileSync(0, "utf8")).id || ""));
-          ')
-          if [ -z "${rel_id:-}" ]; then
-            echo "::error::no draft release found for ${DRAFT_TAG}" >&2
-            exit 1
-          fi
-          assets=$(curl -fsSL -H "Authorization: token ${TOKEN}" \
-            "${FORGEJO_API}/releases/${rel_id}/assets?per_page=100" || echo '[]')
-          count=$(printf '%s' "$assets" | node -e '
-            const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
-            process.stdout.write(String((a || []).length));
-          ')
-          if [ "$count" = "0" ]; then
-            echo "::error::draft release ${DRAFT_TAG} has no assets to promote" >&2
-            exit 1
-          fi
-          printf '%s' "$assets" | node -e '
-            const a = JSON.parse(require("fs").readFileSync(0, "utf8") || "[]");
-            for (const asset of a || []) {
-              console.log(`${asset.id}\t${asset.name}`);
-            }
-          ' | while IFS="$(printf '\t')" read -r asset_id name; do
-            [ -n "$asset_id" ] || continue
-            curl -fsSL -H "Authorization: token ${TOKEN}" \
-              -H "Accept: application/octet-stream" \
-              "${FORGEJO_API}/releases/${rel_id}/assets/${asset_id}" \
-              -o "dist/${name}"
-            echo "fetched ${name} from ${DRAFT_TAG}"
-          done
+          bash scripts/promote-draft-assets.sh
           ls -l dist
-          cat dist/SHA256SUMS
 
       - name: Upload assets to the Forgejo release
         env:
@@ -197,6 +164,13 @@ jobs:
               "${FORGEJO_API}/releases/${rel_id}/assets?name=${name}"
             echo "uploaded ${name} to Forgejo"
           done
+
+      - name: Verify stable release assets before publication
+        env:
+          TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash scripts/verify-release-assets.sh
 
       - name: Publish the Forgejo release after assets land
         env:
