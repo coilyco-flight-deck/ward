@@ -34,7 +34,7 @@ The role determines what the run is trying to do. The harness determines how
 the run is authenticated and what model or CLI it talks to. The workflow
 determines where the work is allowed to land.
 Ward resolves its harness and launch defaults from baked AOS-authored policy.
-An AOSguard operator config reference cannot alter a native agent launch.
+An AOSguard operator config reference cannot alter a native agent launch. Use [terminology.md](terminology.md) when changing these words.
 
 ## What changed here
 

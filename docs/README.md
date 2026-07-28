@@ -5,6 +5,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 ## Core
 
 - [architecture.md](architecture.md) - three layers.
+- [terminology.md](terminology.md) - vocabulary, conceptual model, non-equivalences, and analogy bank.
 - [FEATURES.md](FEATURES.md) - shipped surface.
 - [compat-surface.md](compat-surface.md) - shipped providers and non-providers.
 - [exec-verb.md](exec-verb.md) - guarded dev verbs.

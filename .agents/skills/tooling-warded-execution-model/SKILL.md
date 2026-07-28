@@ -5,12 +5,14 @@ description: The warded-agent execution model - container lifecycle, roles, /wor
 
 # tooling-warded-execution-model
 
-`ward agent` (public face `warded`) runs a **container-exclusive** fleet: every agent run
-is a throwaway box, not a process on a converged host. The reflex an agent brings - "fleet
-config and hooks are converged by host ansible" - is **wrong inside ward** and routes fixes
-to the wrong repo. This skill is the durable corrective. Dispatch (resolving a ref, firing
-a run) is the sibling [`tooling-ward-agent`](../tooling-ward-agent/SKILL.md); this skill
-is the model *under* that verb, written from ward's `docs/` and `cmd/ward/`.
+`ward agent` (public face `warded`) runs a **container-exclusive** fleet: every
+agent run is a throwaway box, not a converged-host process. Assuming host
+ansible owns fleet config or hooks is **wrong inside ward** and routes fixes to
+the wrong repo. Dispatch is the sibling
+[`tooling-ward-agent`](../tooling-ward-agent/SKILL.md); this skill is the model
+under that verb, written from ward's `docs/` and `cmd/ward/`.
+
+Terminology: [`../../../docs/terminology.md`](../../../docs/terminology.md).
 
 ## When to fire
 
