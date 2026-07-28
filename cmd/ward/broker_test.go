@@ -422,15 +422,25 @@ func TestBrokerDispatchSeedRefusalPrintsHandledFallback(t *testing.T) {
 // standing in for the real direct executor in the socket round-trip.
 type fakeExecutor struct {
 	result         broker.Result
+	err            error
 	fileCalled     bool
+	fileTarget     broker.Target
+	fileTitle      string
+	fileBody       string
 	dispatchCalled bool
 	labelCalled    bool
 	labelMode      string
 	labels         []string
 }
 
-func (f *fakeExecutor) FileIssue(_ context.Context, _ broker.Target, _, _ string) (broker.Result, error) {
+func (f *fakeExecutor) FileIssue(_ context.Context, target broker.Target, title, body string) (broker.Result, error) {
 	f.fileCalled = true
+	f.fileTarget = target
+	f.fileTitle = title
+	f.fileBody = body
+	if f.err != nil {
+		return broker.Result{}, f.err
+	}
 	return f.result, nil
 }
 

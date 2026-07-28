@@ -809,6 +809,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// logs is a read verb, not a startup role: a director surface reads one
 			// engineer's logs through the dispatch broker. docs/agent-logs.md.
 			agentLogsCommand(),
+			// issue carries brokered issue writes for read-only director surfaces,
+			// and never creates a reservation or dispatches a worker.
+			agentIssueCommand(),
 			// dispatch-health is a read verb, not a startup role: it summarizes the
 			// current pathology and feeds the Claude status line.
 			agentDispatchHealthCommand(),

@@ -41,6 +41,9 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 ## `ward agent logs`
 
 - --tail, --follow
+## `ward agent issue create`
+
+- --title, --body-file
 ## `ward agent dispatch-health`
 
 - --repo, --org, --limit, --max-parallel, --json, --line
