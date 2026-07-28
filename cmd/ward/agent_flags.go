@@ -50,7 +50,7 @@ func renderAgentFlagsMarkdown(b *strings.Builder, cmd *cli.Command, path []strin
 
 func agentFlagsRenderPath(path []string) bool {
 	switch strings.Join(path, " ") {
-	case "ward agent roster", "ward agent flags", "ward agent pr status", "ward agent pr merge", "ward agent pr rerun":
+	case "ward agent roster", "ward agent flags", "ward agent issue", "ward agent pr status", "ward agent pr merge", "ward agent pr rerun":
 		return false
 	default:
 		return true

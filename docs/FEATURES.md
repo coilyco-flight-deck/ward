@@ -37,6 +37,8 @@ Inventory of what `ward` ships today.
 - PR repair classification.
 - Ward-owned Claude tool-failure producer and local schema-v1 buffer. See [tool-failures.md](tool-failures.md).
 - Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
+- `ward agent issue create` files a Forgejo issue through the read-only
+  director credential broker without dispatching an engineer.
 - `ward agent` roles and workflows. See [agent.md](agent.md).
 - Dispatch-health surfacing.
 - PR repair input mode.
