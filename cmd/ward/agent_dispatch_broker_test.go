@@ -144,8 +144,6 @@ func TestDispatchBrokerValidatesLogsShape(t *testing.T) {
 		name string
 		req  dispatchBrokerRequest
 	}{
-		{"no target", dispatchBrokerRequest{Action: dispatchActionLogs}},
-		{"empty target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "  "}},
 		{"logs carries launch argv", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "coilyco-flight-deck/ward#1", Argv: []string{"engineer", "x"}}},
 		{"flag target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "--bogus"}},
 		{"url target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "https://example.com/x"}},
@@ -162,6 +160,8 @@ func TestDispatchBrokerValidatesLogsShape(t *testing.T) {
 		name string
 		req  dispatchBrokerRequest
 	}{
+		{"no target", dispatchBrokerRequest{Action: dispatchActionLogs}},
+		{"empty target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "  "}},
 		{"issue-ref target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "coilyco-flight-deck/ward#625"}},
 		{"container-name target", dispatchBrokerRequest{Action: dispatchActionLogs, Target: "engineer-claude-ward-625"}},
 	} {
@@ -434,6 +434,53 @@ func TestForwardAgentStopPrintRequestsPreview(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "would stop engineer container engineer-claude-ward-625 on host ward") {
 		t.Fatalf("print output = %q, want the preview stop line", stderr.String())
+	}
+}
+
+func TestRunAgentLogsWithoutTargetForwardsComposeGroupDefault(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, Source: "compose project ward-director-ward-codex (2 containers) --tail 100"})
+		_, _ = io.WriteString(conn, "===== ward agent logs: director-codex-ward-1567 =====\nline\n")
+	})
+
+	r := &Runner{Runner: &shell.Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}}
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-1567")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+	cmd := parseCommandForTest(t, agentLogsCommand().Flags, []string{"logs"})
+	if err := r.runAgentLogs(t.Context(), cmd); err != nil {
+		t.Fatalf("run logs without target: %v", err)
+	}
+	req := <-gotReq
+	if req.Action != dispatchActionLogs {
+		t.Errorf("action = %q, want logs", req.Action)
+	}
+	if req.Target != "" {
+		t.Errorf("target = %q, want empty compose-group request", req.Target)
+	}
+	if req.Tail != agentLogsDefaultGroupTail {
+		t.Errorf("tail = %d, want %d", req.Tail, agentLogsDefaultGroupTail)
+	}
+	if req.Follow {
+		t.Error("default group request should not follow")
+	}
+	if len(req.Argv) != 0 {
+		t.Errorf("logs request carried launch argv: %v", req.Argv)
+	}
+	if !strings.Contains(r.Runner.Stderr.(*bytes.Buffer).String(), "compose project ward-director-ward-codex (2 containers) --tail 100") {
+		t.Errorf("stderr did not name the compose group: %q", r.Runner.Stderr.(*bytes.Buffer).String())
+	}
+	if !strings.Contains(r.Runner.Stdout.(*bytes.Buffer).String(), "===== ward agent logs: director-codex-ward-1567 =====") {
+		t.Errorf("stdout did not relay grouped log body: %q", r.Runner.Stdout.(*bytes.Buffer).String())
 	}
 }
 

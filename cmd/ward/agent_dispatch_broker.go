@@ -1184,15 +1184,18 @@ func validateDispatchBrokerStop(req dispatchBrokerRequest) error {
 	return nil
 }
 
-// validateDispatchBrokerLogs checks the logs shape: a target, no argv, and a
-// non-negative tail. follow is just a request hint.
+// validateDispatchBrokerLogs checks the logs shape: optional target, no argv, and
+// a non-negative tail. An empty target means the current Compose group.
 func validateDispatchBrokerLogs(req dispatchBrokerRequest) error {
 	if len(req.Argv) != 0 {
 		return fmt.Errorf("dispatch broker: logs takes no launch argv, got %v", req.Argv)
 	}
 	target := strings.TrimSpace(req.Target)
 	if target == "" {
-		return fmt.Errorf("dispatch broker: logs requires a target (owner/repo#N or a container name)")
+		if req.Tail < 0 {
+			return fmt.Errorf("dispatch broker: logs tail must be >= 0")
+		}
+		return nil
 	}
 	if strings.ContainsRune(target, '\x00') {
 		return fmt.Errorf("dispatch broker: logs target contains NUL")
@@ -1252,9 +1255,21 @@ func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
 	return validateDispatchBrokerArgv(req.Role, req.Argv[2:])
 }
 
-// runDispatchBrokerLogs resolves one engineer run to a live docker source or a
-// drained archive, then streams its logs back over the request connection.
+// runDispatchBrokerLogs resolves one explicit run, or the current Compose group
+// when no target is supplied, then streams logs back over the request connection.
 func (r *Runner) runDispatchBrokerLogs(ctx context.Context, conn net.Conn, req dispatchBrokerRequest) {
+	if strings.TrimSpace(req.Target) == "" {
+		group, err := r.resolveCurrentComposeGroupLogs(ctx, req.Requester, req.Tail, req.Follow)
+		if err != nil {
+			writeDispatchBrokerLogsResponse(conn, "", err)
+			return
+		}
+		writeDispatchBrokerLogsResponse(conn, group.String(), nil)
+		if err := r.streamAgentLogsGroup(ctx, group, conn); err != nil {
+			fmt.Fprintf(os.Stderr, "ward dispatch broker: logs stream failed: %v\n", err)
+		}
+		return
+	}
 	source, err := r.resolveDispatchBrokerLogsSource(ctx, req)
 	if err != nil {
 		writeDispatchBrokerLogsResponse(conn, "", err)

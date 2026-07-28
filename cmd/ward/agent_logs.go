@@ -29,6 +29,11 @@ const (
 	agentLogSourceFile   agentLogSourceKind = "file"
 )
 
+const (
+	agentLogsDefaultGroupTail = 100
+	composeProjectLabel       = "com.docker.compose.project"
+)
+
 // agentLogSource is the resolved log source the host prints and streams from.
 type agentLogSource struct {
 	Kind           agentLogSourceKind
@@ -39,6 +44,21 @@ type agentLogSource struct {
 	ArchiveMeta    runMeta
 	Tail           int
 	Follow         bool
+}
+
+type agentLogGroupSource struct {
+	Project string
+	Sources []agentLogSource
+	Tail    int
+}
+
+func (s agentLogGroupSource) String() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "compose project %s (%d containers)", s.Project, len(s.Sources))
+	if s.Tail > 0 {
+		fmt.Fprintf(&b, " --tail %d", s.Tail)
+	}
+	return b.String()
 }
 
 func (s agentLogSource) String() string {
@@ -103,14 +123,17 @@ func agentLogsCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "logs",
 		Usage:     "Read one engineer's run logs through the dispatch broker - director-surface, source-reported, tail/follow aware.",
-		ArgsUsage: "<owner/repo#N | #N | container-name>",
+		ArgsUsage: "[owner/repo#N | #N | container-name]",
 		Description: `logs reads one engineer run's console output through the supervised dispatch broker when a
 director surface is attached, or host-side otherwise. It resolves the target the same
 way ` + "`ward agent stop`" + ` does: issue ref or container name. When a live engineer
 container is present it prefers ` + "`docker logs`" + `, and when that container has been
 removed it falls back to the drained host archive at ~/.ward/agent-logs/<container>/console.log
-or the redacted sibling. The chosen source is printed before the body streams.
+or the redacted sibling. With no target, it discovers the current Ward director Compose
+project and prints the last 100 lines for every container in that group. The chosen
+source is printed before the body streams.
 
+  ward agent logs
   ward agent logs coilyco-flight-deck/ward#692
   ward agent logs engineer-goose-ward-692
   ward agent logs coilyco-flight-deck/ward#692 --tail 200
@@ -134,14 +157,14 @@ or the redacted sibling. The chosen source is printed before the body streams.
 // supervised dispatch broker.
 func (r *Runner) runAgentLogs(ctx context.Context, c *cli.Command) error {
 	arg := strings.TrimSpace(c.Args().First())
-	if arg == "" {
-		return fmt.Errorf("ward agent logs: a target is required: owner/repo#N, a bare #N, or a container name")
-	}
 	tail := c.Int("tail")
 	if tail < 0 {
 		return fmt.Errorf("ward agent logs: --tail must be >= 0")
 	}
 	follow := c.Bool("follow")
+	if arg == "" && !c.IsSet("tail") {
+		tail = agentLogsDefaultGroupTail
+	}
 
 	if addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)); addr != "" && os.Getenv("WARD_READONLY") == "1" {
 		if err := r.forwardAgentLogsToHostBroker(ctx, addr, arg, tail, follow); err != nil {
@@ -151,6 +174,9 @@ func (r *Runner) runAgentLogs(ctx context.Context, c *cli.Command) error {
 		} else {
 			return nil
 		}
+	}
+	if arg == "" {
+		return r.runAgentLogsForCurrentComposeGroup(ctx, tail, follow, strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")))
 	}
 	source, err := r.resolveAgentLogsSource(ctx, arg, tail, follow)
 	if err != nil {
@@ -182,6 +208,15 @@ func (r *Runner) forwardAgentLogsToHostBroker(ctx context.Context, addr, target 
 		return fmt.Errorf("ward agent logs: relay host output: %w", err)
 	}
 	return nil
+}
+
+func (r *Runner) runAgentLogsForCurrentComposeGroup(ctx context.Context, tail int, follow bool, requester string) error {
+	group, err := r.resolveCurrentComposeGroupLogs(ctx, requester, tail, follow)
+	if err != nil {
+		return fmt.Errorf("ward agent logs: %w", err)
+	}
+	writef(r.Runner.Stderr, "ward agent logs: using %s\n", group.String())
+	return r.streamAgentLogsGroup(ctx, group, r.Runner.Stdout)
 }
 
 // resolveAgentLogsSource resolves the target to a live agent container or a
@@ -266,6 +301,59 @@ func (r *Runner) resolveAgentLogsSourceForRunningName(ctx context.Context, name 
 	return agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: r.containerTranscriptTree(ctx, name), Tail: tail, Follow: follow}, nil
 }
 
+func (r *Runner) resolveCurrentComposeGroupLogs(ctx context.Context, requester string, tail int, follow bool) (agentLogGroupSource, error) {
+	if follow {
+		return agentLogGroupSource{}, fmt.Errorf("--follow requires an explicit target")
+	}
+	project, err := r.currentComposeProject(ctx, requester)
+	if err != nil {
+		return agentLogGroupSource{}, err
+	}
+	names, err := r.composeProjectContainerNames(ctx, project)
+	if err != nil {
+		return agentLogGroupSource{}, err
+	}
+	if len(names) == 0 {
+		return agentLogGroupSource{}, fmt.Errorf("compose project %q has no containers", project)
+	}
+	sources := make([]agentLogSource, 0, len(names))
+	for _, name := range names {
+		sources = append(sources, agentLogSource{Kind: agentLogSourceDocker, Container: name, TranscriptTree: r.containerTranscriptTree(ctx, name), Tail: tail})
+	}
+	return agentLogGroupSource{Project: project, Sources: sources, Tail: tail}, nil
+}
+
+func (r *Runner) currentComposeProject(ctx context.Context, requester string) (string, error) {
+	if project := strings.TrimSpace(os.Getenv(envDispatchBrokerID)); project != "" {
+		return project, nil
+	}
+	for _, name := range []string{requester, strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME"))} {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		out, err := r.dockerCapture(ctx, "inspect", "--format", `{{index .Config.Labels "`+composeProjectLabel+`"}}`, name)
+		if err != nil {
+			continue
+		}
+		if project := strings.TrimSpace(string(out)); project != "" && project != "<no value>" {
+			return project, nil
+		}
+	}
+	return "", fmt.Errorf("no current compose group found from ward/director context")
+}
+
+func (r *Runner) composeProjectContainerNames(ctx context.Context, project string) ([]string, error) {
+	out, err := r.dockerCapture(ctx, "ps", "-a", "--format", "{{.Names}}",
+		"--filter", "label="+composeProjectLabel+"="+project)
+	if err != nil {
+		return nil, err
+	}
+	names := parseExitedContainerNames(string(out))
+	sort.Strings(names)
+	return names, nil
+}
+
 func selectSingleLogTarget(action, target string, names []string) (string, error) {
 	switch len(names) {
 	case 1:
@@ -328,6 +416,23 @@ func (r *Runner) streamAgentLogsSource(ctx context.Context, source agentLogSourc
 	default:
 		return fmt.Errorf("ward agent logs: unknown log source kind %q", source.Kind)
 	}
+}
+
+func (r *Runner) streamAgentLogsGroup(ctx context.Context, group agentLogGroupSource, w io.Writer) error {
+	for i, source := range group.Sources {
+		if i > 0 {
+			if _, err := fmt.Fprintln(w); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintf(w, "===== ward agent logs: %s =====\n", source.Container); err != nil {
+			return err
+		}
+		if err := r.streamAgentLogsSource(ctx, source, w); err != nil {
+			return fmt.Errorf("%s: %w", source.Container, err)
+		}
+	}
+	return nil
 }
 
 func (r *Runner) streamDockerAgentLogsSource(ctx context.Context, source agentLogSource, w io.Writer) error {

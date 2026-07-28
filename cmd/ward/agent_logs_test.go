@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,6 +10,54 @@ import (
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
 )
+
+func TestRunAgentLogsWithoutTargetStreamsCurrentComposeGroup(t *testing.T) {
+	r := fakeComposeGroupLogsDockerRunner(t, "ward-director-ward-codex", []string{
+		"ward-director-ward-codex-broker",
+		"director-codex-ward-1567",
+	})
+	var stdout, stderr bytes.Buffer
+	r.Runner.Stdout = &stdout
+	r.Runner.Stderr = &stderr
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-ward-1567")
+
+	cmd := parseCommandForTest(t, agentLogsCommand().Flags, []string{"logs"})
+	if err := r.runAgentLogs(t.Context(), cmd); err != nil {
+		t.Fatalf("runAgentLogs without target: %v", err)
+	}
+
+	if got := stderr.String(); !strings.Contains(got, "compose project ward-director-ward-codex (2 containers) --tail 100") {
+		t.Fatalf("stderr = %q, want compose project source with default tail", got)
+	}
+	for _, want := range []string{
+		"===== ward agent logs: director-codex-ward-1567 =====",
+		"logs --tail 100 director-codex-ward-1567",
+		"===== ward agent logs: ward-director-ward-codex-broker =====",
+		"logs --tail 100 ward-director-ward-codex-broker",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunAgentLogsExplicitTargetKeepsExistingTailDefault(t *testing.T) {
+	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-692\n", "explicit-target\n", nil, "")
+	var stdout, stderr bytes.Buffer
+	r.Runner.Stdout = &stdout
+	r.Runner.Stderr = &stderr
+
+	cmd := parseCommandForTest(t, agentLogsCommand().Flags, []string{"logs", "coilyco-flight-deck/ward#692"})
+	if err := r.runAgentLogs(t.Context(), cmd); err != nil {
+		t.Fatalf("runAgentLogs explicit target: %v", err)
+	}
+	if got := stderr.String(); !strings.Contains(got, "docker logs engineer-claude-ward-692") || strings.Contains(got, "--tail 100") {
+		t.Fatalf("stderr = %q, want explicit target without the group tail default", got)
+	}
+	if got := stdout.String(); got != "explicit-target\n" {
+		t.Fatalf("stdout = %q, want explicit docker logs body", got)
+	}
+}
 
 func TestResolveAgentLogsSourceFallsBackToDispatchLog(t *testing.T) {
 	setTestHome(t, t.TempDir())
@@ -108,6 +157,38 @@ func fakeDirectorIssueLogRunner(t *testing.T, visibleName string) *Runner {
 		"fi\n" +
 		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{json .Config.Env}}' ]; then\n" +
 		"  printf '%s\\n' '[\"WARD_AGENT_HOME=/home/ubuntu/.ward\"]'\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
+		"exit 1\n"
+	writeTestShellCommand(t, script, body)
+	return &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
+}
+
+func fakeComposeGroupLogsDockerRunner(t *testing.T, project string, names []string) *Runner {
+	t.Helper()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\n" +
+		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{index .Config.Labels \"com.docker.compose.project\"}}' ]; then\n" +
+		"  printf '%s\\n' " + shellQuote(project) + "\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{json .Config.Env}}' ]; then\n" +
+		"  printf '%s' " + shellQuote(`[]`) + "\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"if [ \"$1\" = ps ] && [ \"$2\" = -a ]; then\n"
+	for _, name := range names {
+		body += "  printf '%s\\n' " + shellQuote(name) + "\n"
+	}
+	body += "  exit 0\n" +
+		"fi\n" +
+		"if [ \"$1\" = logs ]; then\n" +
+		"  printf '%s\\n' \"$*\"\n" +
 		"  exit 0\n" +
 		"fi\n" +
 		"printf '%s\\n' \"unexpected docker args: $*\" >&2\n" +
