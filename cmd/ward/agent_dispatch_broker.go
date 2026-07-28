@@ -376,6 +376,8 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 		return paths.ConsolePath, err
 	}
 	req.JournalPath = journalPath
+	logDispatchDecision(logf, "broker", "request-accepted", "request_id=%s action=%s role=%s requester=%s argv=%s",
+		paths.RequestID, dispatchAction(req.Action), req.Role, emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: request id: %s\n", paths.RequestID)
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: %s requested `ward agent %s`\n",
 		emptyDefault(req.Requester, "unknown-container"), redactDispatchBrokerArgv(req.Argv))
@@ -391,7 +393,10 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: broker accepted launch request (request id %s; artifact %s)\n", paths.RequestID, paths.Dir)
 	restore := func() {}
 	if !dispatchBrokerServiceMode() {
+		logDispatchDecision(logf, "broker", "stdio-routing", "mode=in-process redirect=artifact")
 		restore = redirectStdioToLog(logf)
+	} else {
+		logDispatchDecision(logf, "broker", "stdio-routing", "mode=service child_stdout=artifact")
 	}
 	started := make(chan struct{})
 	go r.handleHostDispatchBrokerLaunch(ctx, req, paths, logf, restore, lock, started)
@@ -436,42 +441,56 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 		dispatchStdioRestoreHook()
 	}()
 	// This is the detach boundary; later milestones remain asynchronous.
+	logDispatchDecision(logf, "broker", "detach-boundary", "response=accepted before container visibility and harness startup")
 	fmt.Fprintln(os.Stderr, "ward dispatch broker: broker Ward launch started; response detaches before container visibility and engineer harness start")
 	close(started)
 	if lock != nil {
+		logDispatchDecision(logf, "broker", "ref-lock", "serializing same-issue launch for %s", emptyDefault(argRef(req.Argv), "(unknown-ref)"))
 		lock.Lock()
 		defer lock.Unlock()
+		logDispatchDecision(logf, "broker", "ref-lock-acquired", "same-issue launch lock acquired")
+	} else {
+		logDispatchDecision(logf, "broker", "ref-lock", "skipped: request ref did not parse")
 	}
+	logDispatchDecision(logf, "broker", "phase", "persisting %s", dispatchPhasePreflight)
 	if err := updateDispatchJournal(req.JournalPath, dispatchPhasePreflight, "", dispatchOutcomeInProgress, nil); err != nil {
 		resultErr = fmt.Errorf("dispatch broker: persist preflight phase: %w", err)
 		return
 	}
+	logDispatchDecision(logf, "broker", "backpressure-open-pr", "checking broker-time repo queue gate")
 	if err := r.dispatchBrokerOpenPRBackpressureCheck(ctx, req, agentCmdline(dispatchBrokerRequestMode(req), req.Role)); err != nil {
+		logDispatchDecision(logf, "broker", "backpressure-open-pr", "deferred: %s", firstLine(err.Error()))
 		resultErr = err
 		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, true)
 		return
 	}
+	logDispatchDecision(logf, "broker", "backpressure-open-pr", "passed")
 	launchCtx := withDispatchLaunchReservationTracking(ctx)
 	var launchErr error
 	if dispatchBrokerServiceMode() {
+		logDispatchDecision(logf, "broker", "launch-runner", "mode=service child process")
 		launchErr = runDispatchBrokerChild(launchCtx, req, logf)
 	} else {
-		launchErr = withBrokerForwardingDisabled(func() error {
+		logDispatchDecision(logf, "broker", "launch-runner", "mode=in-process broker forwarding disabled")
+		launchErr = withBrokerForwardingDisabled(req, func() error {
 			return dispatchBrokerLaunch(launchCtx, req)
 		})
 	}
 	if launchErr != nil {
 		err := launchErr
 		if isPartialLaunchError(err) {
+			logDispatchDecision(logf, "broker", "launch-result", "partial launch: %s", firstLine(err.Error()))
 			resultErr = err
 			r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, false)
 			return
 		}
+		logDispatchDecision(logf, "broker", "launch-result", "failed before confirmed visibility: %s", firstLine(err.Error()))
 		resultErr = err
 		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, &restored, &finalized, err, true)
 		return
 	}
-	if err := r.maybeHandleDispatchBrokerEngineerVisibility(ctx, req, paths, restore, &restored, &finalized); err != nil {
+	logDispatchDecision(logf, "broker", "launch-result", "host launch command returned; checking visibility")
+	if err := r.maybeHandleDispatchBrokerEngineerVisibility(ctx, req, paths, logf, restore, &restored, &finalized); err != nil {
 		resultErr = err
 		return
 	}
@@ -545,11 +564,12 @@ func removeEnvKeys(env []string, keys ...string) []string {
 	return out
 }
 
-func (r *Runner) maybeHandleDispatchBrokerEngineerVisibility(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, restore func(), restored, finalized *bool) error {
+func (r *Runner) maybeHandleDispatchBrokerEngineerVisibility(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, logf io.Writer, restore func(), restored, finalized *bool) error {
 	if dispatchAction(req.Action) != dispatchActionLaunch || req.Role != roleEngineer {
+		logDispatchDecision(logf, "broker", "visibility", "skipped for action=%s role=%s", dispatchAction(req.Action), req.Role)
 		return nil
 	}
-	if err := r.waitForDispatchBrokerEngineerVisibility(ctx, req); err != nil {
+	if err := r.waitForDispatchBrokerEngineerVisibility(ctx, req, logf); err != nil {
 		r.finishDispatchBrokerLaunchFailure(ctx, req, paths, restore, restored, finalized, err, true)
 		return err
 	}
@@ -590,29 +610,38 @@ func waitForDispatchBrokerLaunchStart(ctx context.Context, logPath string, start
 
 // waitForDispatchBrokerEngineerVisibility polls until the forwarded engineer is
 // visible in the director-facing list or the confirmation window expires.
-func (r *Runner) waitForDispatchBrokerEngineerVisibility(ctx context.Context, req dispatchBrokerRequest) error {
+func (r *Runner) waitForDispatchBrokerEngineerVisibility(ctx context.Context, req dispatchBrokerRequest, logf io.Writer) error {
 	ref, err := parseAgentIssueRef(req.Argv[1])
 	if err != nil {
 		return err
 	}
+	logDispatchDecision(logf, "broker", "visibility", "polling for %s up to %s", ref, dispatchBrokerVisibilityTimeout)
 	deadlineCtx, cancel := context.WithTimeout(ctx, dispatchBrokerVisibilityTimeout)
 	defer cancel()
 	ticker := time.NewTicker(dispatchBrokerVisibilityPoll)
 	defer ticker.Stop()
+	polls := 0
 	for {
+		polls++
 		visible, err := r.dispatchBrokerEngineerVisible(deadlineCtx, ref)
 		if err != nil {
+			logDispatchDecision(logf, "broker", "visibility", "error after %d poll(s): %s", polls, firstLine(err.Error()))
 			releaseDispatchLaunchReservation(ref)
 			return fmt.Errorf(
 				"dispatch broker: launch accepted but could not confirm engineer visibility; "+
 					"inspect with `ward agent list` from the director surface: %w", err)
 		}
 		if visible {
+			logDispatchDecision(logf, "broker", "visibility", "confirmed after %d poll(s)", polls)
 			forgetDispatchLaunchReservationRelease(ref)
 			return nil
 		}
+		if polls == 1 {
+			logDispatchDecision(logf, "broker", "visibility", "not visible on first poll; suppressing repeated unchanged polls")
+		}
 		select {
 		case <-deadlineCtx.Done():
+			logDispatchDecision(logf, "broker", "visibility", "timed out after %d poll(s)", polls)
 			releaseDispatchLaunchReservation(ref)
 			return fmt.Errorf(
 				"dispatch broker: launch accepted but the forwarded engineer never became visible; " +
@@ -928,7 +957,7 @@ func dispatchLaunchReleaseAssetsDeferredCommentBody(mode containerMode, containe
 
 // withBrokerForwardingDisabled temporarily clears the read-only surface markers so
 // the host-side launch does not re-enter the broker and deadlock on itself.
-func withBrokerForwardingDisabled(fn func() error) error {
+func withBrokerForwardingDisabled(req dispatchBrokerRequest, fn func() error) error {
 	dispatchBrokerLaunchMu.Lock()
 	defer dispatchBrokerLaunchMu.Unlock()
 
@@ -937,14 +966,27 @@ func withBrokerForwardingDisabled(fn func() error) error {
 		set   bool
 	}
 	saved := map[string]savedEnv{}
-	for _, key := range []string{"WARD_READONLY", envDispatchBrokerAddr, envDispatchBrokerToken} {
+	cleared := []string{"WARD_READONLY", envDispatchBrokerAddr, envDispatchBrokerToken}
+	requestKeys := []string{envDispatchRequestID, envDispatchJournalPath, envDispatchResumeContainer}
+	for _, key := range append(append([]string{}, cleared...), requestKeys...) {
 		if v, ok := os.LookupEnv(key); ok {
 			saved[key] = savedEnv{value: v, set: true}
 		}
+	}
+	for _, key := range cleared {
 		_ = os.Unsetenv(key)
 	}
+	if req.RequestID != "" {
+		_ = os.Setenv(envDispatchRequestID, req.RequestID)
+	}
+	if req.JournalPath != "" {
+		_ = os.Setenv(envDispatchJournalPath, req.JournalPath)
+	}
+	if req.ResumeContainer != "" {
+		_ = os.Setenv(envDispatchResumeContainer, req.ResumeContainer)
+	}
 	defer func() {
-		for _, key := range []string{"WARD_READONLY", envDispatchBrokerAddr, envDispatchBrokerToken} {
+		for _, key := range append(append([]string{}, cleared...), requestKeys...) {
 			if v, ok := saved[key]; ok && v.set {
 				_ = os.Setenv(key, v.value)
 				continue

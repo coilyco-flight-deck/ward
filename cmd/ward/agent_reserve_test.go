@@ -583,7 +583,7 @@ func TestWaitForDispatchBrokerEngineerVisibilityReleasesFailedLaunchIntent(t *te
 		_ = removeAgentReservation(path)
 	})
 	r, _, _ := bufRunner(dockerAbsentStub(t))
-	err = r.waitForDispatchBrokerEngineerVisibility(context.Background(), dispatchBrokerRequest{Argv: []string{"engineer", ref.String()}})
+	err = r.waitForDispatchBrokerEngineerVisibility(context.Background(), dispatchBrokerRequest{Argv: []string{"engineer", ref.String()}}, io.Discard)
 	if err == nil {
 		t.Fatal("waitForDispatchBrokerEngineerVisibility: want a visibility failure, got nil")
 	}

@@ -314,6 +314,9 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 	seed := "(no seed argv; interactive or seedless run)"
 	if len(agentArgs) > 0 {
 		seed = strings.Join(agentArgs, " ")
+		if requestID := brokeredDispatchRequestID(); requestID != "" {
+			seed = fmt.Sprintf("(seed omitted from brokered container context log; dispatch request %s; %s)", requestID, seedSummary(seed))
+		}
 	}
 	writef(os.Stderr, "===== ward run context (ward#609) =====\n"+
 		"repo:     %s/%s\nref:      %s\nbranch:   %s\ndriver:   %s (agent %s)\nrun:      %s\n"+
