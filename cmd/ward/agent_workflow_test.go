@@ -240,6 +240,16 @@ func TestAgentSeedPromptWorkflow(t *testing.T) {
 	if !strings.Contains(skipped, "the pull request is open and the review gate was intentionally skipped") {
 		t.Errorf("skipped review should change the landing phrase away from merge-ready\n got: %s", skipped)
 	}
+	prMergeSkipped := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowPullRequestAndMerge, false, "")
+	if strings.Contains(prMergeSkipped, "pending brokered QA") {
+		t.Errorf("pull-request-and-merge skipped review must not claim brokered QA is pending\n got: %s", prMergeSkipped)
+	}
+	if !strings.Contains(prMergeSkipped, "QA is a separate, opt-in exact-commit verification role") {
+		t.Errorf("pull-request-and-merge skipped review should describe the exact-commit QA role\n got: %s", prMergeSkipped)
+	}
+	if !strings.Contains(prMergeSkipped, "the pull request is open and the review gate was intentionally skipped") {
+		t.Errorf("pull-request-and-merge skipped review should keep the skip landing phrase\n got: %s", prMergeSkipped)
+	}
 
 	branchOnly := agentSeedPromptWorkflow(ref, "reframe ward", "do it", "", true, nil, workflowRemoteBranchOnly, true, "")
 	if !strings.Contains(branchOnly, "remote-branch-only") {

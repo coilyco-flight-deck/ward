@@ -383,9 +383,9 @@ const emptyBodySeedAction = "This issue has no body, so work from the title alon
 	"issue content, screenshots, or other artifacts that are not there (an empty body is not an " +
 	"invitation to invent one). The comment thread at that URL may hold later context worth a quick read."
 
-// TODO(ward#792): remove this emergency default once brokered QA replaces the
-// in-container review gate.
-const temporaryReviewGateSkipReason = "the temporary ward default pending brokered QA"
+// TODO(ward#792): remove this emergency default once the exact-commit QA role
+// becomes the default verification path.
+const temporaryReviewGateSkipReason = "implementation and QA are role-separated; QA is a separate, opt-in exact-commit verification role bound to the exact candidate commit"
 
 func reviewGateDisabledByTemporaryDefault(role string) bool {
 	return role == "engineer"
@@ -411,8 +411,8 @@ func headlessReflection(ref agentIssueRef, wf workflowMode, reviewGate bool, rev
 	}
 	reviewLine := "If a review ran, read `~/.ward/review-summary.txt` and copy its exact one-line summary into the same final comment."
 	if !reviewGate {
-		reviewLine = "The in-container review gate was intentionally skipped"
-		if reviewSkip = strings.TrimSpace(reviewSkip); reviewSkip != "" {
+		reviewLine = "The in-container review gate was intentionally skipped because implementation and QA are role-separated; QA is a separate, opt-in exact-commit verification role bound to the exact candidate commit"
+		if reviewSkip = strings.TrimSpace(reviewSkip); reviewSkip != "" && reviewSkip != temporaryReviewGateSkipReason {
 			reviewLine += " because " + reviewSkip
 		}
 		reviewLine += ", so the final comment must say that explicitly."

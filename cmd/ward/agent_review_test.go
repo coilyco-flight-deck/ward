@@ -141,6 +141,12 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	if !strings.Contains(off, "intentionally skipped") {
 		t.Errorf("skipped review must be explicit in the final comment instructions")
 	}
+	if strings.Contains(off, "pending brokered QA") {
+		t.Errorf("skipped review must not claim brokered QA is pending:\n%s", off)
+	}
+	if !strings.Contains(off, "QA is a separate, opt-in exact-commit verification role") {
+		t.Errorf("skipped review must describe QA as a separate exact-commit role:\n%s", off)
+	}
 }
 
 // TestEngineerSeedDefaultsSkipReviewGate proves engineer dispatches now omit the
@@ -157,15 +163,18 @@ func TestEngineerSeedDefaultsSkipReviewGate(t *testing.T) {
 	if reviewGate {
 		t.Fatal("engineer dispatch default should skip the review gate")
 	}
-	if !strings.Contains(reviewSkip, "temporary ward default") {
-		t.Fatalf("skip reason = %q, want the temporary ward default to be named", reviewSkip)
+	if !strings.Contains(reviewSkip, "role-separated") || !strings.Contains(reviewSkip, "exact-commit verification role") {
+		t.Fatalf("skip reason = %q, want the exact-commit QA role wording", reviewSkip)
 	}
 	seed := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequest, reviewGate, reviewSkip)
 	if strings.Contains(seed, "REVIEW GATE") {
 		t.Fatalf("default engineer seed still carries the review gate clause:\n%s", seed)
 	}
-	if !strings.Contains(seed, "temporary ward default") {
-		t.Fatalf("default engineer seed should explain the temporary skip:\n%s", seed)
+	if strings.Contains(seed, "pending brokered QA") {
+		t.Fatalf("default engineer seed must not claim brokered QA is pending:\n%s", seed)
+	}
+	if !strings.Contains(seed, "QA is a separate, opt-in exact-commit verification role") {
+		t.Fatalf("default engineer seed should explain the exact-commit QA role:\n%s", seed)
 	}
 	if got := agentReviewCommand(); got == nil || got.Name != "review" {
 		t.Fatalf("agentReviewCommand() = %+v, want the manual review verb to remain available", got)
@@ -214,8 +223,8 @@ func TestReviewGateWantedHonorsSkipsAndConfig(t *testing.T) {
 		if wanted {
 			t.Fatal("temporary engineer default did not disable the review gate")
 		}
-		if !strings.Contains(reason, "temporary ward default") {
-			t.Fatalf("reason = %q, want the temporary ward default to be named", reason)
+		if !strings.Contains(reason, "role-separated") || !strings.Contains(reason, "exact-commit verification role") {
+			t.Fatalf("reason = %q, want the exact-commit QA role wording", reason)
 		}
 	})
 	t.Run("skip-review flag wins", func(t *testing.T) {
