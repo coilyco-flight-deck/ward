@@ -45,6 +45,26 @@ func (r agentIssueRef) String() string {
 	return fmt.Sprintf("%s/%s%s%d", r.Owner, r.Repo, sep, r.Number)
 }
 
+// durableTextRef names a carried issue with both compact identity and tracker
+// authority, so copied Ward text stays meaningful off the rendering forge.
+func (r agentIssueRef) durableTextRef() string {
+	u := strings.TrimSpace(r.url())
+	if u == "" {
+		return r.String()
+	}
+	return fmt.Sprintf("%s (%s)", r.String(), u)
+}
+
+// closingRef is the same-repo closing target Ward asks workers to put in PR
+// bodies and commit trailers. It is qualified even when the issue is local.
+func (r agentIssueRef) closingRef() string {
+	return fmt.Sprintf("%s#%d", r.repoSlug(), r.Number)
+}
+
+func (r agentIssueRef) closingTrailer() string {
+	return "closes " + r.closingRef()
+}
+
 // repoSlug renders the owner/repo pair without the issue number.
 func (r agentIssueRef) repoSlug() string {
 	return r.Owner + "/" + r.Repo
@@ -476,7 +496,7 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 		workflowTail = "For `pull-request` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
 	}
 	return fmt.Sprintf(
-		"REVIEW GATE (ward#134): before you land this change (%s), and ONLY after CI is green, run the "+
+		"REVIEW GATE (%s): before you land this change (%s), and ONLY after CI is green, run the "+
 			"in-container code-review pass:\n\n    ward agent review --ci-log <path-to-your-green-ci-output>\n\n"+
 			"It loads the hand-curated code-review skill from the companion checkout, starts with your own "+
 			"harness family by default, and can escalate to other families only as a later, higher-cost fallback. "+
@@ -495,7 +515,7 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 			"The gate's exit code mirrors the verdict (non-zero on block), so a shell `&&` also enforces it. Do "+
 			"not skip it, and do not land on a block. If the review was intentionally skipped via `--skip-review`, "+
 			"`--skip-preflight`, or config, the final `WARD-WORKFLOW` comment must say so explicitly.",
-		landing, landing, workflowTail)
+		wardIssueURL(134), landing, landing, workflowTail)
 }
 
 // grantedRepoDoneClause widens the done-condition for a --repo grant (ward#291):
@@ -602,9 +622,9 @@ func gooseLandingClause(ref agentIssueRef) string {
 		"\n\nGoose landing rule: if this run changes files, do not emit a terminal "+
 			"completion line until the same-repo closing commit already exists in the branch "+
 			"history and the work is ready for teardown. The deterministic success path is to "+
-			"commit with `closes #%d` (or an equivalent same-repo close trailer) before teardown, "+
+			"commit with `%s` (or an equivalent same-repo close trailer) before teardown, "+
 			"then let the normal completion boundary fire after the commit is in place.",
-		ref.Number)
+		ref.closingTrailer())
 }
 
 func seedIssueBodyParts(body string) (action, inline string) {
@@ -1184,7 +1204,7 @@ func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode container
 	}
 	var linkedIssue *Issue
 	var linkedComments []issueComment
-	if linkedNum, ok := directorLinkedIssueNumber(pr.Body); ok && linkedNum > 0 && linkedNum != ref.Number {
+	if linkedNum, ok := directorLinkedIssueNumber(ref.Owner, ref.Repo, pr.Body); ok && linkedNum > 0 && linkedNum != ref.Number {
 		linkedRef := agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: linkedNum, Forge: ref.Forge, Tracker: ref.trackerOrDefault()}
 		linkedIssue, err = r.fetchIssueByForge(ctx, agentCmdline(mode, "engineer"), ref.Forge, mode, linkedRef.Owner, linkedRef.Repo, linkedRef.Number)
 		if err != nil {
@@ -1692,7 +1712,7 @@ func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface s
 	// unsandboxed host read; ward#162) or no binary: proceed to the isolated run.
 	if !ok || !hostHasBinary(bin) {
 		if !hostOneShotTrusted(mode) {
-			writef(os.Stderr, "%s: %s is a local-model harness - skipping the unsandboxed host pre-flight and going straight to the isolated container run (ward#162).\n", label, bin)
+			writef(os.Stderr, "%s: %s is a local-model harness - skipping the unsandboxed host pre-flight and going straight to the isolated container run (%s).\n", label, bin, wardIssueURL(162))
 		} else {
 			writef(os.Stderr, "%s: %s self-assessment unavailable on this host; proceeding with the detached run.\n", label, bin)
 		}
@@ -2001,7 +2021,7 @@ func preflightNoGoComment(mode containerMode, surface, reason, read string) stri
 	if read = strings.TrimSpace(read); read != "" {
 		writef(&b, "\n## Full pre-flight read\n\n%s\n", read)
 	}
-	writef(&b, "\nPosted automatically by `%s` pre-flight (ward#147, ward#149).", agentCmdline(mode, surface))
+	writef(&b, "\nPosted automatically by `%s` pre-flight (%s, %s).", agentCmdline(mode, surface), wardIssueURL(147), wardIssueURL(149))
 	return preflightNoGoMarker + "\n" + collapsedIssueComment(visible, "pre-flight details", b.String())
 }
 
@@ -2017,13 +2037,14 @@ func blindfireIssueBody(mode containerMode, surface string, w resolvedWork, reas
 		body = "(the source issue had no description)"
 	}
 	var b strings.Builder
-	writef(&b, "Routed here from %s by `%s` pre-flight (ward#159): the feasibility "+
-		"read judged this work belongs in this repo, not %s/%s.\n\n", w.Ref, agentCmdline(mode, surface), w.Ref.Owner, w.Ref.Repo)
+	writef(&b, "Routed here from %s by `%s` pre-flight (%s): the feasibility "+
+		"read judged this work belongs in this repo, not %s/%s.\n\n",
+		w.Ref.durableTextRef(), agentCmdline(mode, surface), wardIssueURL(159), w.Ref.Owner, w.Ref.Repo)
 	writef(&b, "> %s\n\n", reason)
 	writef(&b, "This was filed blind from the source issue's text - nobody searched this repo first, "+
 		"so confirm it fits before working it.\n\n")
-	writef(&b, "---\n### Source issue (%s)\n\n%s\n", w.Ref, body)
-	writef(&b, "\n---\nFiled automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
+	writef(&b, "---\n### Source issue (%s)\n\n%s\n", w.Ref.durableTextRef(), body)
+	writef(&b, "\n---\nFiled automatically by `%s` pre-flight (%s).", agentCmdline(mode, surface), wardIssueURL(159))
 	return b.String()
 }
 
@@ -2046,7 +2067,7 @@ func preflightWrongRepoComment(mode containerMode, surface string, filed agentIs
 	if read = strings.TrimSpace(read); read != "" {
 		writef(&b, "\n## Full pre-flight read\n\n%s\n", read)
 	}
-	writef(&b, "\nPosted automatically by `%s` pre-flight (ward#159).", agentCmdline(mode, surface))
+	writef(&b, "\nPosted automatically by `%s` pre-flight (%s).", agentCmdline(mode, surface), wardIssueURL(159))
 	return collapsedIssueComment(visible, "pre-flight details", b.String())
 }
 

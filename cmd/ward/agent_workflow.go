@@ -179,8 +179,8 @@ func workflowReviewNoun(f forge) string {
 // directToMainCarryClause tells the agent to land the run on main.
 func directToMainCarryClause(ref agentIssueRef) string {
 	return fmt.Sprintf(
-		"implement, commit, merge to main, push - and close the issue with a commit trailer: closes #%d.",
-		ref.Number)
+		"implement, commit, merge to main, push - and close the issue with a commit trailer: %s.",
+		ref.closingTrailer())
 }
 
 // pullRequestCarryClause tells the agent to land via a pull request.
@@ -188,12 +188,12 @@ func pullRequestCarryClause(ref agentIssueRef) string {
 	noun := workflowReviewNoun(ref.Forge)
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a %s "+
-			"against `main` whose body carries `closes #%d`. "+
+			"against `main` whose body carries `%s`. "+
 			"%s "+
 			"%s Do NOT push to `main` directly or merge it yourself - in the `pull-request` workflow the %s "+
 			"IS the merge gate, and the director is encouraged to merge it later if policy allows. When the %s is green, "+
 			"the engineer's final visible outcome is `%s`, not `done`.",
-		noun, ref.Number, pullRequestDescriptionClause(noun), pullRequestCIWatchClauseFor(ref.Forge), noun, noun, workflowOutcomeLinkMarker(ref.Forge))
+		noun, ref.closingTrailer(), pullRequestDescriptionClause(noun), pullRequestCIWatchClauseFor(ref.Forge), noun, noun, workflowOutcomeLinkMarker(ref.Forge))
 }
 
 // pullRequestAndMergeCarryClause tells the agent to open a PR and keep it merge-ready
@@ -202,12 +202,12 @@ func pullRequestAndMergeCarryClause(ref agentIssueRef) string {
 	noun := workflowReviewNoun(ref.Forge)
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, push the branch to origin, and open a %s "+
-			"against `main` whose body carries `closes #%d` and `%s`. This run is director-merge authorized: "+
+			"against `main` whose body carries `%s` and `%s`. This run is director-merge authorized: "+
 			"%s "+
 			"the worker still opens the %s, but the engineer's final visible outcome is `%s`; "+
 			"the run is not done until the %s is merged and the director records the final done outcome. "+
 			"%s Keep the branch ready for merge and do not claim success early.",
-		noun, ref.Number, directorMergeWorkflowMarker, pullRequestDescriptionClause(noun), noun, workflowOutcomeLinkMarker(ref.Forge), noun, pullRequestCIWatchClauseFor(ref.Forge))
+		noun, ref.closingTrailer(), directorMergeWorkflowMarker, pullRequestDescriptionClause(noun), noun, workflowOutcomeLinkMarker(ref.Forge), noun, pullRequestCIWatchClauseFor(ref.Forge))
 }
 
 // pullRequestDescriptionClause tells the worker to write a short useful PR body.
@@ -252,8 +252,8 @@ func remoteBranchOnlyCarryClause(ref agentIssueRef) string {
 	return fmt.Sprintf(
 		"implement on a feature branch, commit, and push the branch to origin. This `remote-branch-only` "+
 			"workflow has no pull requests or merge authority. do not open a pull request, do not merge to `main`, "+
-			"and do not write a `closes #%d` trailer - the remote branch is the only landing surface here.",
-		ref.Number)
+			"and do not write a `%s` trailer - the remote branch is the only landing surface here.",
+		ref.closingTrailer())
 }
 
 // workflowLandingPhrase names "done" for the reflection's "only after ..." opener.

@@ -571,8 +571,8 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 			// Leave our comment to lapse at the TTL (a release marker would free the
 			// winner too) and refuse so only the winner proceeds (ward#600).
 			return func() {}, nil, newReservationConflict(
-				"%s: issue %s went to a concurrent run (%s) on a jittered re-check; this run yields (ward#600)",
-				label, ref, winner)
+				"%s: issue %s went to a concurrent run (%s) on a jittered re-check; this run yields (%s)",
+				label, ref, winner, wardIssueURL(600))
 		}
 	}
 	// The release reuses this same client to retract the comment + lock if the launch
@@ -584,16 +584,16 @@ func (r *Runner) acquireRemoteReservation(ctx context.Context, label string, mod
 // before the container is up: a release-marker comment plus a best-effort unlock (#570).
 func (r *Runner) releaseRemoteReservation(ctx context.Context, cl Tracker, label string, mode containerMode, ref agentIssueRef, container string) bool {
 	if err := cl.CommentIssue(ctx, ref.Owner, ref.Repo, ref.Number, reservationReleaseCommentBody(mode, container, nil)); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --override-reservation until the %s TTL lapses (ward#570)\n", label, ref, err, conciseDuration(agentReservationTTL()))
+		fmt.Fprintf(os.Stderr, "%s: warning: could not release the remote reservation on %s (%v); a re-run may need --override-reservation until the %s TTL lapses (%s)\n", label, ref, err, conciseDuration(agentReservationTTL()), wardIssueURL(570))
 		return false
 	}
 	// Retract the reservation's conversation lock (ward#494) so a retry lands on an open
 	// thread; silent on the no-lock-leaf forge (Forgejo today).
 	if err := cl.UnlockIssue(ctx, ref.Owner, ref.Repo, ref.Number); err != nil && !errors.Is(err, errForgeLockUnsupported) {
-		fmt.Fprintf(os.Stderr, "%s: warning: could not unlock %s after releasing the reservation (%v) (ward#570)\n", label, ref, err)
+		fmt.Fprintf(os.Stderr, "%s: warning: could not unlock %s after releasing the reservation (%v) (%s)\n", label, ref, err, wardIssueURL(570))
 	}
 	deleteTransientWorkflowComments(ctx, cl, ref, time.Now().UTC())
-	fmt.Fprintf(os.Stderr, "%s: released remote reservation on %s (launch failed before the container came up, ward#570)\n", label, ref)
+	fmt.Fprintf(os.Stderr, "%s: released remote reservation on %s (launch failed before the container came up, %s)\n", label, ref, wardIssueURL(570))
 	return true
 }
 
@@ -604,9 +604,9 @@ func (r *Runner) lockReservedIssue(ctx context.Context, cl Tracker, label string
 	case err == nil:
 		fmt.Fprintf(os.Stderr, "%s: locked issue %s conversation for the reservation window\n", label, ref)
 	case errors.Is(err, errForgeLockUnsupported):
-		fmt.Fprintf(os.Stderr, "%s: issue %s conversation left unlocked - the %s API has no lock leaf; the reservation comment is the road-block (ward#494)\n", label, ref, ref.trackerOrDefault())
+		fmt.Fprintf(os.Stderr, "%s: issue %s conversation left unlocked - the %s API has no lock leaf; the reservation comment is the road-block (%s)\n", label, ref, ref.trackerOrDefault(), wardIssueURL(494))
 	default:
-		fmt.Fprintf(os.Stderr, "%s: warning: could not lock issue %s conversation (%v); the reservation comment still stands as the road-block (ward#494)\n", label, ref, err)
+		fmt.Fprintf(os.Stderr, "%s: warning: could not lock issue %s conversation (%v); the reservation comment still stands as the road-block (%s)\n", label, ref, err, wardIssueURL(494))
 	}
 }
 
@@ -715,20 +715,20 @@ func (r *Runner) reservationRecheckLost(ctx context.Context, cl Tracker, label s
 		return false, "" // disabled via WARD_AGENT_RESERVE_RECHECK
 	}
 	ours := container + "@" + hostname()
-	fmt.Fprintf(os.Stderr, "%s: reservation re-check waiting %s before confirming %s (ward#600)\n", label, delay.Round(time.Millisecond), ref)
+	fmt.Fprintf(os.Stderr, "%s: reservation re-check waiting %s before confirming %s (%s)\n", label, delay.Round(time.Millisecond), ref, wardIssueURL(600))
 	reservationRecheckSleep(delay)
 	now := time.Now().UTC()
 	comments, err := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: warning: reservation re-check could not re-read %s (%v); proceeding (ward#600)\n", label, ref, err)
+		fmt.Fprintf(os.Stderr, "%s: warning: reservation re-check could not re-read %s (%v); proceeding (%s)\n", label, ref, err, wardIssueURL(600))
 		return false, ""
 	}
 	winner, ok := winningReservationClaim(reservationClaims(comments, now, agentReservationTTL()))
 	if !ok || winner.identity == ours {
-		fmt.Fprintf(os.Stderr, "%s: reservation re-check confirmed %s for this run (ward#600)\n", label, ref)
+		fmt.Fprintf(os.Stderr, "%s: reservation re-check confirmed %s for this run (%s)\n", label, ref, wardIssueURL(600))
 		return false, ""
 	}
-	fmt.Fprintf(os.Stderr, "%s: reservation re-check yields %s to %s (ward#600)\n", label, ref, winner.identity)
+	fmt.Fprintf(os.Stderr, "%s: reservation re-check yields %s to %s (%s)\n", label, ref, winner.identity, wardIssueURL(600))
 	return true, winner.identity
 }
 
@@ -792,8 +792,8 @@ func reservationCommentBody(mode containerMode, container, host string, now time
 			"the body once at launch and never re-reads it, so a comment or edit reaches only human readers, never "+
 			"the running engineer. A correction goes to a **new issue, dispatched fresh**. That is the only channel "+
 			"that reaches a run in flight. Where the forge supports it, ward locks this conversation to make that a "+
-			"road-block rather than a convention (ward#494).",
-		container, host, mode, now.Format(time.RFC3339), conciseDuration(ttl))
+			"road-block rather than a convention (%s).",
+		container, host, mode, now.Format(time.RFC3339), conciseDuration(ttl), wardIssueURL(494))
 	if justification = strings.TrimSpace(justification); justification != "" {
 		body += fmt.Sprintf(
 			"\n\nThe pre-flight judged this issue **GO** for an unattended run. Its justification:\n\n"+
@@ -811,10 +811,10 @@ func reservationReleaseCommentBody(mode containerMode, container string, gate *g
 		visible := workflowReservationReleasedVisible()
 		detail := fmt.Sprintf(
 			"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited "+
-				"without launching the agent (smoke-test death, ward#222/#264/#595), so it did no work and the "+
+				"without launching the agent (smoke-test death; %s, %s, %s), so it did no work and the "+
 				"launch intent it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
 				"it automatically. A manual `ward agent` retry no longer needs `--override-reservation`.",
-			container, mode)
+			container, mode, wardIssueURL(222), wardIssueURL(264), wardIssueURL(595))
 		return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
 			collapsedIssueComment(visible, "release details", detail)
 	}
@@ -822,11 +822,11 @@ func reservationReleaseCommentBody(mode containerMode, container string, gate *g
 	visible := workflowReservationReleasedVisible()
 	body := fmt.Sprintf(
 		"Run never started. `ward container reap` released container `%s` (`--harness %s`): it exited at the "+
-			"**%s** pre-launch gate without launching the agent (ward#222/#264/#595/#609), so it did no work and "+
+			"**%s** pre-launch gate without launching the agent (%s, %s, %s, %s), so it did no work and "+
 			"the launch intent it took is retracted. Nothing is running on this issue. It needs re-dispatch. A `ward agent director` re-queues "+
 			"it automatically. A manual `ward agent` retry no longer needs `--override-reservation`.\n\n"+
 			"**Gate:** %s\n\n**Recovery:** %s",
-		container, mode, gate.Gate, label, recovery)
+		container, mode, gate.Gate, wardIssueURL(222), wardIssueURL(264), wardIssueURL(595), wardIssueURL(609), label, recovery)
 	if d := reservationScrubDetail(gate.Detail); d != "" {
 		body += fmt.Sprintf("\n\n## Error from the gate\n\n```\n%s\n```", d)
 	}
@@ -894,7 +894,7 @@ func (sc *reservationSeedContext) render() string {
 	if sc.RequestID != "" {
 		fmt.Fprintf(&b, "\n\n%s", reservationRequestMarker(sc.RequestID))
 	}
-	b.WriteString("\n\n<details><summary>run seed context — what this run is carrying (ward#609)</summary>\n\n")
+	b.WriteString("\n\n<details><summary>run seed context — what this run is carrying</summary>\n\n")
 	b.WriteString(sc.body())
 	b.WriteString("\n</details>\n")
 	return b.String()
@@ -922,8 +922,8 @@ func (sc *reservationSeedContext) body() string {
 	}
 	ward := reservationWardVersionLabel(sc.WardVersion)
 	var b strings.Builder
-	fmt.Fprintf(&b, "- **Resolved:** `%s` · branch `%s` · harness `%s` · workflow `%s`\n",
-		sc.Ref, orNoneLabel(sc.Branch), orNoneLabel(sc.Driver), sc.Workflow.orDefault())
+	fmt.Fprintf(&b, "- **Resolved:** %s · branch `%s` · harness `%s` · workflow `%s`\n",
+		sc.Ref.durableTextRef(), orNoneLabel(sc.Branch), orNoneLabel(sc.Driver), sc.Workflow.orDefault())
 	fmt.Fprintf(&b, "- **Run:** `%s` · ward `%s` · dispatched `%s`\n",
 		orNoneLabel(sc.RunID), ward, sc.DispatchedAt.UTC().Format(time.RFC3339))
 	if strings.TrimSpace(sc.Reservation) != "" {

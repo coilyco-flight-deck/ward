@@ -169,7 +169,7 @@ func prWorkflowHumanInterventionGuard(ctx context.Context, cl *forgejoClient, ow
 	}
 	snapshot = laterTime(snapshot, pr.UpdatedAt)
 	issueNum := index
-	if linked, ok := directorLinkedIssueNumber(pr.Body); ok {
+	if linked, ok := directorLinkedIssueNumber(owner, repo, pr.Body); ok {
 		linkedComments, lerr := cl.ListIssueComments(ctx, owner, repo, linked)
 		if lerr != nil {
 			return fmt.Errorf("%s: read linked issue comments: %w", label, lerr)

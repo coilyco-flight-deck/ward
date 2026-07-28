@@ -252,7 +252,7 @@ func TestDirectorDispatchQuietsSeedConsole(t *testing.T) {
 	// A direct `ward agent engineer <ref>` (not quiet): the ward#400 dump survives.
 	var direct strings.Builder
 	maybeDumpSeed(&direct, seed, false)
-	for _, want := range []string{"----- seeded prompt -----", "the frozen task text", "closes #519"} {
+	for _, want := range []string{"----- seeded prompt -----", "the frozen task text", "closes coilyco-flight-deck/ward#519"} {
 		if !strings.Contains(direct.String(), want) {
 			t.Errorf("direct seed dump missing %q\n got: %s", want, direct.String())
 		}

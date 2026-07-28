@@ -695,7 +695,7 @@ func TestPRWorkflowRecoverReportClosedUnmerged(t *testing.T) {
 		"state=closed",
 		"merged=false",
 		"head=headsha",
-		"linked issue=#6",
+		"linked issue=coilyco-flight-deck/ward#6",
 		"next safe action: reopen the PR, then re-run status and merge",
 	} {
 		if !strings.Contains(out, want) {
@@ -728,8 +728,8 @@ func TestPRWorkflowRecoverReportHighlightsMergedOpenLinkedIssue(t *testing.T) {
 	}
 	for _, want := range []string{
 		"merged=true",
-		"linked issue=#6",
-		"the PR is merged, but the carried issue #6 is still open",
+		"linked issue=coilyco-flight-deck/ward#6",
+		"the PR is merged, but the carried issue coilyco-flight-deck/ward#6 is still open",
 		"repair the carried issue trailer or close the issue by hand",
 	} {
 		if !strings.Contains(out, want) {

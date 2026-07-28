@@ -315,7 +315,7 @@ func salvageIssueBody(r salvageReport) string {
 func salvageCommentBody(r salvageReport) string {
 	var b strings.Builder
 	visible := salvageOutcomeVisible(r)
-	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) dispatched for this issue finished but its work was **not merged to `main`**, so cleanup preserved it on a branch before teardown and reopened the issue (a closing reference for #%d never reached `main`). Recover from the salvage branch below.\n\n", r.Mode, r.Issue)
+	fmt.Fprintf(&b, "An ephemeral `ward container` (%s mode) dispatched for this issue finished but its work was **not merged to `main`**, so cleanup preserved it on a branch before teardown and reopened the issue (a closing reference for %s never reached `main`). Recover from the salvage branch below.\n\n", r.Mode, salvageIssueRef(r))
 	b.WriteString(salvageDetailBody(r))
 	return collapsedIssueComment(visible, "salvage details", b.String())
 }
@@ -391,8 +391,8 @@ func appendSalvageRecovery(b *strings.Builder, r salvageReport) {
 	fmt.Fprintf(b, "git checkout -b %s FETCH_HEAD\n", r.Branch)
 	b.WriteString("```\n\n")
 	if r.Reason == reasonCloseRef && r.Issue != 0 {
-		b.WriteString("This salvage was blocked by a missing closing reference. To recover, amend or cherry-pick the salvaged work so the landing commit message includes `closes #")
-		fmt.Fprintf(b, "%d`, or add a small empty trailer commit with `closes #%d`, then land the branch.\n\n", r.Issue, r.Issue)
+		trailer := "closes " + salvageIssueRef(r)
+		fmt.Fprintf(b, "This salvage was blocked by a missing closing reference. To recover, amend or cherry-pick the salvaged work so the landing commit message includes `%s`, or add a small empty trailer commit with `%s`, then land the branch.\n\n", trailer, trailer)
 	}
 }
 
@@ -428,6 +428,13 @@ func closingReferenceStateBody(r salvageReport) string {
 	default:
 		return "## Closing reference state\n\n" + r.CommitState + "\n\n"
 	}
+}
+
+func salvageIssueRef(r salvageReport) string {
+	if r.Issue == 0 {
+		return "(no carried issue)"
+	}
+	return fmt.Sprintf("%s#%d", r.Repo.slug(), r.Issue)
 }
 
 // --- granted-repo (--repo) push verification (ward#291) ----------------------
@@ -493,8 +500,8 @@ func unlandedExtraReposComment(env reapEnv, reports []extraRepoUnlanded) string 
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("Re-run the cross-repo half, or - per ward#291 - file it as a native issue in the granted " +
-		"repo so it becomes a single-repo run that sidesteps this failure mode.\n")
+	fmt.Fprintf(&b, "Re-run the cross-repo half, or - per %s - file it as a native issue in the granted "+
+		"repo so it becomes a single-repo run that sidesteps this failure mode.\n", wardIssueURL(291))
 	return collapsedIssueComment(visible, "grant details", b.String())
 }
 

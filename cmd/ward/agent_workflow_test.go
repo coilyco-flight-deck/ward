@@ -68,7 +68,7 @@ func TestWorkflowCarryClauseDirectToMain(t *testing.T) {
 // TestWorkflowCarryClausePullRequest checks the PR carry clause.
 func TestWorkflowCarryClausePullRequest(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12}, workflowPullRequest)
-	for _, want := range []string{"pull request", "closes #12", "paragraph or two", "small bullet list", "watching its CI/checks", "director is encouraged to merge it later"} {
+	for _, want := range []string{"pull request", "closes o/r#12", "paragraph or two", "small bullet list", "watching its CI/checks", "director is encouraged to merge it later"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("pull-request carry clause missing %q\n got: %s", want, got)
 		}
@@ -92,7 +92,7 @@ func TestWorkflowCarryClausePullRequest(t *testing.T) {
 // terms when the target forge is GitLab.
 func TestWorkflowCarryClauseGitLabMR(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12, Forge: forgeGitLab}, workflowPullRequest)
-	for _, want := range []string{"merge request", "closes #12", "paragraph or two", "small bullet list", "watching its CI/checks", "director is encouraged to merge it later"} {
+	for _, want := range []string{"merge request", "closes o/r#12", "paragraph or two", "small bullet list", "watching its CI/checks", "director is encouraged to merge it later"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("gitlab pull-request carry clause missing %q\n got: %s", want, got)
 		}
@@ -109,7 +109,7 @@ func TestWorkflowCarryClauseGitLabMR(t *testing.T) {
 // the PR flow and says the run is not done until the merge lands.
 func TestWorkflowCarryClausePullRequestAndMerge(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 17}, workflowPullRequestAndMerge)
-	for _, want := range []string{"pull request", "closes #17", "paragraph or two", "small bullet list", directorMergeWorkflowMarker, "director-merge authorized", pullRequestWorkflowOutcomeMarker} {
+	for _, want := range []string{"pull request", "closes o/r#17", "paragraph or two", "small bullet list", directorMergeWorkflowMarker, "director-merge authorized", pullRequestWorkflowOutcomeMarker} {
 		if !strings.Contains(got, want) {
 			t.Errorf("pull-request-and-merge carry clause missing %q\n got: %s", want, got)
 		}
@@ -133,7 +133,7 @@ func TestWorkflowCarryClausePullRequestAndMerge(t *testing.T) {
 // lands nothing else.
 func TestWorkflowCarryClauseRemoteBranchOnly(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 99}, workflowRemoteBranchOnly)
-	for _, want := range []string{"remote-branch-only", "push the branch to origin", "do not open a pull request", "do not write a `closes #99`"} {
+	for _, want := range []string{"remote-branch-only", "push the branch to origin", "do not open a pull request", "do not write a `closes o/r#99`"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("remote-branch-only carry clause missing %q\n got: %s", want, got)
 		}
@@ -276,7 +276,7 @@ func TestAgentSeedPromptWorkflowUsesCarriedIssueRefForPRContinuations(t *testing
 	carryRef := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1224, Forge: forgeForgejo}
 	got := agentSeedPromptWorkflowWithCarry(prRef, carryRef, "repair the replacement PR", "work it", "", true, nil, workflowPullRequestAndMerge, true, "")
 	for _, want := range []string{
-		"closes #1224",
+		"closes coilyco-flight-deck/ward#1224",
 		"Carried issue number: 1224.",
 		"ward.workflow: pull-request-and-merge",
 	} {
@@ -284,7 +284,7 @@ func TestAgentSeedPromptWorkflowUsesCarriedIssueRefForPRContinuations(t *testing
 			t.Fatalf("PR continuation prompt missing %q\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "closes #1293") {
+	if strings.Contains(got, "closes coilyco-flight-deck/ward#1293") {
 		t.Fatalf("PR continuation prompt must not close the PR number itself\n%s", got)
 	}
 }

@@ -19,6 +19,20 @@ Use the right forge target for the link.
 - if the link is about the canonical repo, issues, releases, or install
   infrastructure, use Forgejo.
 
+## Issue References
+
+Ward-authored durable text must not rely on renderer-local issue shorthand.
+Generated issue bodies, issue comments, dispatch artifacts, reaper output,
+release notes, and seed prompts should use full issue URLs when the tracker
+authority matters. Where a literal close target is required, use the qualified
+same-repo form, such as `closes coilyco-flight-deck/ward#1501`, rather than a
+bare `closes #1501`.
+
+Docs should link issue references with full URLs, for example
+`[ward#1501](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1501)`,
+or use a fully qualified `owner/repo#N` only when the surrounding prose already
+states the forge.
+
 ## See also
 
 - [release.md](release.md) - canonical release flow.

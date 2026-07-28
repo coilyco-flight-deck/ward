@@ -389,7 +389,7 @@ func TestReservationCommentBodyIsRoadBlock(t *testing.T) {
 	for _, want := range []string{
 		"Do not comment on or edit this issue",
 		"new issue, dispatched fresh",
-		"ward#494",
+		wardIssueURL(494),
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing road-block phrase %q\n got: %s", want, body)
@@ -1039,6 +1039,7 @@ func TestReservationSeedContextRender(t *testing.T) {
 	for _, want := range []string{
 		"<details><summary>run seed context",
 		"coilyco-flight-deck/ward#609",
+		"https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/609",
 		"branch `issue-609`",
 		"harness `claude`",
 		"engineer-claude-ward-609",
@@ -1169,7 +1170,7 @@ func TestReservationReleaseCommentBodyGate(t *testing.T) {
 		t.Errorf("generic release comment should carry no Gate section: %s", generic)
 	}
 	// ward#595: a pre-launch death is loud + machine-detectable, not a benign release.
-	for _, want := range []string{agentNeedsRedispatchMarker, "Run never started", "needs re-dispatch"} {
+	for _, want := range []string{agentNeedsRedispatchMarker, "Run never started", "needs re-dispatch", wardIssueURL(222), wardIssueURL(264), wardIssueURL(595)} {
 		if !strings.Contains(generic, want) {
 			t.Errorf("generic release comment missing %q\n got: %s", want, generic)
 		}

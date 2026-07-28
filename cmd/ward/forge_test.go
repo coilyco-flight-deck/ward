@@ -359,7 +359,7 @@ func TestDirectToMainCarryClause(t *testing.T) {
 		{Owner: "o", Repo: "r", Number: 7, Forge: forgeGitHub},
 	} {
 		got := directToMainCarryClause(ref)
-		for _, want := range []string{"merge to main", "closes #7"} {
+		for _, want := range []string{"merge to main", "closes o/r#7"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("merge-remote-main carry clause missing %q: %s", want, got)
 			}

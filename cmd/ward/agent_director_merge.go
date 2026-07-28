@@ -15,7 +15,7 @@ import (
 // agent_director_merge.go wires `ward agent director merge`: the explicit PR-merge
 // lane the director uses for ward-owned PRs that are authorized to land.
 
-var directorClosingRefRE = regexp.MustCompile(`(?i)\b(?:closes|fixes|resolves)\s+#(\d+)\b`)
+var directorClosingRefRE = regexp.MustCompile(`(?i)\b(?:closes|fixes|resolves)\s+(?:(?:([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+))?#)(\d+)\b`)
 var directorWorkflowMarkerRE = regexp.MustCompile(`(?i)\bward\.workflow:\s*([[:alnum:]-]+)\b`)
 
 const directorMergeConflictStaleAfter = 2 * time.Hour
@@ -229,7 +229,7 @@ func validateReopenedDirectorMergeCandidate(pr *forgejoPullRequest, expectedHead
 // directorMergeEligibility returns whether pr is the narrow, ward-owned lane.
 // The policy closes over the issue thread, not just the PR title.
 func directorMergeEligibility(ctx context.Context, owner, repo string, pr directorPullRequest, prClient *forgejoClient, issueClient Tracker) (ok bool, reason string, linked int, meta directorRunMeta) {
-	linked, ok = directorLinkedIssueNumber(pr.Body)
+	linked, ok = directorLinkedIssueNumber(owner, repo, pr.Body)
 	if !ok {
 		return false, "no same-repo closing reference in the PR body", 0, directorRunMeta{}
 	}
@@ -622,14 +622,19 @@ func directorMergeDoneComment(prNumber int, meta directorRunMeta) string {
 
 // directorLinkedIssueNumber extracts the first same-repo closing reference from a
 // PR body. It is the join key from the PR back to the carried issue thread.
-func directorLinkedIssueNumber(body string) (int, bool) {
-	m := directorClosingRefRE.FindStringSubmatch(body)
-	if m == nil {
-		return 0, false
+func directorLinkedIssueNumber(owner, repo, body string) (int, bool) {
+	for _, m := range directorClosingRefRE.FindAllStringSubmatch(body, -1) {
+		if len(m) != 4 {
+			continue
+		}
+		if m[1] != "" && (m[1] != owner || m[2] != repo) {
+			continue
+		}
+		n, err := strconv.Atoi(m[3])
+		if err != nil || n <= 0 {
+			continue
+		}
+		return n, true
 	}
-	n, err := strconv.Atoi(m[1])
-	if err != nil || n <= 0 {
-		return 0, false
-	}
-	return n, true
+	return 0, false
 }

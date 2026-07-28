@@ -240,7 +240,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 					}
 					return nil
 				}
-				fmt.Fprintf(os.Stderr, "ward container reap: already-landed merge-remote-main run is missing closes #%d; salvaging instead of returning success\n", env.Issue)
+				fmt.Fprintf(os.Stderr, "ward container reap: already-landed merge-remote-main run is missing %s; salvaging instead of returning success\n", closingReferenceLabel(env))
 				return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
 					reapDecision{Gate: "missing same-repo closing reference on already-landed merge-remote-main run", ProvState: "present", CommitState: commitState, Landed: false})
 			}
@@ -376,7 +376,7 @@ func (r *Runner) repairResidualClosingReference(ctx context.Context, work string
 	}
 	// Only the reaper's own residual capture may receive the carried trailer.
 	// Changing a pre-teardown commit would weaken the same-repo proof.
-	fmt.Fprintf(os.Stderr, "ward container reap: committed work is missing closes #%d; salvaging without landing\n", env.Issue)
+	fmt.Fprintf(os.Stderr, "ward container reap: committed work is missing %s; salvaging without landing\n", closingReferenceLabel(env))
 	return false, fmt.Errorf("commit existed but lacked close trailer")
 }
 
@@ -387,16 +387,16 @@ func (r *Runner) ensureEmptyRepoClosingReference(ctx context.Context, work strin
 		return true, nil
 	}
 	if commitState == commitStateAgentDidNotCommit {
-		fmt.Fprintf(os.Stderr, "ward container reap: agent did not commit before teardown; repairing the reaper residual commit with closes #%d\n", env.Issue)
+		fmt.Fprintf(os.Stderr, "ward container reap: agent did not commit before teardown; repairing the reaper residual commit with %s\n", closingReferenceLabel(env))
 		if err := r.repairClosingReference(ctx, work, env); err == nil && r.issueClosingReferenceInRange(ctx, work, env.Issue, "HEAD") {
-			fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for #%d\n", env.Issue)
+			fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for %s\n", closingReferenceTarget(env))
 			return true, nil
 		}
 		fmt.Fprintln(os.Stderr, "ward container reap: reaper residual closing reference repair failed; salvaging instead of establishing main")
 		return false, r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
 			reapDecision{Gate: "agent did not commit and residual closing reference repair failed", ProvState: "not read (no origin/main)", CommitState: commitState})
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: committed work is missing closes #%d; salvaging instead of establishing main\n", env.Issue)
+	fmt.Fprintf(os.Stderr, "ward container reap: committed work is missing %s; salvaging instead of establishing main\n", closingReferenceLabel(env))
 	return false, r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
 		reapDecision{Gate: "commit existed but lacked close trailer", ProvState: "not read (no origin/main)", CommitState: commitState})
 }
@@ -551,11 +551,11 @@ func (r *Runner) ensureClosingReferenceBeforePush(ctx context.Context, work stri
 	// Final closing-ref gate LOCAL to the irreversible push (ward#515): re-check
 	// the post-rebase history so no upstream-gate reorder can land a close-refless run.
 	if !closingReferenceRepairSafe(prov, env) {
-		fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; salvaging instead of pushing main\n", env.Issue)
+		fmt.Fprintf(os.Stderr, "ward container reap: closing reference for %s absent from the history about to land; salvaging instead of pushing main\n", closingReferenceTarget(env))
 		return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
 			reapDecision{Gate: "missing same-repo closing reference (push-site recheck)", ProvState: "present", CommitState: commitState, Landed: landed})
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: closing reference for #%d absent from the history about to land; repairing before push\n", env.Issue)
+	fmt.Fprintf(os.Stderr, "ward container reap: closing reference for %s absent from the history about to land; repairing before push\n", closingReferenceTarget(env))
 	if err := r.repairClosingReference(ctx, work, env); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container reap: closing reference repair failed: %v\n", err)
 		return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
@@ -565,7 +565,7 @@ func (r *Runner) ensureClosingReferenceBeforePush(ctx context.Context, work stri
 		return r.salvage(ctx, work, env, reasonCloseRef, false, findings, status,
 			reapDecision{Gate: "missing same-repo closing reference (push-site repair failed)", ProvState: "present", CommitState: commitState, Landed: landed})
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for #%d\n", env.Issue)
+	fmt.Fprintf(os.Stderr, "ward container reap: repaired closing reference for %s\n", closingReferenceTarget(env))
 	return nil
 }
 
@@ -618,7 +618,7 @@ func (r *Runner) completedMainProofBeforeBlocking(ctx context.Context, work stri
 	}
 	if prov != nil && strings.TrimSpace(prov.BaselineMain) != "" {
 		if r.issueClosingReferenceInRange(ctx, work, env.Issue, prov.BaselineMain+"..origin/main") {
-			fmt.Fprintf(os.Stderr, "ward container reap: origin/main carries closes #%d in the run baseline range; trusting remote main before salvage\n", env.Issue)
+			fmt.Fprintf(os.Stderr, "ward container reap: origin/main carries %s in the run baseline range; trusting remote main before salvage\n", closingReferenceLabel(env))
 			return true
 		}
 	}
@@ -631,7 +631,7 @@ func (r *Runner) completedMainProofBeforeBlocking(ctx context.Context, work stri
 	if !r.salvagePullRequestWouldBeEmpty(ctx, work) {
 		return false
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: origin/main already carries closes #%d after a done outcome; treating empty salvage as non-blocking\n", env.Issue)
+	fmt.Fprintf(os.Stderr, "ward container reap: origin/main already carries %s after a done outcome; treating empty salvage as non-blocking\n", closingReferenceLabel(env))
 	return true
 }
 
@@ -667,7 +667,7 @@ func (r *Runner) doneOutcomeAfterRunStart(ctx context.Context, env reapEnv) bool
 	}
 	comments, err := listReapIssueComments(ctx, r, env)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not read issue comments for done-outcome recheck on #%d: %v\n", env.Issue, err)
+		fmt.Fprintf(os.Stderr, "ward container reap: could not read issue comments for done-outcome recheck on %s: %v\n", reapIssueLabel(env), err)
 		return false
 	}
 	outcome, ok := latestBacklogOutcomeCommentAfter(comments, upAt)
@@ -696,18 +696,18 @@ func (r *Runner) repairClosingReference(ctx context.Context, work string, env re
 			if err != nil {
 				return err
 			}
-			return r.amendClosingReference(ctx, work, string(msg), env.Issue)
+			return r.amendClosingReference(ctx, work, string(msg), env)
 		}
 	}
-	subject := fmt.Sprintf("ward-container: repair closing reference for %s#%d", env.repo().slug(), env.Issue)
-	return r.Runner.Exec(ctx, "git", "-C", work, "commit", "--allow-empty", "-m", subject, "-m", fmt.Sprintf("closes #%d", env.Issue))
+	subject := fmt.Sprintf("ward-container: repair closing reference for %s", closingReferenceTarget(env))
+	return r.Runner.Exec(ctx, "git", "-C", work, "commit", "--allow-empty", "-m", subject, "-m", closingReferenceLabel(env))
 }
 
 func (r *Runner) repairDirtyOnlyClosingReference(ctx context.Context, work string, env reapEnv) (bool, error) {
 	if env.Issue == 0 || r.issueClosingReferencePresent(ctx, work, env.Issue) {
 		return true, nil
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: dirty-only run is missing closes #%d; repairing before landing\n", env.Issue)
+	fmt.Fprintf(os.Stderr, "ward container reap: dirty-only run is missing %s; repairing before landing\n", closingReferenceLabel(env))
 	if err := r.repairClosingReference(ctx, work, env); err != nil {
 		return false, err
 	}
@@ -717,8 +717,8 @@ func (r *Runner) repairDirtyOnlyClosingReference(ctx context.Context, work strin
 	return true, nil
 }
 
-func (r *Runner) amendClosingReference(ctx context.Context, work, msg string, issue int) error {
-	repaired := appendClosingReferenceToMessage(msg, issue)
+func (r *Runner) amendClosingReference(ctx context.Context, work, msg string, env reapEnv) error {
+	repaired := appendClosingReferenceToMessage(msg, env)
 	tmp, err := os.CreateTemp("", "ward-closing-reference-*.txt")
 	if err != nil {
 		return err
@@ -734,11 +734,11 @@ func (r *Runner) amendClosingReference(ctx context.Context, work, msg string, is
 	return r.Runner.Exec(ctx, "git", "-C", work, "commit", "--amend", "-F", tmp.Name())
 }
 
-func appendClosingReferenceToMessage(msg string, issue int) string {
-	if issueClosingReferenceTextPresent(msg, issue) {
+func appendClosingReferenceToMessage(msg string, env reapEnv) string {
+	if issueClosingReferenceTextPresent(msg, env.Issue) {
 		return strings.TrimRight(msg, "\n") + "\n"
 	}
-	return strings.TrimRight(msg, "\n") + fmt.Sprintf("\n\ncloses #%d\n", issue)
+	return strings.TrimRight(msg, "\n") + "\n\n" + closingReferenceLabel(env) + "\n"
 }
 
 // salvage preserves residual work on a ward-salvage/<id> branch (durable) then
@@ -850,19 +850,19 @@ func notifySalvage(ctx context.Context, fc salvageNotifier, env reapEnv, report 
 		// Reopen first (best-effort, idempotent) so the issue never reads "done"
 		// over unmerged work, then post the notice.
 		if rerr := fc.ReopenIssue(ctx, env.Owner, env.Name, env.Issue); rerr != nil {
-			fmt.Fprintf(os.Stderr, "ward container reap: could not reopen carried issue #%d: %v\n", env.Issue, rerr)
+			fmt.Fprintf(os.Stderr, "ward container reap: could not reopen carried issue %s: %v\n", reapIssueLabel(env), rerr)
 		}
 		if cerr := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, salvageCommentBody(report)); cerr != nil {
 			return cerr
 		}
-		fmt.Fprintf(os.Stderr, "ward container reap: posted salvage notice to carried issue #%d\n", env.Issue)
+		fmt.Fprintf(os.Stderr, "ward container reap: posted salvage notice to carried issue %s\n", reapIssueLabel(env))
 		return nil
 	}
 	n, err := fc.CreateIssue(ctx, env.Owner, env.Name, salvageIssueTitle(report), salvageIssueBody(report))
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: filed standalone salvage issue #%d\n", n)
+	fmt.Fprintf(os.Stderr, "ward container reap: filed standalone salvage issue %s\n", repoIssueLabel(env.Owner, env.Name, n))
 	return nil
 }
 
@@ -886,7 +886,7 @@ func openSalvagePullRequest(ctx context.Context, fc salvageNotifier, env reapEnv
 	title := fmt.Sprintf("ward salvage: %s", report.Branch)
 	body := salvagePullRequestBody(report)
 	if report.Issue != 0 {
-		body = strings.TrimRight(body, "\n") + fmt.Sprintf("\n\ncloses #%d\n", report.Issue)
+		body = strings.TrimRight(body, "\n") + fmt.Sprintf("\n\ncloses %s#%d\n", report.Repo.slug(), report.Issue)
 	}
 	url, err := fc.CreatePullRequest(ctx, env.Owner, env.Name, report.Branch, "main", title, body)
 	if err != nil {
@@ -902,7 +902,7 @@ func salvagePullRequestBody(report salvageReport) string {
 	fmt.Fprintf(&b, "ward preserved residual work from `%s` on `%s`.\n\n", report.Repo.slug(), report.Branch)
 	fmt.Fprintf(&b, "- **Reason:** %s\n", report.Reason)
 	if report.Issue != 0 {
-		fmt.Fprintf(&b, "- **Carried issue:** #%d\n", report.Issue)
+		fmt.Fprintf(&b, "- **Carried issue:** %s\n", salvageIssueRef(report))
 	}
 	b.WriteString("\nReview the branch before merging. The issue thread carries the full reaper diagnostics.\n")
 	return b.String()
@@ -912,7 +912,7 @@ func salvagePullRequestBody(report salvageReport) string {
 // reap when the agent never launched (ward#264, docs/agent-reservation.md).
 func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv) {
 	if !env.reservationReleasable() {
-		fmt.Fprintf(os.Stderr, "ward container reap: reservation keep for #%d (launched=%t issue=%d)\n", env.Issue, env.Launched, env.Issue)
+		fmt.Fprintf(os.Stderr, "ward container reap: reservation keep for %s (launched=%t issue=%d)\n", reapIssueLabel(env), env.Launched, env.Issue)
 		return
 	}
 	if env.Token == "" {
@@ -934,16 +934,16 @@ func (r *Runner) releaseReservationIfUnstarted(ctx context.Context, env reapEnv)
 	gate, _ := readGateFailure()
 	body := reservationReleaseCommentBody(containerMode(env.Mode), env.Name, gate)
 	if err := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not release issue reservation on #%d: %v\n", env.Issue, err)
+		fmt.Fprintf(os.Stderr, "ward container reap: could not release issue reservation on %s: %v\n", reapIssueLabel(env), err)
 		return
 	}
 	// Retract the reservation's conversation lock (ward#494) so a retry lands on an
 	// open thread; best-effort, silent on the no-lock-leaf forge (Forgejo today).
 	if err := fc.UnlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not unlock issue #%d after release: %v\n", env.Issue, err)
+		fmt.Fprintf(os.Stderr, "ward container reap: could not unlock issue %s after release: %v\n", reapIssueLabel(env), err)
 	}
 	deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, time.Now().UTC())
-	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d (container exited pre-launch, did no work)\n", env.Issue)
+	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on %s (container exited pre-launch, did no work)\n", reapIssueLabel(env))
 }
 
 // releaseReservationIfTerminalOutcome retracts the remote reservation on run end.
@@ -966,7 +966,7 @@ func (r *Runner) releaseReservationIfTerminalOutcome(ctx context.Context, env re
 func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker, env reapEnv, afterAt time.Time) error {
 	comments, err := fc.ListIssueComments(ctx, env.Owner, env.Name, env.Issue)
 	if err != nil {
-		return fmt.Errorf("could not read issue comments for terminal-outcome release on #%d: %w", env.Issue, err)
+		return fmt.Errorf("could not read issue comments for terminal-outcome release on %s: %w", reapIssueLabel(env), err)
 	}
 	outcome, ok := latestBacklogOutcomeCommentAfter(comments, afterAt)
 	if !ok {
@@ -982,18 +982,18 @@ func releaseReservationIfTerminalOutcomeComment(ctx context.Context, fc Tracker,
 	// A reservation newer than the outcome means a follow-up run already took the
 	// issue over; posting a release now would retract that live hold (ward#1149).
 	if reservationCommentAfter(comments, outcome.CreatedAt) {
-		fmt.Fprintf(os.Stderr, "ward container reap: keeping the terminal release off #%d - a newer reservation holds the issue (ward#1149)\n", env.Issue)
+		fmt.Fprintf(os.Stderr, "ward container reap: keeping the terminal release off %s - a newer reservation holds the issue (%s)\n", reapIssueLabel(env), wardIssueURL(1149))
 		return nil
 	}
 	body := terminalReservationReleaseCommentBody(containerMode(env.Mode), env.Container, o)
 	if err := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
-		return fmt.Errorf("could not release terminal reservation on #%d: %w", env.Issue, err)
+		return fmt.Errorf("could not release terminal reservation on %s: %w", reapIssueLabel(env), err)
 	}
 	if err := fc.UnlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
-		return fmt.Errorf("could not unlock issue #%d after terminal outcome release: %w", env.Issue, err)
+		return fmt.Errorf("could not unlock issue %s after terminal outcome release: %w", reapIssueLabel(env), err)
 	}
 	deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, outcome.CreatedAt)
-	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d after terminal outcome %s\n", env.Issue, o.Status)
+	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on %s after terminal outcome %s\n", reapIssueLabel(env), o.Status)
 	return nil
 }
 
@@ -1021,13 +1021,13 @@ func shouldReleaseClosedUnmergedSubmittedOutcome(ctx context.Context, fc Tracker
 func releaseClosedUnmergedSubmittedOutcome(ctx context.Context, fc Tracker, env reapEnv, outcomeAt time.Time, outcome backlogOutcome) error {
 	body := launchedClosedUnmergedPRCommentBody(env, outcome)
 	if err := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, body); err != nil {
-		return fmt.Errorf("could not comment closed-unmerged PR failure on #%d: %w", env.Issue, err)
+		return fmt.Errorf("could not comment closed-unmerged PR failure on %s: %w", reapIssueLabel(env), err)
 	}
 	if err := fc.UnlockIssue(ctx, env.Owner, env.Name, env.Issue); err != nil && !errors.Is(err, errForgeLockUnsupported) {
-		return fmt.Errorf("could not unlock issue #%d after closed-unmerged PR failure: %w", env.Issue, err)
+		return fmt.Errorf("could not unlock issue %s after closed-unmerged PR failure: %w", reapIssueLabel(env), err)
 	}
 	deleteTransientWorkflowComments(ctx, fc, agentIssueRef{Owner: env.Owner, Repo: env.Name, Number: env.Issue}, outcomeAt)
-	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on #%d after closed-unmerged PR %s\n", env.Issue, outcome.PRURL)
+	fmt.Fprintf(os.Stderr, "ward container reap: released issue reservation on %s after closed-unmerged PR %s\n", reapIssueLabel(env), outcome.PRURL)
 	return nil
 }
 
@@ -1314,7 +1314,30 @@ func issueClosingReferenceTextPresent(text string, issue int) bool {
 }
 
 func issueClosingReferenceRE(issue int) *regexp.Regexp {
-	return regexp.MustCompile(`(?i)\b(?:closes|fixes|resolves)\s+#` + regexp.QuoteMeta(strconv.Itoa(issue)) + `\b`)
+	n := regexp.QuoteMeta(strconv.Itoa(issue))
+	return regexp.MustCompile(`(?i)\b(?:closes|fixes|resolves)\s+(?:#|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#)` + n + `\b`)
+}
+
+func closingReferenceTarget(env reapEnv) string {
+	if env.Issue == 0 {
+		return "(no carried issue)"
+	}
+	return fmt.Sprintf("%s#%d", env.repo().slug(), env.Issue)
+}
+
+func closingReferenceLabel(env reapEnv) string {
+	return "closes " + closingReferenceTarget(env)
+}
+
+func reapIssueLabel(env reapEnv) string {
+	return repoIssueLabel(env.Owner, env.Name, env.Issue)
+}
+
+func repoIssueLabel(owner, repo string, issue int) string {
+	if issue == 0 {
+		return "(no issue)"
+	}
+	return fmt.Sprintf("%s/%s#%d", owner, repo, issue)
 }
 
 // preserveExtraRepo pushes a granted repo's un-landed work to a salvage branch so
@@ -1361,13 +1384,13 @@ func (r *Runner) reportUnlandedExtraRepos(ctx context.Context, env reapEnv, repo
 	// Reopen first (idempotent on an already-open issue), then comment: the issue
 	// must not read "done" while a granted repo's committed work is unreachable.
 	if rerr := fc.ReopenIssue(ctx, env.Owner, env.Name, env.Issue); rerr != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not reopen issue #%d: %v\n", env.Issue, rerr)
+		fmt.Fprintf(os.Stderr, "ward container reap: could not reopen issue %s: %v\n", reapIssueLabel(env), rerr)
 	}
 	if cerr := fc.CommentIssue(ctx, env.Owner, env.Name, env.Issue, unlandedExtraReposComment(env, reports)); cerr != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not comment un-landed granted repos on #%d: %v\n", env.Issue, cerr)
+		fmt.Fprintf(os.Stderr, "ward container reap: could not comment un-landed granted repos on %s: %v\n", reapIssueLabel(env), cerr)
 		return
 	}
-	fmt.Fprintf(os.Stderr, "ward container reap: reopened #%d and flagged %d un-landed granted repo(s)\n", env.Issue, len(reports))
+	fmt.Fprintf(os.Stderr, "ward container reap: reopened %s and flagged %d un-landed granted repo(s)\n", reapIssueLabel(env), len(reports))
 }
 
 // dumpPatch writes the residual diff to stderr as a final recovery surface when

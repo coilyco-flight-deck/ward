@@ -241,12 +241,12 @@ func TestAgentSeedPrompt(t *testing.T) {
 	got := agentSeedPrompt(ref, "  container verb family  ", "do the thing", "", false, nil)
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#98",
-		"container verb family",            // title, trimmed
-		ref.url(),                          // the URL still rides for comments/images
-		"closes #98",                       // the close trailer
-		"----- issue body (inlined) -----", // the frozen snapshot marker
-		"do the thing",                     // the body itself is inlined
-		"work from that frozen snapshot",   // first-action instruction
+		"container verb family",              // title, trimmed
+		ref.url(),                            // the URL still rides for comments/images
+		"closes coilyco-flight-deck/ward#98", // the close trailer
+		"----- issue body (inlined) -----",   // the frozen snapshot marker
+		"do the thing",                       // the body itself is inlined
+		"work from that frozen snapshot",     // first-action instruction
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("seed prompt missing %q\n got: %s", want, got)
@@ -263,6 +263,46 @@ func TestAgentSeedPrompt(t *testing.T) {
 	// An empty title degrades gracefully, never blank-quotes.
 	if !strings.Contains(agentSeedPrompt(ref, "   ", "b", "", false, nil), "(untitled)") {
 		t.Error("empty title should render as (untitled)")
+	}
+}
+
+func TestGeneratedDurableIssueTextQualifiesRefsAcrossForges(t *testing.T) {
+	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
+	for _, ref := range []agentIssueRef{
+		{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1501, Forge: forgeForgejo, Tracker: trackerForgejo},
+		{Owner: "coilysiren", Repo: "infrastructure", Number: 77, Forge: forgeGitHub, Tracker: trackerGitHub},
+	} {
+		t.Run(ref.String(), func(t *testing.T) {
+			seed := agentSeedPromptWorkflow(ref, "multi-forge refs", "do the thing", "", true, nil, workflowPullRequest, true, "")
+			for _, want := range []string{ref.url(), ref.closingTrailer()} {
+				if !strings.Contains(seed, want) {
+					t.Fatalf("seed missing %q\n%s", want, seed)
+				}
+			}
+			if strings.Contains(seed, fmt.Sprintf("closes #%d", ref.Number)) {
+				t.Fatalf("seed emitted a bare close ref for %s:\n%s", ref, seed)
+			}
+
+			sc := &reservationSeedContext{
+				Ref:          ref,
+				Branch:       fmt.Sprintf("issue-%d", ref.Number),
+				Driver:       "codex",
+				RunID:        fmt.Sprintf("engineer-codex-%s-%d", ref.Repo, ref.Number),
+				WardVersion:  "v0.823.0",
+				Workflow:     workflowPullRequest,
+				Reservation:  "held",
+				DispatchedAt: now,
+			}
+			comment := reservationCommentBody(modeCodex, sc.RunID, "host", now, "", sc)
+			for _, want := range []string{ref.String(), ref.url(), wardIssueURL(494)} {
+				if !strings.Contains(comment, want) {
+					t.Fatalf("reservation comment missing %q\n%s", want, comment)
+				}
+			}
+			if strings.Contains(comment, "ward#494") || strings.Contains(comment, "ward#609") {
+				t.Fatalf("reservation comment emitted an ambiguous Ward ref:\n%s", comment)
+			}
+		})
 	}
 }
 
@@ -313,10 +353,10 @@ func TestAgentSeedPromptKeepsAdjacentIssuesDistinct(t *testing.T) {
 	after := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 426}
 	beforeSeed := agentSeedPrompt(before, "fix carried issue state", "work one", "", true, nil)
 	afterSeed := agentSeedPrompt(after, "fix carried issue state", "work two", "", true, nil)
-	if !strings.Contains(beforeSeed, "closes #425") || strings.Contains(beforeSeed, "closes #426") {
+	if !strings.Contains(beforeSeed, "closes coilyco-flight-deck/ward#425") || strings.Contains(beforeSeed, "closes coilyco-flight-deck/ward#426") {
 		t.Fatalf("seed for #425 drifted: %s", beforeSeed)
 	}
-	if !strings.Contains(afterSeed, "closes #426") || strings.Contains(afterSeed, "closes #425") {
+	if !strings.Contains(afterSeed, "closes coilyco-flight-deck/ward#426") || strings.Contains(afterSeed, "closes coilyco-flight-deck/ward#425") {
 		t.Fatalf("seed for #426 drifted: %s", afterSeed)
 	}
 	if strings.Contains(beforeSeed, "Carried issue number: 426") || strings.Contains(afterSeed, "Carried issue number: 425") {
@@ -341,7 +381,7 @@ func TestAgentSeedPromptEmptyBody(t *testing.T) {
 		if strings.Contains(got, "read the full issue body") {
 			t.Errorf("%s: empty body must drop the read-it-at-the-URL instruction\n got: %s", mode, got)
 		}
-		if !strings.Contains(got, "closes #151") {
+		if !strings.Contains(got, "closes coilyco-flight-deck/ward#151") {
 			t.Errorf("%s: close trailer missing\n got: %s", mode, got)
 		}
 	}
@@ -420,10 +460,10 @@ func TestSeedLogBlock(t *testing.T) {
 	seed := agentSeedPrompt(ref, "dump the seed", "the frozen task text", "", true, nil)
 	block := seedLogBlock(seed)
 	for _, want := range []string{
-		"----- seeded prompt -----", // the greppable open marker
-		"----- end -----",           // the close marker
-		"the frozen task text",      // the inlined body rides in the dump
-		"closes #400",               // the full seed, not just the title
+		"----- seeded prompt -----",           // the greppable open marker
+		"----- end -----",                     // the close marker
+		"the frozen task text",                // the inlined body rides in the dump
+		"closes coilyco-flight-deck/ward#400", // the full seed, not just the title
 	} {
 		if !strings.Contains(block, want) {
 			t.Errorf("seed log block missing %q\n got: %s", want, block)
@@ -463,16 +503,16 @@ func TestAgentSeedPromptHeadlessReflection(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 281}
 	headless := agentSeedPrompt(ref, "post a felt comment", "do the thing", "", true, nil)
 	for _, want := range []string{
-		"how the",     // names the retrospective shape
-		"\"felt\"",    // the word the issue asks for, quoted
-		"closes #281", // the base carry-to-merge seed survives
+		"how the",                             // names the retrospective shape
+		"\"felt\"",                            // the word the issue asks for, quoted
+		"closes coilyco-flight-deck/ward#281", // the base carry-to-merge seed survives
 	} {
 		if !strings.Contains(headless, want) {
 			t.Errorf("headless seed missing %q\n got: %s", want, headless)
 		}
 	}
 	// The reflection is the final ask, after the close trailer (it runs last).
-	if strings.Index(headless, "\"felt\"") < strings.Index(headless, "closes #281") {
+	if strings.Index(headless, "\"felt\"") < strings.Index(headless, "closes coilyco-flight-deck/ward#281") {
 		t.Errorf("reflection should follow the carry-to-merge instruction\n got: %s", headless)
 	}
 	// Interactive work has a human watching, so it omits the reflection entirely.
@@ -493,7 +533,7 @@ func TestGooseLandingClause(t *testing.T) {
 	got := gooseLandingClause(ref)
 	for _, want := range []string{
 		"Goose landing rule",
-		"closes #523",
+		"closes coilyco-flight-deck/ward#523",
 		"before teardown",
 		"terminal completion line",
 	} {
@@ -882,9 +922,10 @@ func TestBlindfireIssueBody(t *testing.T) {
 	got := blindfireIssueBody(modeClaude, "engineer", w, "this is an ops verb")
 	for _, want := range []string{
 		"coilyco-flight-deck/ward#159",        // names the source issue
+		w.Ref.url(),                           // pins the source tracker authority
 		"this is an ops verb",                 // the routing reason
 		"Make ward route ops verbs to coily.", // the source body, verbatim
-		"ward#159",                            // provenance to this feature
+		wardIssueURL(159),                     // provenance to this feature
 		"filed blind",                         // flags that nobody searched
 	} {
 		if !strings.Contains(got, want) {

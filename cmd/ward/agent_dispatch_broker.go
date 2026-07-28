@@ -793,7 +793,7 @@ func (r *Runner) commentReservationConflictDispatch(ctx context.Context, cl Trac
 		fmt.Fprintf(os.Stderr, "ward dispatch broker: could not comment reservation-collision dispatch on %s: %v\n", ref, err)
 		return
 	}
-	fmt.Fprintf(os.Stderr, "ward dispatch broker: deferred dispatch on %s behind the live reservation (ward#1149)\n", ref)
+	fmt.Fprintf(os.Stderr, "ward dispatch broker: deferred dispatch on %s behind the live reservation (%s)\n", ref, wardIssueURL(1149))
 }
 
 // dispatchBrokerRequestMode resolves the requested harness for a forwarded dispatch.

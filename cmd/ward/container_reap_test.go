@@ -1056,7 +1056,7 @@ func TestReapTargetTreeDoneOutcomeSuppressesEmptySalvageWhenMainHasCloseRef(t *t
 			t.Fatalf("reapTargetTree with done outcome and no diff: %v", err)
 		}
 	})
-	if !strings.Contains(stderr, "already carries closes #1605 after a done outcome") {
+	if !strings.Contains(stderr, "already carries closes coilyco-flight-deck/ward#1605 after a done outcome") {
 		t.Fatalf("stderr missing done-outcome empty-salvage proof:\n%s", stderr)
 	}
 	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
@@ -1206,8 +1206,8 @@ func TestReapTargetTreeDirtyResidualWithoutCloseRefRepairs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read repaired residual commit: %v\n%s", err, string(out))
 	}
-	if !strings.Contains(strings.ToLower(string(out)), "closes #427") {
-		t.Fatalf("reaper residual commit must add closes #427:\n%s", string(out))
+	if !strings.Contains(strings.ToLower(string(out)), "closes coilyco-flight-deck/infrastructure#427") {
+		t.Fatalf("reaper residual commit must add closes coilyco-flight-deck/infrastructure#427:\n%s", string(out))
 	}
 	branchOut, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(branchOut)) != "" {
@@ -1335,8 +1335,8 @@ func TestReapTargetTreeDirtyOnlyResidualRunRepairsAndLands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read landed commit: %v\n%s", err, string(out))
 	}
-	if !strings.Contains(strings.ToLower(string(out)), "closes #523") {
-		t.Fatalf("dirty-only Goose landing commit missing closes #523:\n%s", string(out))
+	if !strings.Contains(strings.ToLower(string(out)), "closes coilyco-flight-deck/infrastructure#523") {
+		t.Fatalf("dirty-only Goose landing commit missing closes coilyco-flight-deck/infrastructure#523:\n%s", string(out))
 	}
 	out, _ = exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(out)) != "" {
@@ -1550,8 +1550,8 @@ func TestReapTargetTreeRepairsResidualCommitCloseRef(t *testing.T) {
 		t.Fatalf("read repaired commit: %v\n%s", err, string(out))
 	}
 	msg := string(out)
-	if !strings.Contains(msg, "ward-container: residual claude work on coilyco-flight-deck/ward") || !strings.Contains(strings.ToLower(msg), "closes #713") {
-		t.Fatalf("residual commit was not amended with closes #713:\n%s", msg)
+	if !strings.Contains(msg, "ward-container: residual claude work on coilyco-flight-deck/ward") || !strings.Contains(strings.ToLower(msg), "closes coilyco-flight-deck/ward#713") {
+		t.Fatalf("residual commit was not amended with closes coilyco-flight-deck/ward#713:\n%s", msg)
 	}
 }
 
@@ -1631,7 +1631,7 @@ func TestRepairClosingReferenceCreatesEmptyCommitForMultiCommitShape(t *testing.
 	if err != nil {
 		t.Fatalf("read repair commit: %v\n%s", err, string(out))
 	}
-	if !strings.Contains(string(out), "ward-container: repair closing reference") || !strings.Contains(strings.ToLower(string(out)), "closes #713") {
+	if !strings.Contains(string(out), "ward-container: repair closing reference") || !strings.Contains(strings.ToLower(string(out)), "closes coilyco-flight-deck/ward#713") {
 		t.Fatalf("empty repair commit missing closing reference:\n%s", string(out))
 	}
 }
@@ -2065,7 +2065,7 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 			t.Errorf("carried-issue comment missing %q\n---\n%s", want, f.commentBody)
 		}
 	}
-	if !strings.Contains(f.prBody, "closes #518") {
+	if !strings.Contains(f.prBody, "closes coilyco-flight-deck/ward#518") {
 		t.Errorf("salvage PR body must carry the closing ref for the carried issue:\n%s", f.prBody)
 	}
 }

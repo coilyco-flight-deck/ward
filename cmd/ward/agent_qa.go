@@ -479,7 +479,7 @@ func (r *Runner) findLinkedPullRequest(ctx context.Context, ref agentIssueRef, _
 		return nil, false, err
 	}
 	for _, pr := range prs {
-		linked, ok := directorLinkedIssueNumber(pr.Body)
+		linked, ok := directorLinkedIssueNumber(ref.Owner, ref.Repo, pr.Body)
 		if !ok || linked != ref.Number {
 			continue
 		}
