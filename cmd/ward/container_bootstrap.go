@@ -1238,6 +1238,28 @@ func splitOwnerName(ref string) (owner, name string, ok bool) {
 
 // --- compose per-mode operating context (the least-context ladder) -----------
 
+// interactiveIntroductionBlock prompts attached agents to identify their runtime
+// lane in the first interactive reply without adding any identity plumbing.
+const interactiveIntroductionBlock = `
+
+---
+
+## Interactive startup
+
+When this is an attached interactive session, begin your first response with a
+brief introduction: name yourself as the selected Ward role, name the harness you
+are running through, and name the repo or scope you are attached to. Use the
+startup context and ` + "`WARD_ROLE`" + ` / ` + "`WARD_AGENT`" + ` / ` + "`WARD_TARGET_REPO`" + ` env if you need exact values.
+Keep it to one sentence, then continue with the user's request.
+`
+
+func interactiveIntroductionContext(e bootstrapEnv) []byte {
+	if e.oneshot() {
+		return nil
+	}
+	return []byte(interactiveIntroductionBlock)
+}
+
 // readOnlyContextBlock is a read-only session's static "do not push" entry context
 // (ward#293). Kept in sync with the same block in entrypoint.sh's compose_context.
 const readOnlyContextBlock = `
@@ -1353,6 +1375,7 @@ func (r *Runner) composeContext(e bootstrapEnv) { //nolint:cyclop
 	if block := substrateInventoryBlock(e.SubstrateDest); block != "" {
 		buf = append(buf, []byte(block)...)
 	}
+	buf = append(buf, interactiveIntroductionContext(e)...)
 	// A read-only session has no seed to carry the "do not push" constraint, so it
 	// rides here as static entry context, overriding the autonomy doctrine (ward#293).
 	if e.ReadOnly {
