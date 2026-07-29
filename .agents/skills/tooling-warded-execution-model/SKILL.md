@@ -38,16 +38,17 @@ default is to assume the first:
 - **ward** composes everything an **agent inside a container** reads, fresh on every
   bring-up; nothing the host converges reaches it. The surfaces live in
   `cmd/ward/containerassets/` - `AGENTS.container.md` (doctrine),
-  `settings.container.json` (the policy: `bypassPermissions` + the force-push deny),
-  `entrypoint.sh` (`compose_context`/`compose_permissions`) - plus
+  `entrypoint.sh` (bootstrap handoff) - plus `cmd/ward/container_bootstrap.go`
+  (typed settings and context composition) and
   `cmd/ward/agent_director_surface.go` (`WARD_READONLY`).
 
 The container **does not inherit the host's converged hooks or settings**: ward writes the
-agent's `~/.claude/settings.json` and `CLAUDE.md` from those assets each bring-up. So a fix
-to *how a warded agent behaves* - its permissions, its Stop/hook behavior, its doctrine -
-lands in **ward's container assets**, not a host ansible role. The
+agent's `~/.claude/settings.json` from typed Go policy and composes its context from
+container assets each bring-up. So a fix to *how a warded agent behaves* - its
+permissions, its Stop/hook behavior, its doctrine - lands in **ward's bootstrap or
+container assets**, not a host ansible role. The
 concrete miss: a "stop asking permission" fix was first filed against the `claude-hooks`
-ansible role, when the real surface was ward's container assets (infrastructure#408 →
+ansible role, when the real surface was ward's container bootstrap (infrastructure#408 →
 ward#354). Full surface map: [`references/host-vs-container.md`](references/host-vs-container.md).
 
 ### The rule, plainly
@@ -55,8 +56,9 @@ ward#354). Full surface map: [`references/host-vs-container.md`](references/host
 > **Before filing host-shaped work** (config, rollout, fleet convergence, hooks, doctrine),
 > determine whether the **warded-container path is the actual home first**. For a
 > container-exclusive fleet it usually is. Ask: *does this change what an agent reads or is
-> allowed to do **inside a ward container**?* If yes → `cmd/ward/containerassets/` (or
-> composing Go), in **ward**. If it only changes the **operator's host harness** → the
+> allowed to do **inside a ward container**?* If yes →
+> `cmd/ward/container_bootstrap.go` or `cmd/ward/containerassets/`, in **ward**. If it
+> only changes the **operator's host harness** → the
 > infrastructure ansible role. Infrastructure is downstream of ward, so a ward-concept fix
 > homed there inverts the dependency.
 
