@@ -917,10 +917,9 @@ func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 		t.Fatalf("staged ward binary must be executable, mode %o", info.Mode())
 	}
 	payloads := map[string]string{
-		"entrypoint.sh":           containerEntrypointScript,
-		"AGENTS.container.md":     containerDoctrine,
-		"settings.container.json": containerSettingsJSON,
-		containerSubstrateRel:     defaultSubstrateManifest,
+		"entrypoint.sh":       containerEntrypointScript,
+		"AGENTS.container.md": containerDoctrine,
+		containerSubstrateRel: defaultSubstrateManifest,
 	}
 	for name, want := range payloads {
 		got, readErr := os.ReadFile(filepath.Join(dir, name))
@@ -930,6 +929,9 @@ func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 		if !bytes.Equal(got, []byte(want)) {
 			t.Errorf("staged payload %s does not match its compiled value", name)
 		}
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "settings.container.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("settings.container.json must not be staged; stat error = %v", statErr)
 	}
 	entrypointInfo, err := os.Stat(filepath.Join(dir, containerEntrypointRel))
 	if err != nil {

@@ -36,17 +36,19 @@ default is to assume the first:
   server harness - `~/.claude/CLAUDE.md`, host hooks, host permissions - via roles like
   `agent-compose` and `claude-hooks`. It persists on a long-lived host.
 - **ward** composes everything an **agent inside a container** reads, fresh on every
-  bring-up; nothing the host converges reaches it. The staged entrypoint,
-  doctrine, and settings are declared in `cmd/ward/container_payloads.go`;
-  `cmd/ward/container_bootstrap.go` composes them into the runtime surface, and
-  `cmd/ward/agent_director_surface.go` owns `WARD_READONLY`.
+  bring-up; nothing the host converges reaches it. The staged entrypoint and
+  doctrine are declared in `cmd/ward/container_payloads.go`;
+  `cmd/ward/container_bootstrap.go` owns typed settings and context
+  composition, and
+  `cmd/ward/agent_director_surface.go` (`WARD_READONLY`).
 
 The container **does not inherit the host's converged hooks or settings**: Ward writes the
-agent's `~/.claude/settings.json` and `CLAUDE.md` from those payloads each bring-up. So a
-fix to *how a warded agent behaves* - its permissions, its Stop/hook behavior, its doctrine -
-lands in **Ward's payload or bootstrap code**, not a host ansible role. The
+agent's `~/.claude/settings.json` from typed Go policy and composes its context from
+compiled payloads each bring-up. So a fix to *how a warded agent behaves* - its
+permissions, its Stop/hook behavior, its doctrine - lands in **Ward's payload or
+bootstrap code**, not a host ansible role. The
 concrete miss: a "stop asking permission" fix was first filed against the `claude-hooks`
-ansible role, when the real surface was ward's container assets (infrastructure#408 →
+ansible role, when the real surface was ward's container bootstrap (infrastructure#408 →
 ward#354). Full surface map: [`references/host-vs-container.md`](references/host-vs-container.md).
 
 ### The rule, plainly

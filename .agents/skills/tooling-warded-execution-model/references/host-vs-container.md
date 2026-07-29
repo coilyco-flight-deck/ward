@@ -14,19 +14,19 @@ two homes for fleet config, and how to tell which one owns a given fix.
 
 ## Why the container ignores host convergence
 
-Ward writes the agent's `~/.claude/settings.json` from
-`containerSettingsJSON` and its `~/.claude/CLAUDE.md` from
-`containerDoctrine` (+ the mounted host context) on **each bring-up**. The
-payloads live in `cmd/ward/container_payloads.go`; `composePermissions` and
-`composeContext` in `cmd/ward/container_bootstrap.go` apply them. Nothing the
-host's ansible converged is inherited; the container is a fresh, least-access
-box that reads only what Ward composed into it.
+Ward writes the agent's `~/.claude/settings.json` from typed Go policy and
+composes its context from `containerDoctrine` (+ the mounted host context) on
+**each bring-up**. The payload lives in `cmd/ward/container_payloads.go`;
+`composePermissions` and `composeContext` in
+`cmd/ward/container_bootstrap.go` apply it. Nothing the host's ansible
+converged is inherited; the container is a fresh, least-access box that reads
+only what Ward composed into it.
 
-So the surface that controls *agent-in-container* behavior is Ward's payload
+So the surfaces that control *agent-in-container* behavior are Ward's payload
 and bootstrap code:
 
-- **Permissions / hooks** an agent runs under → `containerSettingsJSON` (the
-  `bypassPermissions` default + the force-push/history-rewrite deny list). This is the
+- **Permissions / hooks** an agent runs under → typed policy in
+  `container_bootstrap.go` (including the `bypassPermissions` default). This is the
   container's analogue of the host `claude-hooks` role - and it is the one that actually
   governs a warded agent.
 - **Top-of-context doctrine** → `containerDoctrine` (the autonomy override, the
@@ -38,11 +38,12 @@ and bootstrap code:
 ## The concrete miss this corrects
 
 A "make the agent stop asking permission" fix was first filed against the host
-`claude-hooks` ansible role (host convergence), when the real surfaces are ward's container
-assets - refiled infrastructure#408 → ward#354. An agent reasoning about "where does a
-config/doctrine/hook fix land" defaults to the host-ansible model because the
-infrastructure repo foregrounds it, even when the system replacing that model for a
-container-exclusive fleet *is* ward.
+`claude-hooks` ansible role (host convergence), when the real surfaces are
+Ward's container payload and bootstrap code - refiled infrastructure#408 →
+ward#354. An agent reasoning about "where does a config/doctrine/hook fix land"
+defaults to the host-ansible model because the infrastructure repo foregrounds
+it, even when the system replacing that model for a container-exclusive fleet
+*is* Ward.
 
 ## How to check before filing
 

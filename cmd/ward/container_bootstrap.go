@@ -1410,18 +1410,40 @@ func (r *Runner) linkOrCopyContext(linkTarget, dest, src string) {
 
 // --- container permission policy ---------------------------------------------
 
-// composePermissions ports compose_permissions: copy the container permission
-// policy into the agent's claude settings.json.
+type containerClaudeSettings struct {
+	TUI              string                     `json:"tui"`
+	DeniedMCPServers []containerDeniedMCPServer `json:"deniedMcpServers"`
+	Permissions      containerPermissions       `json:"permissions"`
+	StatusLine       *containerStatusLine       `json:"statusLine,omitempty"`
+}
+
+type containerDeniedMCPServer struct {
+	ServerName string `json:"serverName"`
+}
+
+type containerPermissions struct {
+	DefaultMode string   `json:"defaultMode"`
+	Deny        []string `json:"deny,omitempty"`
+}
+
+type containerStatusLine struct {
+	Type            string `json:"type"`
+	Command         string `json:"command"`
+	Padding         int    `json:"padding"`
+	RefreshInterval int    `json:"refreshInterval"`
+}
+
+// composePermissions writes typed policy directly into Claude settings; the
+// policy is product code rather than a staged runtime asset.
 func (r *Runner) composePermissions(e bootstrapEnv) {
 	blog("permissions compose start: %s", e.AgentHome)
 	out := filepath.Join(e.AgentHome, ".claude", "settings.json")
 	_ = os.MkdirAll(filepath.Dir(out), 0o755)
-	data, rerr := os.ReadFile("/opt/ward/settings.container.json") // #nosec G304 -- bind-mounted policy
-	if rerr != nil {
-		blog("could not read container permission policy: %v", rerr)
+	buf, err := composeClaudeSettings(containerMode(e.Mode))
+	if err != nil {
+		blog("could not compose container permission policy: %v", err)
 		return
 	}
-	buf := composeClaudeSettings(containerMode(e.Mode), data)
 	if werr := os.WriteFile(out, buf, 0o644); werr != nil { // #nosec G306 -- permission policy, not a secret
 		blog("could not write container permission policy: %v", werr)
 		return
@@ -1429,27 +1451,29 @@ func (r *Runner) composePermissions(e bootstrapEnv) {
 	blog("wrote container permission policy to %s", out)
 }
 
-func composeClaudeSettings(mode containerMode, data []byte) []byte {
-	if !lookupAgent(mode).Record().StatusLine {
-		return data
+func composeClaudeSettings(mode containerMode) ([]byte, error) {
+	settings := containerClaudeSettings{
+		TUI: "fullscreen",
+		DeniedMCPServers: []containerDeniedMCPServer{
+			{ServerName: "claude-in-chrome"},
+		},
+		Permissions: containerPermissions{
+			DefaultMode: "bypassPermissions",
+		},
 	}
-	var settings map[string]any
-	if err := json.Unmarshal(data, &settings); err != nil {
-		blog("could not parse container permission policy: %v; writing the base file unchanged", err)
-		return data
-	}
-	settings["statusLine"] = map[string]any{
-		"type":            "command",
-		"command":         "ward agent dispatch-health --line",
-		"padding":         1,
-		"refreshInterval": 5,
+	if lookupAgent(mode).Record().StatusLine {
+		settings.StatusLine = &containerStatusLine{
+			Type:            "command",
+			Command:         "ward agent dispatch-health --line",
+			Padding:         1,
+			RefreshInterval: 5,
+		}
 	}
 	buf, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
-		blog("could not marshal status-line settings: %v; writing the base file unchanged", err)
-		return data
+		return nil, err
 	}
-	return append(buf, '\n')
+	return append(buf, '\n'), nil
 }
 
 // --- reaper: deterministic teardown backstop ---------------------------------

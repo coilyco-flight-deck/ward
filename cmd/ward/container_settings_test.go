@@ -5,10 +5,13 @@ import (
 	"testing"
 )
 
-// TestContainerSettingsPolicy locks the container permission policy: valid JSON,
-// bypassPermissions, and no deny wall - isolation is the sole boundary (ward#375).
+// TestContainerSettingsPolicy locks valid generated JSON, bypassPermissions,
+// and no deny wall - isolation is the sole boundary (ward#375).
 func TestContainerSettingsPolicy(t *testing.T) {
-	data := []byte(containerSettingsJSON)
+	data, err := composeClaudeSettings(modeClaude)
+	if err != nil {
+		t.Fatalf("compose container settings: %v", err)
+	}
 	var s struct {
 		TUI              string           `json:"tui"`
 		DeniedMCPServers []map[string]any `json:"deniedMcpServers"`
@@ -18,7 +21,7 @@ func TestContainerSettingsPolicy(t *testing.T) {
 		} `json:"permissions"`
 	}
 	if err := json.Unmarshal(data, &s); err != nil {
-		t.Fatalf("settings.container.json is not valid JSON: %v", err)
+		t.Fatalf("generated container settings are not valid JSON: %v", err)
 	}
 	if s.Permissions.DefaultMode != "bypassPermissions" {
 		t.Errorf("defaultMode = %q, want bypassPermissions", s.Permissions.DefaultMode)

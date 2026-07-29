@@ -79,19 +79,6 @@ End state:
 - Leave the tree clean and the landing path complete.
 `
 
-const containerSettingsJSON = `{
-  "tui": "fullscreen",
-  "deniedMcpServers": [
-    {
-      "serverName": "claude-in-chrome"
-    }
-  ],
-  "permissions": {
-    "defaultMode": "bypassPermissions"
-  }
-}
-`
-
 const defaultSubstrateManifest = `# Ward's bundled substrate manifest contains only the public example repo.
 # Deployments own their repo roster instead of compiling one user's
 # repositories into Ward.
