@@ -30,6 +30,8 @@ Inventory of what `ward` ships today.
 - Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
 - Open-PR backpressure gate.
 - Issue-scoped director dispatch.
+- Bounded director, engineer, and QA live-verification fixtures. See
+  [verification-fixtures.md](verification-fixtures.md).
 - Compose dispatch broker with durable IDs, restart recovery, sibling launch
   isolation, and credential-free director Forgejo RPC. See
   [agent-dispatch-broker.md](agent-dispatch-broker.md).

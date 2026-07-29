@@ -13,12 +13,13 @@ func TestQAPromptIncludesInspectionBrief(t *testing.T) {
 		t.Fatalf("parseQAThoroughness: %v", err)
 	}
 	ctx := qaLaunchContext{
-		IssueRef:       ref.String(),
-		PRRef:          "coilyco-flight-deck/ward#729",
-		ReviewedSHA:    "abc123",
-		ReviewerFamily: qaFamilyInternal,
-		Workflow:       string(workflowPullRequestAndMerge),
-		RunIdentity:    "ward-qa-1",
+		IssueRef:        ref.String(),
+		PRRef:           "coilyco-flight-deck/ward#729",
+		CandidateBranch: "issue-812",
+		ReviewedSHA:     "abc123",
+		ReviewerFamily:  qaFamilyInternal,
+		Workflow:        string(workflowPullRequestAndMerge),
+		RunIdentity:     "ward-qa-1",
 	}
 	got := qaResearchPrompt(
 		ref,
@@ -35,6 +36,7 @@ func TestQAPromptIncludesInspectionBrief(t *testing.T) {
 		"pull request",
 		"checks",
 		"Current PR ref: coilyco-flight-deck/ward#729",
+		"Current candidate branch: issue-812",
 		"Current reviewed SHA: abc123",
 		"Reviewer family: internal",
 		"Run identity: ward-qa-1",
@@ -52,12 +54,13 @@ func TestQAPromptIncludesInspectionBrief(t *testing.T) {
 func TestQAVerdictCommentSurfacesFailure(t *testing.T) {
 	read := `{"verdict":"fail","summary":"checks are red","evidence":["CI failed"],"risks":["merge would regress"],"next_steps":["fix the checks"]}`
 	got := qaVerdictComment(modeClaude, qaThoroughness{}, qaFamilyInternal, "inspect the branch", qaLaunchContext{
-		IssueRef:       "coilyco-flight-deck/ward#844",
-		PRRef:          "coilyco-flight-deck/ward#729",
-		ReviewedSHA:    "abc123",
-		ReviewerFamily: qaFamilyInternal,
-		Workflow:       string(workflowPullRequestAndMerge),
-		RunIdentity:    "ward-qa-1",
+		IssueRef:        "coilyco-flight-deck/ward#844",
+		PRRef:           "coilyco-flight-deck/ward#729",
+		CandidateBranch: "issue-844",
+		ReviewedSHA:     "abc123",
+		ReviewerFamily:  qaFamilyInternal,
+		Workflow:        string(workflowPullRequestAndMerge),
+		RunIdentity:     "ward-qa-1",
 	}, read)
 	for _, want := range []string{
 		"WARD-WORKFLOW: qa-failed ❌",
@@ -67,6 +70,7 @@ func TestQAVerdictCommentSurfacesFailure(t *testing.T) {
 		"workflow: pull-request-and-merge",
 		"issue_ref: coilyco-flight-deck/ward#844",
 		"pr_ref: coilyco-flight-deck/ward#729",
+		"candidate_branch: issue-844",
 		"reason: checks are red",
 		"checks are red",
 		"CI failed",

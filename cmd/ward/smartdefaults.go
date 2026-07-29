@@ -44,6 +44,7 @@ type smartDefaults struct {
 	burndownConfigured            bool
 	burndownDefault               bool
 	burndownRules                 []burndownRule
+	verificationFixtures          []verificationFixtureRule
 }
 
 type repoAuthorityRule struct {
@@ -59,6 +60,11 @@ type repoAuthorityRule struct {
 type burndownRule struct {
 	Pattern string
 	Enabled bool
+}
+
+type verificationFixtureRule struct {
+	Repository string `yaml:"repository"`
+	IssueLabel string `yaml:"issue-label"`
 }
 
 type operatorPreferences struct {
@@ -210,9 +216,12 @@ func applyOperatorPreferences(defs *smartDefaults, prefs operatorPreferences) {
 
 type repoRuntimeConfig struct {
 	Agent struct {
-		Workflow string `yaml:"workflow"`
-		Image    string `yaml:"image"`
-		Channel  string `yaml:"release-channel"`
+		Workflow     string `yaml:"workflow"`
+		Image        string `yaml:"image"`
+		Channel      string `yaml:"release-channel"`
+		Verification struct {
+			Fixtures []verificationFixtureRule `yaml:"fixtures"`
+		} `yaml:"verification"`
 	} `yaml:"agent"`
 }
 
@@ -249,6 +258,13 @@ func applyRepoRuntimeConfig(defs *smartDefaults) error {
 	if value := strings.TrimSpace(cfg.Agent.Channel); value != "" {
 		defs.agentTag = value
 	}
+	fixtures, err := normalizeVerificationFixtureRules(cfg.Agent.Verification.Fixtures)
+	if err != nil {
+		return fmt.Errorf("repository agent.verification.fixtures: %w", err)
+	}
+	if len(fixtures) > 0 {
+		defs.verificationFixtures = fixtures
+	}
 	return nil
 }
 
@@ -261,6 +277,7 @@ func cloneSmartDefaults(in smartDefaults) smartDefaults {
 	out.trustedOwners = append([]string{}, in.trustedOwners...)
 	out.repoAuthorityRules = append([]repoAuthorityRule{}, in.repoAuthorityRules...)
 	out.burndownRules = append([]burndownRule{}, in.burndownRules...)
+	out.verificationFixtures = append([]verificationFixtureRule{}, in.verificationFixtures...)
 	return out
 }
 

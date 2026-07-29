@@ -17,6 +17,10 @@ credentials, mounts, network access, broker grants, merge authority, model,
 identity, or container topology. Ward enforces those boundaries in the fixed
 launch and broker paths.
 
+`--verification-fixture` narrows director, engineer, and QA runs to an
+explicitly configured disposable target. It does not change the role's
+credentials or authority. See [verification-fixtures.md](verification-fixtures.md).
+
 `warded #98` selects `engineer`. `warded director --repo owner/name` selects
 `director`. `warded qa #98` selects `qa`. Ward rejects additional startup role
 names instead of loading a profile.

@@ -80,12 +80,13 @@ var (
 
 	// The ward.* label keys carrying a run's identity for poll/reaper/sweep: role
 	// and driver always, repo always, issue on an engineer run, machine the id.
-	labelRole     = "ward.role"
-	labelDriver   = "ward.driver"
-	labelRepo     = "ward.repo"
-	labelIssue    = "ward.issue"
-	labelMachine  = "ward.machine"
-	labelWorkflow = "ward.workflow"
+	labelRole                = "ward.role"
+	labelDriver              = "ward.driver"
+	labelRepo                = "ward.repo"
+	labelIssue               = "ward.issue"
+	labelMachine             = "ward.machine"
+	labelWorkflow            = "ward.workflow"
+	labelVerificationFixture = "ward.verification-fixture"
 
 	// containerSubstrateSeed is where the dev-base image bakes image-tier bare
 	// mirrors; the entrypoint hydrates the gitcache from here on a cold volume.
@@ -528,6 +529,9 @@ type upPlan struct {
 	// Workflow is the run's landing policy (--workflow, ward#508): non-merge-remote-main
 	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
 	Workflow workflowMode
+	// VerificationFixture marks a run constrained to a deployment-admitted
+	// disposable issue. It grants no authority by itself.
+	VerificationFixture bool
 	// SkipPreflight mirrors --skip-preflight into the container launch gate so host
 	// preflight/review and in-container smoke probes share the same escape hatch.
 	SkipPreflight bool
@@ -1000,11 +1004,18 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	if p.ReviewClass != "" {
 		env[reviewClassEnv] = p.ReviewClass
 	}
+	p.addVerificationFixtureEnv(env)
 	// --config overrides ride last so they win over any default emitted above (ward#616).
 	for k, v := range p.ConfigEnv {
 		env[k] = v
 	}
 	return env
+}
+
+func (p upPlan) addVerificationFixtureEnv(env map[string]string) {
+	if p.VerificationFixture {
+		env["WARD_VERIFICATION_FIXTURE"] = "1"
+	}
 }
 
 // labels is the ward.* identity set a container wears for poll/reaper/sweep; issue
@@ -1033,6 +1044,9 @@ func (p upPlan) labels() []string {
 	// without reading the container env (ward#508); merge-remote-main stays unlabeled.
 	if !p.Workflow.landsOnMain() {
 		out = append(out, labelWorkflow+"="+string(p.Workflow.orDefault()))
+	}
+	if p.VerificationFixture {
+		out = append(out, labelVerificationFixture+"=true")
 	}
 	return out
 }

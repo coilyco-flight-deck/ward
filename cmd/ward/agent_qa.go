@@ -39,6 +39,7 @@ func agentQAFlags() []cli.Flag {
 		},
 		configFlag(),
 		&cli.StringFlag{Name: "family", Value: qaFamilyInternal, Usage: "QA reviewer family to launch: internal"},
+		verificationFixtureFlag(),
 	)
 	flags = append(flags, agentImageFlags()...)
 	return append(flags,
@@ -86,26 +87,20 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 	if err != nil {
 		return fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
 	}
+	if err := validateVerificationFixtureTarget(c, ref, issue); err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
 	title := strings.TrimSpace(issue.Title)
 	comments, cerr := r.fetchIssueComments(ctx, ref)
 	if cerr != nil {
 		fmt.Fprintf(os.Stderr, "%s: note: could not read comments on %s (%v); QA will inspect the issue body only\n", label, ref, cerr)
 	}
 
-	pr, foundPR, prErr := r.findLinkedPullRequest(ctx, ref, issue, comments)
-	qaCtx := qaLaunchContext{
-		IssueRef:       ref.String(),
-		ReviewerFamily: family,
-		Workflow:       workflowMachineToken(workflowPullRequestAndMerge),
-		RunIdentity:    reviewSessionID(),
+	qaCtx, err := r.resolveQALaunchContext(ctx, c, ref, issue, comments, family, label)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
 	}
-	if prErr != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: could not resolve linked PR for %s (%v); QA will comment without a reviewed SHA\n", label, ref, prErr)
-	} else if foundPR && pr != nil {
-		qaCtx.PRRef = pr.Ref(ref.Owner, ref.Repo)
-		qaCtx.ReviewedSHA = pr.HeadSHA()
-	}
-	prompt = qaInspectionPrompt(prompt)
+	prompt = qaInspectionPrompt(prompt, verificationFixtureRequested(c))
 	research := qaResearchPrompt(ref, title, issue.Body, comments, prompt, level, qaCtx)
 	research += agentRunBudgetNote(roleQA)
 
@@ -131,6 +126,54 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 		return fmt.Errorf("%s: post QA verdict on %s: %w", label, ref, err)
 	}
 	fmt.Fprintf(os.Stderr, "%s: posted a QA verdict on %s - %s\n", label, ref, ref.url())
+	return nil
+}
+
+func (r *Runner) resolveQALaunchContext(
+	ctx context.Context,
+	c *cli.Command,
+	ref agentIssueRef,
+	issue *Issue,
+	comments []issueComment,
+	family string,
+	label string,
+) (qaLaunchContext, error) {
+	qaCtx := qaLaunchContext{
+		IssueRef:       ref.String(),
+		ReviewerFamily: family,
+		Workflow:       workflowMachineToken(workflowPullRequestAndMerge),
+		RunIdentity:    reviewSessionID(),
+	}
+	pr, foundPR, err := r.findLinkedPullRequest(ctx, ref, issue, comments)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: note: could not resolve linked PR for %s (%v); QA will comment without a reviewed SHA\n", label, ref, err)
+	} else if foundPR && pr != nil {
+		qaCtx.PRRef = pr.Ref(ref.Owner, ref.Repo)
+		qaCtx.ReviewedSHA = pr.HeadSHA()
+	}
+	if err := r.prepareVerificationFixtureQAContext(ctx, c, ref, &qaCtx); err != nil {
+		return qaLaunchContext{}, err
+	}
+	return qaCtx, nil
+}
+
+func (r *Runner) prepareVerificationFixtureQAContext(ctx context.Context, c *cli.Command, ref agentIssueRef, qaCtx *qaLaunchContext) error {
+	if !verificationFixtureRequested(c) {
+		return nil
+	}
+	qaCtx.Workflow = workflowMachineToken(workflowRemoteBranchOnly)
+	qaCtx.CandidateBranch = fmt.Sprintf("issue-%d", ref.Number)
+	branch, err := r.hostForgejoClient(ctx).GetBranch(ctx, ref.Owner, ref.Repo, qaCtx.CandidateBranch)
+	if err != nil {
+		return fmt.Errorf("resolve verification fixture branch %s: %w", qaCtx.CandidateBranch, err)
+	}
+	if branch == nil {
+		return fmt.Errorf("verification fixture branch %s returned no branch", qaCtx.CandidateBranch)
+	}
+	qaCtx.ReviewedSHA = strings.TrimSpace(branch.Commit.ID)
+	if qaCtx.ReviewedSHA == "" {
+		return fmt.Errorf("verification fixture branch %s has no commit", qaCtx.CandidateBranch)
+	}
 	return nil
 }
 
@@ -162,12 +205,15 @@ func (r *Runner) validateQAInputs(ctx context.Context, c *cli.Command, label str
 
 // qaInspectionPrompt gives ref-mode QA runs their default brief from the issue
 // itself, while still letting a caller append extra framing when needed.
-func qaInspectionPrompt(prompt string) string {
+func qaInspectionPrompt(prompt string, verificationFixture bool) string {
 	prompt = strings.TrimSpace(prompt)
 	base := "Read the issue title, body, and comment thread below as the QA brief. Inspect the candidate " +
 		"branch, any linked pull request, and the available checks in the live repository state. Return a " +
 		"structured QA verdict that a human can read at a glance. Do not edit files, commit, push, or " +
 		"otherwise change implementation state."
+	if verificationFixture {
+		base += " This is an admitted disposable verification fixture. Inspect only the carried fixture issue and its candidate branch."
+	}
 	if prompt == "" {
 		return base
 	}
@@ -176,7 +222,7 @@ func qaInspectionPrompt(prompt string) string {
 
 // qaResearchPlan recasts a base plan into the read-only, attached, no-TTY one-shot
 // the QA capture needs.
-func qaResearchPlan(plan upPlan, ref agentIssueRef) upPlan {
+func qaResearchPlan(plan upPlan, ref agentIssueRef, verificationFixture bool) upPlan {
 	plan.Ask = true
 	plan.ReadOnly = true
 	plan.Interactive = true
@@ -186,6 +232,9 @@ func qaResearchPlan(plan upPlan, ref agentIssueRef) upPlan {
 	plan.Role = roleQA
 	plan.Issue = 0
 	plan.Branch = ""
+	if verificationFixture {
+		plan.Branch = fmt.Sprintf("issue-%d", ref.Number)
+	}
 	plan.Name = containerRoleName(roleQA, plan.Mode, plan.Repo, 0, plan.Machine)
 	return plan
 }
@@ -207,7 +256,7 @@ func (r *Runner) captureQAResearch(ctx context.Context, c *cli.Command, mode con
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
 	}
-	plan = qaResearchPlan(plan, ref)
+	plan = qaResearchPlan(plan, ref, verificationFixtureRequested(c))
 	plan.DispatchRequestID = strings.TrimSpace(os.Getenv(envDispatchRequestID))
 
 	if err := r.prelaunchDispatch(ctx, c, plan, label); err != nil {
@@ -300,6 +349,7 @@ func qaResearchPrompt(ref agentIssueRef, title, body string, comments []issueCom
 			"any linked pull request, and the available checks. The repo is a fresh clone in your working "+
 			"directory. The issue thread already carries the operator framing and the current release state.\n\n"+
 			"Current PR ref: %s\n"+
+			"Current candidate branch: %s\n"+
 			"Current reviewed SHA: %s\n"+
 			"Reviewer family: %s\n"+
 			"Run identity: %s\n\n"+
@@ -309,7 +359,7 @@ func qaResearchPrompt(ref agentIssueRef, title, body string, comments []issueCom
 			"----- issue body -----\n%s\n----- end issue body -----\n\n"+
 			"Comment thread (oldest first):\n\n%s\n\n"+
 			"----- the QA request -----\n%s\n----- end request -----",
-		ctx.PRRef, ctx.ReviewedSHA, ctx.ReviewerFamily, ctx.RunIdentity, level.Guidance, ref, title, ref.url(), body, thread, prompt)
+		ctx.PRRef, ctx.CandidateBranch, ctx.ReviewedSHA, ctx.ReviewerFamily, ctx.RunIdentity, level.Guidance, ref, title, ref.url(), body, thread, prompt)
 }
 
 // printAgentQAPlan renders the repo, the QA request, and the docker plan without
@@ -323,7 +373,7 @@ func printAgentQAPlan(c *cli.Command, mode containerMode, ref agentIssueRef, tit
 	if err != nil {
 		return err
 	}
-	plan = qaResearchPlan(plan, ref)
+	plan = qaResearchPlan(plan, ref, verificationFixtureRequested(c))
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(mode, "qa"))
 	fmt.Fprintf(&b, "qa: agent runs a read-only, captured inspection in a fresh ephemeral container\n")
@@ -354,12 +404,13 @@ func qaVerdictComment(mode containerMode, level qaThoroughness, family, prompt s
 }
 
 type qaLaunchContext struct {
-	IssueRef       string
-	PRRef          string
-	ReviewedSHA    string
-	ReviewerFamily string
-	Workflow       string
-	RunIdentity    string
+	IssueRef        string
+	PRRef           string
+	CandidateBranch string
+	ReviewedSHA     string
+	ReviewerFamily  string
+	Workflow        string
+	RunIdentity     string
 }
 
 func qaVerdictCommentFrom(_ containerMode, _ qaThoroughness, family, prompt string, ctx qaLaunchContext, verdict qaVerdict) string {
@@ -372,6 +423,7 @@ func qaVerdictCommentFrom(_ containerMode, _ qaThoroughness, family, prompt stri
 	writef(&b, "workflow: %s\n", workflowMachineToken(workflowMode(strings.TrimSpace(ctx.Workflow))))
 	writef(&b, "issue_ref: %s\n", strings.TrimSpace(ctx.IssueRef))
 	writef(&b, "pr_ref: %s\n", strings.TrimSpace(ctx.PRRef))
+	writef(&b, "candidate_branch: %s\n", strings.TrimSpace(ctx.CandidateBranch))
 	writef(&b, "reason: %s\n", strings.TrimSpace(verdict.Summary))
 	if len(verdict.Evidence) > 0 {
 		fmt.Fprintf(&b, "evidence:\n")

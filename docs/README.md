@@ -25,10 +25,10 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [golangci.md](golangci.md) - lint policy.
 - [release.md](release.md) - release pipeline.
 - [release-binaries.md](release-binaries.md) - tagged binaries and checksums.
-- [promote-run-2491.md](promote-run-2491.md) - promote refspec checkpoint.
-- [release-run-2495.md](release-run-2495.md) - release checkout checkpoint.
-- [release-run-2497.md](release-run-2497.md) - follow-up release checkout checkpoint.
-- [release-run-2501.md](release-run-2501.md) - release stable asset tag checkpoint.
+- [promote-run-2491.md](promote-run-2491.md) - promote checkpoint.
+- [release-run-2495.md](release-run-2495.md) - checkout checkpoint.
+- [release-run-2497.md](release-run-2497.md) - follow-up checkpoint.
+- [release-run-2501.md](release-run-2501.md) - stable-tag checkpoint.
 - [forge-linking.md](forge-linking.md) - forge-specific link targets.
 - [troubleshooting.md](troubleshooting.md) - start here on failure.
 
@@ -40,17 +40,18 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [agent-flags.md](agent-flags.md) - generated flag tree.
 - [agent-roles.md](agent-roles.md) - engineer, director, qa.
 - [agent-harnesses.md](agent-harnesses.md) - claude, codex, goose, opencode.
-- [context-bundle.md](context-bundle.md) - provider-neutral context and tool handoff.
+- [context-bundle.md](context-bundle.md) - context and tool handoff.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch, preflight, reservation.
-- [agent-check-placement.md](agent-check-placement.md) - broker/pre-flight guard matrix.
+- [agent-check-placement.md](agent-check-placement.md) - guard matrix.
 - [agent-director.md](agent-director.md) - read-only director lane.
 - [agent-ops.md](agent-ops.md) - logs, stop, list, reap.
 - [agent-reservation-cache.md](agent-reservation-cache.md) - cache-only reservation cleanup.
 - [agent-dispatch-health.md](agent-dispatch-health.md) - status and alert lines.
 - [agent-dispatch-broker.md](agent-dispatch-broker.md) - brokered launch contract.
 - [agent-pr-workflow.md](agent-pr-workflow.md) - merge, status, wait, logs, runs, rerun.
-- [agent-pr-status-object.md](agent-pr-status-object.md) - PR/CI status object, wait primitive, log hooks, examples.
+- [agent-pr-status-object.md](agent-pr-status-object.md) - PR/CI status object.
 - [agent-workflow.md](agent-workflow.md) - landing policy and review.
+- [verification-fixtures.md](verification-fixtures.md) - bounded live proof.
 - [warded-kernel-boundary.md](warded-kernel-boundary.md) - kernel versus edge extraction boundary.
 
 ## Container

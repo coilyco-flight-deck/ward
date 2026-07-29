@@ -111,6 +111,7 @@ type dispatchEngineer struct {
 	// overrideReservation forwards --override-reservation (ward#352, ward#1045);
 	// --override-capacity is per-launch only and never propagated by the loop.
 	overrideReservation bool
+	verificationFixture bool
 }
 
 // engineerArgv renders the `ward agent engineer` argv that carries one issue, forwarding
@@ -132,6 +133,9 @@ func (c dispatchEngineer) engineerArgv(ref agentIssueRef) []string {
 	}
 	if c.overrideReservation {
 		argv = append(argv, "--override-reservation")
+	}
+	if c.verificationFixture {
+		argv = append(argv, "--verification-fixture", "--workflow", string(workflowRemoteBranchOnly))
 	}
 	return argv
 }
@@ -168,6 +172,7 @@ func directorFlags() []cli.Flag {
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed at /workspace/<owner>/<repo> (ward#1526)."},
 		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight container cap from typed defaults or ~/.ward/config.yaml"},
 		&cli.BoolFlag{Name: "burndown", Aliases: []string{"drain"}, Usage: "run the autonomous headless backlog burndown loop. Without this flag, director opens its read-only surface after status refresh"},
+		verificationFixtureFlag(),
 		&cli.BoolFlag{Name: "triage", Value: true, Usage: "run the startup triage pass before burndown: label each untriaged open issue's tier (P0-P4) + automation mode (headless/interactive/consult) to warm the headless lane (ward#397). On by default for --burndown. --no-triage skips it"},
 		&cli.BoolFlag{Name: "no-triage", Usage: "skip the startup triage pass and leave existing labels untouched (ward#397)"},
 		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo per refresh"},
@@ -399,6 +404,9 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 	if err := r.backlogTrustGate(label, repos); err != nil {
 		return err
 	}
+	if err := validateVerificationFixtureDirectorOptions(c, issueRef); err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
 	engDriver, err := directorEngineerHarness(c, mode)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
@@ -421,6 +429,7 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 			wardVersion:         strings.TrimSpace(c.String("ward-version")),
 			wardVersionSource:   resolveWardVersionSource(c, c.String("ward-version")),
 			overrideReservation: overrideReservation(c),
+			verificationFixture: verificationFixtureRequested(c),
 		},
 		contextBundle: strings.TrimSpace(c.String("context-bundle")),
 		wardSource:    strings.TrimSpace(c.String("ward-source")),
@@ -429,6 +438,10 @@ func (r *Runner) runAgentBacklog(ctx context.Context, c *cli.Command, mode conta
 	}
 	if cfg.maxParallel < 1 {
 		cfg.maxParallel = 1
+	}
+	if verificationFixtureRequested(c) {
+		cfg.maxParallel = 1
+		cfg.triage = false
 	}
 	return r.driveBacklog(ctx, label, repos, cfg)
 }
@@ -468,6 +481,9 @@ func directorBurndownRequested(c *cli.Command) bool {
 }
 
 func validateDirectorIssueTarget(c *cli.Command, label string, ref agentIssueRef, issue *Issue) error {
+	if err := validateVerificationFixtureTarget(c, ref, issue); err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
 	if st := strings.ToLower(strings.TrimSpace(issue.State)); st != "open" {
 		return dispatchDeclineErr(dispatchIssueClosed, "issue-closed",
 			"%s: issue %s is %s, not open - nothing to do", label, ref, emptyDefault(st, "unknown"))
@@ -2154,6 +2170,7 @@ func appendDirectorLaunchConfig(b *strings.Builder, cfg backlogConfig) error {
 	}
 	fmt.Fprintf(b, "no-pull:         %t\n", cfg.noPull)
 	fmt.Fprintf(b, "override-reservation: %t (propagated to engineers; default defers on a reservation conflict)\n", cy.overrideReservation)
+	fmt.Fprintf(b, "verification-fixture: %t (exact admitted issue; engineer forced to remote-branch-only)\n", cy.verificationFixture)
 	if len(cfg.withRepo) > 0 {
 		fmt.Fprintf(b, "with-repo:       %s (cloned into the surface session)\n", strings.Join(cfg.withRepo, ", "))
 	}
