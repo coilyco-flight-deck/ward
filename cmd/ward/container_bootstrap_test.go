@@ -1177,12 +1177,17 @@ func TestComposeContextInteractiveIntroductionBlock(t *testing.T) {
 }
 
 func TestComposeClaudeSettingsInjectsStatusLineOnlyForClaude(t *testing.T) {
-	base := []byte(`{"tui":"fullscreen","permissions":{"defaultMode":"bypassPermissions"}}`)
-	gotClaude := composeClaudeSettings(modeClaude, base)
+	gotClaude, err := composeClaudeSettings(modeClaude)
+	if err != nil {
+		t.Fatalf("composeClaudeSettings(claude): %v", err)
+	}
 	if !strings.Contains(string(gotClaude), `"statusLine"`) {
 		t.Fatalf("claude settings missing statusLine:\n%s", gotClaude)
 	}
-	gotCodex := composeClaudeSettings(modeCodex, base)
+	gotCodex, err := composeClaudeSettings(modeCodex)
+	if err != nil {
+		t.Fatalf("composeClaudeSettings(codex): %v", err)
+	}
 	if strings.Contains(string(gotCodex), `"statusLine"`) {
 		t.Fatalf("codex settings should not gain statusLine:\n%s", gotCodex)
 	}

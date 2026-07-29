@@ -659,7 +659,6 @@ func writeContainerAssetsAt(ctx context.Context, dir, wardSource, wardVersion st
 	}{
 		{"entrypoint.sh", 0o755},
 		{"AGENTS.container.md", 0o644},
-		{"settings.container.json", 0o644},
 		{containerSubstrateRel, 0o644},
 	}
 	for _, f := range files {

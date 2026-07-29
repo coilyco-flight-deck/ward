@@ -1,6 +1,6 @@
 # ward is built for and ships into Linux containers. Several assets under
 # cmd/ward/containerassets/ are embedded verbatim via //go:embed and written
-# straight into the image (entrypoint.sh, settings.container.json, ...).
+# straight into the image (entrypoint.sh, manifest files, ...).
 #
 # On a Windows checkout, git's core.autocrlf=true plus the absence of any
 # attributes smudged LF -> CRLF for the whole tree. That baked a
