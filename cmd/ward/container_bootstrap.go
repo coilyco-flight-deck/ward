@@ -1134,7 +1134,7 @@ func (r *Runner) warmSubstrateRepo(ctx context.Context, e bootstrapEnv, owner, n
 	_ = os.RemoveAll(work)
 	ttl, _ := strconv.ParseInt(e.SubstrateTTL, 10, 64)
 	_, err := r.syncGitRef(ctx, gitRefSpec{
-		url:    e.ForgejoBase + "/" + owner + "/" + name + ".git",
+		url:    substrateRepoCloneURL(e, owner, name),
 		mirror: filepath.Join(e.GitCache, owner+"__"+name+".git"),
 		lock:   filepath.Join(e.GitCache, "."+owner+"__"+name+".lock"),
 		work:   work,
@@ -1146,6 +1146,18 @@ func (r *Runner) warmSubstrateRepo(ctx context.Context, e bootstrapEnv, owner, n
 	if err != nil {
 		blog("substrate: sync failed %s/%s (skipping): %v", owner, name, err)
 	}
+}
+
+// substrateRepoCloneURL applies typed repo authority: the bundled example lives
+// on GitHub while Forgejo-owned entries retain the launch's configured base.
+func substrateRepoCloneURL(e bootstrapEnv, owner, name string) string {
+	repo := targetRepo{Owner: owner, Name: name}
+	checkout := defaultSmartDefaults().authorityForRepo(owner, name).Checkout
+	base := checkout.baseURL()
+	if checkout == forgeForgejo && e.ForgejoBase != "" {
+		base = e.ForgejoBase
+	}
+	return repo.cloneURL(base)
 }
 
 // warmSubstrate ports warm_substrate: walk the manifest and warm each repo,

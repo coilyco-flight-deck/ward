@@ -34,10 +34,27 @@ coilyco-gaming/lore                   cache
 	}
 }
 
-// TestEmbeddedSubstrateManifest guards the product-neutral default's syntax.
+// TestEmbeddedSubstrateManifest guards the product-neutral default: Ward ships
+// only its public example repo, never a deployment's repository roster.
 func TestEmbeddedSubstrateManifest(t *testing.T) {
-	_, err := loadSubstrateManifest()
+	repos, err := loadSubstrateManifest()
 	if err != nil {
 		t.Fatalf("embedded preclone-repos.txt does not parse: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("embedded manifest = %+v, want only coilysiren/example", repos)
+	}
+	if got := repos[0]; got.slug() != "coilysiren/example" || got.Tier != "image" {
+		t.Fatalf("embedded manifest entry = %+v, want coilysiren/example image", got)
+	}
+}
+
+func TestSubstrateRepoCloneURLUsesTypedRepoAuthority(t *testing.T) {
+	e := bootstrapEnv{ForgejoBase: "https://forgejo.example"}
+	if got := substrateRepoCloneURL(e, "coilysiren", "example"); got != "https://github.com/coilysiren/example.git" {
+		t.Errorf("GitHub-authoritative substrate clone URL = %q", got)
+	}
+	if got := substrateRepoCloneURL(e, "coilyco-flight-deck", "ward"); got != "https://forgejo.example/coilyco-flight-deck/ward.git" {
+		t.Errorf("Forgejo-authoritative substrate clone URL = %q", got)
 	}
 }
