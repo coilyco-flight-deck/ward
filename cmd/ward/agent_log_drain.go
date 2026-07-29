@@ -68,6 +68,7 @@ const (
 	drainConsoleFile    = "console.log"
 	drainTranscriptFile = "transcript.jsonl"
 	drainMetaFile       = "meta.json"
+	drainSkillUsageFile = "skill-usage.json"
 )
 
 const runSummarySchemaVersion = 1
@@ -90,6 +91,7 @@ type runSummary struct {
 type runSummaryArtifacts struct {
 	ConsoleLog string `json:"console_log,omitempty"`
 	Transcript string `json:"transcript,omitempty"`
+	SkillUsage string `json:"skill_usage,omitempty"`
 }
 
 type runSummaryGit struct {
@@ -342,20 +344,24 @@ func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
 
 	// Meta: safe dims from the inspected env allowlist + the inferred outcome.
 	meta := r.buildRunMeta(ctx, name, string(console), transcript)
+	skillUsage := buildSkillUsageArtifact(meta, transcript)
+	if skillUsage != nil {
+		meta.Summary.Artifacts.SkillUsage = filepath.Join(agentLogsDir(), name, drainSkillUsageFile)
+	}
 
-	r.writeDiskArtifacts(name, dir, console, transcript, meta)
+	r.writeDiskArtifacts(name, dir, console, transcript, meta, skillUsage)
 	// The redacted view rides the same disk gate. When the raw archive lands, its
 	// scrubbed sibling lands too, for the director surface mount (ward#526).
-	r.writeRedactedArtifacts(name, console, transcript, meta)
+	r.writeRedactedArtifacts(name, console, transcript, meta, skillUsage)
 	if containerModeFromContainerName(name) == modeClaude {
 		r.writeClaudeToolFailureRecords(name, meta, transcript)
 	}
 	fmt.Fprintf(os.Stderr, "ward container: drained %s (sink %s, outcome %s)\n", name, mode, meta.Outcome)
 }
 
-// writeDiskArtifacts persists console.log + transcript.jsonl + meta.json under
-// dir - today's artifacts, now gated behind the disk / both modes. Best-effort.
-func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte, meta runMeta) {
+// writeDiskArtifacts persists console.log + transcript.jsonl + meta.json and any
+// observed skill-usage.json under dir. Best-effort.
+func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte, meta runMeta, skillUsage *skillUsageArtifact) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping disk sink\n", name, dir, err)
 		return
@@ -372,12 +378,13 @@ func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte
 	if werr := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta); werr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: write meta.json: %v\n", name, werr)
 	}
+	writeSkillUsageArtifact(name, dir, skillUsage)
 	fmt.Fprintf(os.Stderr, "ward container: wrote disk artifacts for %s -> %s\n", name, dir)
 }
 
 // writeRedactedArtifacts persists the redacted-at-rest view (ward#526) under the
-// agent-logs-redacted tree; the same scrubbers feed the redacted transcript view.
-func (r *Runner) writeRedactedArtifacts(name string, console, transcript []byte, meta runMeta) {
+// agent-logs-redacted tree, including the secret-free skill summary when present.
+func (r *Runner) writeRedactedArtifacts(name string, console, transcript []byte, meta runMeta, skillUsage *skillUsageArtifact) {
 	dir := filepath.Join(agentLogsRedactedDir(), name)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping redacted view\n", name, dir, err)
@@ -395,6 +402,7 @@ func (r *Runner) writeRedactedArtifacts(name string, console, transcript []byte,
 	if werr := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta); werr != nil {
 		fmt.Fprintf(os.Stderr, "ward container: drain %s: write redacted meta.json: %v\n", name, werr)
 	}
+	writeSkillUsageArtifact(name, dir, skillUsage)
 	fmt.Fprintf(os.Stderr, "ward container: wrote redacted view for %s -> %s\n", name, dir)
 }
 
@@ -482,6 +490,7 @@ type runMeta struct {
 	Outcome           string          `json:"outcome"`
 	Summary           runSummary      `json:"summary"`
 	Friction          []frictionEvent `json:"friction,omitempty"`
+	env               map[string]string
 }
 
 // buildRunMeta assembles the meta record from the container's inspected env
@@ -499,6 +508,7 @@ func (r *Runner) buildRunMeta(ctx context.Context, name, console string, transcr
 		TranscriptPresent: len(bytes.TrimSpace(transcript)) > 0,
 		OOMKilled:         ok && state.OOMKilled,
 		Outcome:           classifyReapOutcome(console),
+		env:               env,
 	}
 	meta.Summary = r.buildRunSummary(ctx, name, env, state, meta, console, transcript)
 	meta.Friction = collectFrictionEvents(meta, console)
