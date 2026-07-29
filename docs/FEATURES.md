@@ -10,7 +10,8 @@ Inventory of what `ward` ships today.
 - `ward setup` - first-run local config bootstrap + policy check.
 - `ward doctor` - runtime config validation.
 - `source-doc-refs` - source-comment documentation path validation.
-- `.ward/ward.yaml` - repo config schema in [ward-yaml.md](ward-yaml.md).
+- `.ward/ward.yaml` schema in [ward-yaml.md](ward-yaml.md);
+  [Windows tests](windows-development.md).
 
 ## Agent surface
 
@@ -38,7 +39,7 @@ Inventory of what `ward` ships today.
 - PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR lifecycle close/reopen/recovery tools.
 - PR repair classification.
-- Ward-owned Claude tool-failure producer and local schema-v1 buffer. See [tool-failures.md](tool-failures.md).
+- Claude tool-failure buffer and secret-free drained skill-use summaries. See [agent-observability.md](agent-observability.md).
 - Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
 - `ward agent issue create` files a Forgejo issue through the read-only
   director credential broker without dispatching an engineer.
@@ -53,7 +54,6 @@ Inventory of what `ward` ships today.
 - Claude in Chrome browser computer-use is disabled for Claude Code containers.
 - Optional context bundles stay authority-free. Ward retains credentials,
   permissions, mounts, network, and launch authority.
-- [Platform-correct host staging](container-staging.md).
 - Public demo image build. See [demo-image.md](demo-image.md).
 
 ## AOS policy and AOSguard boundary

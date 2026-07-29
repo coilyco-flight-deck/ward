@@ -7,6 +7,8 @@ This page is the durable anchor for the telemetry envelope schema.
 
 - It describes the redacted tool envelope fields and the dropped body payloads.
 - It keeps the cardinality/size discipline visible to source comments.
+- It defines `skill-usage.json` schema version 1 as run dimensions plus sorted
+  skill name/count/observation-window rows, with no prompt or tool bodies.
 - It is the schema reference for the observability comments.
 
 ## See also

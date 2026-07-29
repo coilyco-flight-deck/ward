@@ -64,6 +64,7 @@ These are the verbs for building ward itself (contributor agents). An adopter ru
 
 - `ward exec build`
 - `ward exec test`
+- `ward exec test-windows-compile`
 - `ward exec vet`
 - `ward exec lint`
 - `ward exec tidy`

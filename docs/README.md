@@ -18,7 +18,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [config-source.md](config-source.md) - launch-time config sources.
 - [config-migration.md](config-migration.md) - removed runtime config migration.
 - [ward-yaml.md](ward-yaml.md) - `.ward/ward.yaml`.
-- [workspace.md](workspace.md) - local checkout mode.
+- [workspace](workspace.md) / [Windows tests](windows-development.md) - local lanes.
 - [homebrew-build.md](homebrew-build.md) - build and release packaging.
 - [error-reporting.md](error-reporting.md) - panic telemetry.
 - [tool-failures.md](tool-failures.md) - Claude tool-failure producer.
@@ -58,7 +58,6 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 
 - [container.md](container.md) - ephemeral run box.
 - [container-contract.md](container-contract.md) - mounts, env, permissions.
-- [container-staging.md](container-staging.md).
 - [container-lifecycle.md](container-lifecycle.md) - launch, debug, teardown.
 - [container-substrate.md](container-substrate.md) - `/substrate` and multi-repo.
 - [demo-image.md](demo-image.md) - public demo image build.
