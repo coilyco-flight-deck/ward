@@ -16,9 +16,8 @@ import (
 	"time"
 )
 
-// agent_dispatch_forgejo.go is the credential-free director half of Ward's
-// native Forgejo control plane. The broker accepts only the explicit route
-// families Ward uses. It is not a general HTTP proxy (ward#1612).
+// This file is the credential-free director half of Ward's native Forgejo
+// control plane. The broker allows fixed route families, not arbitrary HTTP.
 
 const (
 	nativeForgejoRequestBodyLimit  = 1 << 20
@@ -38,9 +37,8 @@ type nativeForgejoRequest struct {
 	Accept   string              `json:"accept,omitempty"`
 }
 
-// nativeForgejoTransport keeps the raw credential in the sibling broker. It
-// converts Ward's own fixed-base Forgejo requests into an authenticated broker
-// RPC and reconstructs only the upstream status and bounded response body.
+// nativeForgejoTransport brokers Ward's fixed-base Forgejo requests while
+// exposing only the upstream status and bounded response body.
 type nativeForgejoTransport struct {
 	addr      string
 	token     string

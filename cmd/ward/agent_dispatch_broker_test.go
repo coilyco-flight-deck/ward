@@ -1407,7 +1407,7 @@ func TestDispatchBrokerTokenGate(t *testing.T) {
 		token   string
 		wantSub string
 	}{
-		{"mismatched token rejected", "wrong", "token rejected"},
+		{"mismatched token rejected", "wrong", "capability rejected"},
 		{"matching token reaches validation", "secret", "refused"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2051,7 +2051,7 @@ func TestNoBrokerKeepsDirectDispatchPath(t *testing.T) {
 // It locks the ward#900 and ward#876 regression shape without a live LLM.
 func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
 	setTestHome(t, t.TempDir())
-	t.Setenv("FORGEJO_TOKEN", "forgejo-token")
+	t.Setenv("FORGEJO_TOKEN", "")
 	t.Setenv("WARD_AGENT", "codex")
 	t.Setenv("WARD_MODE", "codex")
 	t.Setenv("WARD_READONLY", "1")
@@ -2094,42 +2094,9 @@ workflow default=merge-remote-main {
 		Title string `json:"title"`
 		Body  string `json:"body"`
 	}
-	forgejo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/sample-tooling/issues":
-			if got := r.Header.Get("Authorization"); got != "token forgejo-token" {
-				select {
-				case issueErr <- fmt.Errorf("authorization header = %q, want token forgejo-token", got):
-				default:
-				}
-				w.WriteHeader(http.StatusUnauthorized)
-				return
-			}
-			if err := json.NewDecoder(r.Body).Decode(&issueReq); err != nil {
-				select {
-				case issueErr <- fmt.Errorf("decode issue body: %w", err):
-				default:
-				}
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			_ = json.NewEncoder(w).Encode(map[string]int{"number": 400})
-			select {
-			case issueCreated <- struct{}{}:
-			default:
-			}
-		default:
-			select {
-			case issueErr <- fmt.Errorf("unexpected Forgejo request: %s %s", r.Method, r.URL.Path):
-			default:
-			}
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer forgejo.Close()
 
 	origForgejoBase := forgejoBaseURL
-	forgejoBaseURL = forgejo.URL
+	forgejoBaseURL = "https://forge.invalid"
 	t.Cleanup(func() { forgejoBaseURL = origForgejoBase })
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -2141,12 +2108,47 @@ workflow default=merge-remote-main {
 	gotReq := make(chan dispatchBrokerRequest, 1)
 	brokerErr := make(chan error, 1)
 	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
+		if dispatchAction(req.Action) == dispatchActionForgejo {
+			wantSegments := []string{"repos", "coilyco-flight-deck", "sample-tooling", "issues"}
+			if req.Forgejo == nil || req.Forgejo.Method != http.MethodPost ||
+				!reflect.DeepEqual(req.Forgejo.Segments, wantSegments) {
+				select {
+				case issueErr <- fmt.Errorf("unexpected brokered Forgejo request: %#v", req.Forgejo):
+				default:
+				}
+				_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{
+					OK: false, ErrorKind: nativeForgejoErrorPolicy, Error: "unexpected test request",
+				})
+				return
+			}
+			if err := json.Unmarshal(req.Forgejo.Body, &issueReq); err != nil {
+				select {
+				case issueErr <- fmt.Errorf("decode brokered issue body: %w", err):
+				default:
+				}
+				_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{
+					OK: false, ErrorKind: nativeForgejoErrorPolicy, Error: "invalid test body",
+				})
+				return
+			}
+			select {
+			case issueCreated <- struct{}{}:
+			default:
+			}
+			_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{
+				OK: true, Status: http.StatusOK, ContentType: "application/json",
+				Body: []byte(`{"number":400}`),
+			})
+			return
+		}
 		gotReq <- req
-		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{OK: true, LogPath: "/tmp/ward/dispatch.log"})
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{
+			OK: true, LogPath: "/tmp/ward/dispatch.log",
+		})
 	})
 
 	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
-	t.Setenv("WARD_FORGEJO_BASE", forgejo.URL)
+	t.Setenv("WARD_FORGEJO_BASE", forgejoBaseURL)
 	t.Setenv(envAgentImage, "")
 	t.Setenv(envAgentTag, "")
 
