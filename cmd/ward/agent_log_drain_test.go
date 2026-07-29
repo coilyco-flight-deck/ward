@@ -139,7 +139,7 @@ func TestWriteRedactedArtifacts(t *testing.T) {
 	meta := runMeta{Container: name, Repo: "o/r", Issue: "526", Outcome: outcomePushedMain}
 
 	r := &Runner{}
-	r.writeRedactedArtifacts(name, console, transcript, meta)
+	r.writeRedactedArtifacts(name, console, transcript, meta, nil)
 
 	dir := filepath.Join(agentLogsRedactedDir(), name)
 	con, err := os.ReadFile(filepath.Join(dir, drainConsoleRedactedFile))
@@ -348,7 +348,7 @@ func TestWriteDiskArtifactsAddsRunSummaryFooter(t *testing.T) {
 	}
 
 	r := &Runner{}
-	r.writeDiskArtifacts(name, dir, console, nil, meta)
+	r.writeDiskArtifacts(name, dir, console, nil, meta, nil)
 
 	rawConsole, err := os.ReadFile(filepath.Join(dir, drainConsoleFile))
 	if err != nil {

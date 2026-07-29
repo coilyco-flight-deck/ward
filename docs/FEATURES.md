@@ -38,7 +38,7 @@ Inventory of what `ward` ships today.
 - PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR lifecycle close/reopen/recovery tools.
 - PR repair classification.
-- Ward-owned Claude tool-failure producer and local schema-v1 buffer. See [tool-failures.md](tool-failures.md).
+- Claude tool-failure buffer and secret-free drained skill-use summaries. See [agent-observability.md](agent-observability.md).
 - Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
 - `ward agent issue create` files a Forgejo issue through the read-only
   director credential broker without dispatching an engineer.
