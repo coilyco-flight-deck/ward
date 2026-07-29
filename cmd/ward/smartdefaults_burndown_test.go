@@ -39,7 +39,7 @@ func TestBurndownDefaultAndPerRepoOverride(t *testing.T) {
 	if !defs.burndownEnabled("coilyco-flight-deck/ward") {
 		t.Error("an exact repo override must win over the matching glob")
 	}
-	if defs.burndownEnabled("coilyco-flight-deck/infrastructure") {
+	if defs.burndownEnabled("coilyco-flight-deck/sample-platform") {
 		t.Error("a matching glob #false must exclude the repo from burndown")
 	}
 }
@@ -51,7 +51,7 @@ func TestBurndownDefaultFalseInvertsTheFallback(t *testing.T) {
     }
 }
 `)
-	if defs.burndownEnabled("coilyco-flight-deck/agentic-os") {
+	if defs.burndownEnabled("coilyco-flight-deck/sample-tooling") {
 		t.Error("default=#false must exclude repos with no entry")
 	}
 	if !defs.burndownEnabled("coilyco-flight-deck/ward") {
@@ -73,7 +73,7 @@ func TestBurndownRejectsBareBooleans(t *testing.T) {
 	// which is the class of bug that broke the whole bundle (aos repos.kdl).
 	doc, err := kdl.ParseString("repos {\n" + burndownAuthority + `
     burndown default=#true {
-        repo "coilyco-flight-deck/infrastructure" "false"
+        repo "coilyco-flight-deck/sample-platform" "false"
     }
 }
 `)

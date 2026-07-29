@@ -65,9 +65,9 @@ func TestLoadRepoLocalCatalogDepsPrefersWardOverCoily(t *testing.T) {
 // resolveContextRepos drops the target, any repo already a writable --repo grant
 // (the writable grant wins), and any repo already warmed as a /substrate reference.
 func TestResolveContextReposDedupes(t *testing.T) {
-	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"}
+	target := targetRepo{Owner: "coilyco-gaming", Name: "sample-gameops"}
 	auto := []targetRepo{
-		{Owner: "coilyco-gaming", Name: "eco-ops"},         // the target: dropped
+		{Owner: "coilyco-gaming", Name: "sample-gameops"},  // the target: dropped
 		{Owner: "acme", Name: "widgets"},                   // a writable grant: dropped
 		{Owner: "coilyco-flight-deck", Name: "cli-guard"},  // a substrate repo: dropped
 		{Owner: "coilyco-flight-deck", Name: "eco-protos"}, // kept
@@ -147,7 +147,7 @@ func TestExternalCatalogDepEndToEnd(t *testing.T) {
 `), 0o644); err != nil { //nolint:gosec
 		t.Fatalf("write ward.yaml: %v", err)
 	}
-	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"}
+	target := targetRepo{Owner: "coilyco-gaming", Name: "sample-gameops"}
 	repos, notes := resolveCatalogContextRepos(work, target, nil)
 	if len(repos) != 2 {
 		t.Fatalf("resolveCatalogContextRepos = %+v, want Eco + eco-protos", repos)
@@ -188,14 +188,14 @@ func TestResolveCatalogContextReposFromClone(t *testing.T) {
 	// The target and writable grant must drop, leaving one kept upstream.
 	if err := os.WriteFile(filepath.Join(wardDir, "ward.yaml"), []byte(`catalog:
   dependsOn:
-    - coilyco-gaming/eco-ops
+    - coilyco-gaming/sample-gameops
     - acme/widgets
     - coilyco-flight-deck/eco-protos
 `), 0o644); err != nil { //nolint:gosec
 		t.Fatalf("write ward.yaml: %v", err)
 	}
-	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-ops"} // must drop (the target)
-	extra := []targetRepo{{Owner: "acme", Name: "widgets"}}        // must drop (writable grant)
+	target := targetRepo{Owner: "coilyco-gaming", Name: "sample-gameops"} // must drop (the target)
+	extra := []targetRepo{{Owner: "acme", Name: "widgets"}}               // must drop (writable grant)
 	repos, notes := resolveCatalogContextRepos(work, target, extra)
 	if len(repos) != 1 || repos[0].slug() != "coilyco-flight-deck/eco-protos" {
 		t.Fatalf("resolveCatalogContextRepos = %+v, want only eco-protos", repos)

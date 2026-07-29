@@ -346,8 +346,8 @@ workflow default="merge-remote-main" {
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
 
-	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/agentic-os#1"})
-	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/agentic-os")
+	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/sample-tooling#1"})
+	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/sample-tooling")
 	if err != nil {
 		t.Fatalf("agentWorkflow default: %v", err)
 	}
@@ -376,8 +376,8 @@ workflow default="merge-remote-main" {
 func TestAgentWorkflowIgnoresBadOperatorConfigRef(t *testing.T) {
 	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
 
-	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/agentic-os#1"})
-	got, err := agentWorkflow(cmd, "coilyco-flight-deck/agentic-os")
+	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/sample-tooling#1"})
+	got, err := agentWorkflow(cmd, "coilyco-flight-deck/sample-tooling")
 	if err != nil {
 		t.Fatalf("agentWorkflow with bad operator ref: %v", err)
 	}

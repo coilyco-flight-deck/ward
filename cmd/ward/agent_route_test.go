@@ -133,7 +133,7 @@ func TestParseRouteVerdict(t *testing.T) {
 	}{
 		{"repo with note", "It's a CLI change.\nREPO: coilyco-flight-deck/ward - add the flag", routeRepo, "coilyco-flight-deck/ward", "add the flag"},
 		{"repo bare", "REPO: coilyco-flight-deck/ward", routeRepo, "coilyco-flight-deck/ward", ""},
-		{"repo no colon", "REPO coilyco-gaming/eco-ops move the ops verb", routeRepo, "coilyco-gaming/eco-ops", "move the ops verb"},
+		{"repo no colon", "REPO coilyco-gaming/sample-gameops move the ops verb", routeRepo, "coilyco-gaming/sample-gameops", "move the ops verb"},
 		{"repo markdown bold", "**REPO: coilysiren/site - tweak the homepage**", routeRepo, "coilysiren/site", "tweak the homepage"},
 		{"repo bulleted", "- REPO: coilyco-gaming/eco - balance pass", routeRepo, "coilyco-gaming/eco", "balance pass"},
 		{"unclear with reason", "Could be two repos.\nUNCLEAR: ward and cli-guard both fit", routeUnclear, "", "ward and cli-guard both fit"},

@@ -114,8 +114,8 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 		t.Fatalf("promote-draft-assets must pass the stable release tag into verify-release-assets.sh:\n%s", promoteDraftJob)
 	}
 	for _, ban := range []string{
-		"coilysiren/agentic-os/actions/tag-bump@main",
-		"coilysiren/agentic-os/actions/create-release@main",
+		"coilysiren/sample-tooling/actions/tag-bump@main",
+		"coilysiren/sample-tooling/actions/create-release@main",
 	} {
 		if strings.Contains(promote, ban) || strings.Contains(release, ban) {
 			t.Fatalf("release workflows should not use external action %q", ban)
@@ -243,7 +243,7 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 		mu.Unlock()
 		wantUser := "coilyco-ops"
 		wantPass := "target-secret"
-		if strings.HasPrefix(r.URL.Path, "/v2/coilyco-flight-deck/agentic-os/") {
+		if strings.HasPrefix(r.URL.Path, "/v2/coilyco-flight-deck/sample-tooling/") {
 			wantUser = "oauth2"
 			wantPass = "source-secret"
 		}
@@ -252,11 +252,11 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 			return
 		}
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/agentic-os/manifests/latest":
+		case r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/sample-tooling/manifests/latest":
 			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = io.WriteString(w, sourceBody)
-		case r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/agentic-os/manifests/"+childDigest:
+		case r.Method == http.MethodGet && r.URL.Path == "/v2/coilyco-flight-deck/sample-tooling/manifests/"+childDigest:
 			w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = io.WriteString(w, childBody)
@@ -264,7 +264,7 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		case r.Method == http.MethodPost && r.URL.Path == "/v2/coilyco-flight-deck/ward/blobs/uploads/":
 			mount := r.URL.Query().Get("mount")
-			if mount == "" || r.URL.Query().Get("from") != "coilyco-flight-deck/agentic-os" {
+			if mount == "" || r.URL.Query().Get("from") != "coilyco-flight-deck/sample-tooling" {
 				t.Fatalf("blob upload POST without mount+from: %q", r.URL.RawQuery)
 			}
 			mu.Lock()
@@ -328,7 +328,7 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 	cmd := exec.Command("bash", script)
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(),
-		"SOURCE_IMAGE="+u+"/coilyco-flight-deck/agentic-os:latest",
+		"SOURCE_IMAGE="+u+"/coilyco-flight-deck/sample-tooling:latest",
 		"TARGET_IMAGE="+u+"/coilyco-flight-deck/ward:release",
 		"SOURCE_TOKEN=source-secret",
 		"TARGET_USER=coilyco-ops",

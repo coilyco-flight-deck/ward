@@ -95,7 +95,7 @@ func TestHostOneShotKeepsPromptOffCommandLine(t *testing.T) {
 	// A prompt whose ref + question sit BELOW the first newline - exactly the shape
 	// the Windows shim truncated to its preamble, dropping the ref/question (ward#548).
 	prompt := "You are doing one-shot research on the authoritative issue thread for this repo.\n\n" +
-		"Issue: coilyco-gaming/eco-ops#26\n----- the question to answer -----\nverify the telemetry flows\n----- end -----"
+		"Issue: coilyco-gaming/sample-gameops#26\n----- the question to answer -----\nverify the telemetry flows\n----- end -----"
 
 	argv, stdin, ok := hostOneShot(modeClaude, prompt)
 	if !ok {
@@ -106,7 +106,7 @@ func TestHostOneShotKeepsPromptOffCommandLine(t *testing.T) {
 	}
 	// The prompt must not leak onto the command line in whole or in part.
 	for _, a := range argv {
-		if strings.Contains(a, "eco-ops#26") || strings.Contains(a, "\n") || a == prompt {
+		if strings.Contains(a, "sample-gameops#26") || strings.Contains(a, "\n") || a == prompt {
 			t.Errorf("prompt leaked onto the command line via argv %q (ward#548)", a)
 		}
 	}
@@ -174,7 +174,7 @@ func TestCapturePreflightPipesStdinToChild(t *testing.T) {
 		t.Skip("/bin/cat not present")
 	}
 	r := &Runner{Runner: &shell.Runner{Stderr: io.Discard}}
-	prompt := "line one\nIssue: coilyco-gaming/eco-ops#26\nquestion below\n"
+	prompt := "line one\nIssue: coilyco-gaming/sample-gameops#26\nquestion below\n"
 
 	out, err := r.capturePreflight(context.Background(), []string{"/bin/cat"}, prompt)
 	if err != nil {

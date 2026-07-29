@@ -338,18 +338,18 @@ func TestDecideReap(t *testing.T) {
 }
 
 func TestSalvageBranchAndTitleStable(t *testing.T) {
-	if got := salvageBranchName("eco-app-a1b2"); got != "ward-salvage/eco-app-a1b2" {
+	if got := salvageBranchName("sample-game-a1b2"); got != "ward-salvage/sample-game-a1b2" {
 		t.Errorf("salvageBranchName = %q", got)
 	}
 	r := salvageReport{
-		Repo:   targetRepo{Owner: "coilyco-gaming", Name: "eco-app"},
-		Branch: "ward-salvage/eco-app-a1b2",
+		Repo:   targetRepo{Owner: "coilyco-gaming", Name: "sample-game"},
+		Branch: "ward-salvage/sample-game-a1b2",
 	}
 	title := salvageIssueTitle(r)
 	if !strings.HasPrefix(title, salvageIssueTitlePrefix) {
 		t.Errorf("title %q missing dedupe prefix", title)
 	}
-	if !strings.Contains(title, "eco-app") || !strings.Contains(title, r.Branch) {
+	if !strings.Contains(title, "sample-game") || !strings.Contains(title, r.Branch) {
 		t.Errorf("title %q missing repo/branch", title)
 	}
 }
@@ -811,8 +811,8 @@ func TestRunProvenanceLandedRejectsPreexistingCommit(t *testing.T) {
 	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
 	reservedAt := "2026-07-02T05:39:58Z"
 	prov := runProvenance{
-		RunID:        "engineer-goose-infrastructure-426",
-		Repo:         "coilyco-flight-deck/infrastructure",
+		RunID:        "engineer-goose-sample-platform-426",
+		Repo:         "coilyco-flight-deck/sample-platform",
 		Issue:        513,
 		ReservedAt:   reservedAt,
 		BaselineMain: mustGitRev(t, repo, "origin/main"),
@@ -834,8 +834,8 @@ func TestRunProvenanceLandedRequiresMatchingIssueAfterReservation(t *testing.T) 
 	runGitCommitAt(t, repo, "2026-07-02T05:45:00Z", "feat.txt", "fresh\n", "fresh carry\n\ncloses #513")
 	runGit(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
 	prov := runProvenance{
-		RunID:        "engineer-goose-infrastructure-426",
-		Repo:         "coilyco-flight-deck/infrastructure",
+		RunID:        "engineer-goose-sample-platform-426",
+		Repo:         "coilyco-flight-deck/sample-platform",
 		Issue:        513,
 		ReservedAt:   "2026-07-02T05:39:58Z",
 		BaselineMain: mustGitRev(t, repo, "HEAD~1"),
@@ -1174,8 +1174,8 @@ func TestReapTargetTreeDirtyResidualWithoutCloseRefRepairs(t *testing.T) {
 	// A real, readable provenance file so the run passes the provenance gate and
 	// reaches the closing-ref check, exactly as the incident run did.
 	prov := runProvenance{
-		RunID:        "engineer-goose-infrastructure-427",
-		Repo:         "coilyco-flight-deck/infrastructure",
+		RunID:        "engineer-goose-sample-platform-427",
+		Repo:         "coilyco-flight-deck/sample-platform",
 		Issue:        427,
 		ReservedAt:   "2026-07-02T06:23:49Z",
 		BaselineMain: baseline,
@@ -1193,7 +1193,7 @@ func TestReapTargetTreeDirtyResidualWithoutCloseRefRepairs(t *testing.T) {
 	}
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
-	env := reapEnv{Owner: "coilyco-flight-deck", Name: "infrastructure", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 427, Launched: true, Workflow: workflowDirectToMain}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "sample-platform", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 427, Launched: true, Workflow: workflowDirectToMain}
 	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
 		t.Fatalf("reapTargetTree repairing dirty residual work: %v", err)
 	}
@@ -1206,8 +1206,8 @@ func TestReapTargetTreeDirtyResidualWithoutCloseRefRepairs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read repaired residual commit: %v\n%s", err, string(out))
 	}
-	if !strings.Contains(strings.ToLower(string(out)), "closes coilyco-flight-deck/infrastructure#427") {
-		t.Fatalf("reaper residual commit must add closes coilyco-flight-deck/infrastructure#427:\n%s", string(out))
+	if !strings.Contains(strings.ToLower(string(out)), "closes coilyco-flight-deck/sample-platform#427") {
+		t.Fatalf("reaper residual commit must add closes coilyco-flight-deck/sample-platform#427:\n%s", string(out))
 	}
 	branchOut, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(branchOut)) != "" {
@@ -1225,8 +1225,8 @@ func TestResidualCommitStateDistinguishesDirtyOnlyAndCommittedResidual(t *testin
 	runGit(t, dirtyRepo, "push", "origin", "main")
 	runGit(t, dirtyRepo, "update-ref", "refs/remotes/origin/main", "HEAD")
 	prov := runProvenance{
-		RunID:        "engineer-goose-infrastructure-523",
-		Repo:         "coilyco-flight-deck/infrastructure",
+		RunID:        "engineer-goose-sample-platform-523",
+		Repo:         "coilyco-flight-deck/sample-platform",
 		Issue:        523,
 		ReservedAt:   "2026-07-02T06:23:49Z",
 		BaselineMain: mustGitRev(t, dirtyRepo, "HEAD"),
@@ -1251,8 +1251,8 @@ func TestResidualCommitStateDistinguishesDirtyOnlyAndCommittedResidual(t *testin
 	runGit(t, committedRepo, "push", "origin", "main")
 	runGit(t, committedRepo, "update-ref", "refs/remotes/origin/main", "HEAD")
 	prov = runProvenance{
-		RunID:        "engineer-goose-infrastructure-523",
-		Repo:         "coilyco-flight-deck/infrastructure",
+		RunID:        "engineer-goose-sample-platform-523",
+		Repo:         "coilyco-flight-deck/sample-platform",
 		Issue:        523,
 		ReservedAt:   "2026-07-02T06:23:49Z",
 		BaselineMain: mustGitRev(t, committedRepo, "HEAD"),
@@ -1298,8 +1298,8 @@ func TestReapTargetTreeDirtyOnlyResidualRunRepairsAndLands(t *testing.T) {
 	baseline := mustGitRev(t, work, "origin/main")
 
 	prov := runProvenance{
-		RunID:        "engineer-goose-infrastructure-523",
-		Repo:         "coilyco-flight-deck/infrastructure",
+		RunID:        "engineer-goose-sample-platform-523",
+		Repo:         "coilyco-flight-deck/sample-platform",
 		Issue:        523,
 		ReservedAt:   "2026-07-10T06:23:49Z",
 		BaselineMain: baseline,
@@ -1318,7 +1318,7 @@ func TestReapTargetTreeDirtyOnlyResidualRunRepairsAndLands(t *testing.T) {
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	env := reapEnv{
 		Owner:    "coilyco-flight-deck",
-		Name:     "infrastructure",
+		Name:     "sample-platform",
 		Base:     "https://forgejo.coilysiren.me",
 		Mode:     "goose",
 		Issue:    523,
@@ -1335,8 +1335,8 @@ func TestReapTargetTreeDirtyOnlyResidualRunRepairsAndLands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read landed commit: %v\n%s", err, string(out))
 	}
-	if !strings.Contains(strings.ToLower(string(out)), "closes coilyco-flight-deck/infrastructure#523") {
-		t.Fatalf("dirty-only Goose landing commit missing closes coilyco-flight-deck/infrastructure#523:\n%s", string(out))
+	if !strings.Contains(strings.ToLower(string(out)), "closes coilyco-flight-deck/sample-platform#523") {
+		t.Fatalf("dirty-only Goose landing commit missing closes coilyco-flight-deck/sample-platform#523:\n%s", string(out))
 	}
 	out, _ = exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(out)) != "" {
@@ -1891,7 +1891,7 @@ func TestCheckExtraRepoLandedNoSalvageOnDifferentHash(t *testing.T) {
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 587, Launched: true}
-	rep, landed := r.checkExtraRepoLanded(t.Context(), env, targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}, repo)
+	rep, landed := r.checkExtraRepoLanded(t.Context(), env, targetRepo{Owner: "coilyco-gaming", Name: "sample-game"}, repo)
 	if !landed {
 		t.Fatalf("a grant present on origin/main by patch-id must read landed, got unlanded: %+v", rep)
 	}
@@ -2195,9 +2195,9 @@ func mustGitRev(t *testing.T, dir, ref string) string {
 
 func TestSalvageIssueBodyRendersRecoveryAndFindings(t *testing.T) {
 	r := salvageReport{
-		Repo:     targetRepo{Owner: "coilyco-gaming", Name: "eco-app"},
+		Repo:     targetRepo{Owner: "coilyco-gaming", Name: "sample-game"},
 		Mode:     "claude",
-		Branch:   "ward-salvage/eco-app-a1b2",
+		Branch:   "ward-salvage/sample-game-a1b2",
 		Reason:   reasonConflict,
 		Findings: []scan.Finding{{Path: "node_modules/x/i.js", Reason: "vendored/generated tree (node_modules/)"}},
 		Status:   " M src/main.go\n?? scratch.txt",
@@ -2206,9 +2206,9 @@ func TestSalvageIssueBodyRendersRecoveryAndFindings(t *testing.T) {
 	body := salvageIssueBody(r)
 	for _, want := range []string{
 		"claude",
-		"ward-salvage/eco-app-a1b2",
+		"ward-salvage/sample-game-a1b2",
 		string(reasonConflict),
-		"git fetch https://forgejo.coilysiren.me/coilyco-gaming/eco-app.git ward-salvage/eco-app-a1b2",
+		"git fetch https://forgejo.coilysiren.me/coilyco-gaming/sample-game.git ward-salvage/sample-game-a1b2",
 		"node_modules/x/i.js",
 		"src/main.go",
 	} {

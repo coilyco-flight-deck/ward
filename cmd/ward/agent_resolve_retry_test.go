@@ -19,7 +19,7 @@ func TestTransientResolveErr(t *testing.T) {
 		{name: "nil is not transient", err: nil, wantRet: false},
 		{
 			name:    "forgejo 404 envelope is permanent",
-			err:     errors.New("forgejo: get issue coilysiren/website#57: exit status 3: GET https://forgejo.coilysiren.me/... -> 404 Not Found: {\"message\":\"issue does not exist\"}"),
+			err:     errors.New("forgejo: get issue coilysiren/sample-site#57: exit status 3: GET https://forgejo.coilysiren.me/... -> 404 Not Found: {\"message\":\"issue does not exist\"}"),
 			wantRet: false,
 		},
 		{

@@ -23,20 +23,20 @@ func (f *fakeRepoLister) listOwnerRepos(_ context.Context, owner string) ([]repo
 
 func TestBuildSubstrateCatalog(t *testing.T) {
 	manifest := []substrateRepo{
-		{Owner: "coilyco-flight-deck", Name: "infrastructure", Tier: "image"},
+		{Owner: "coilyco-flight-deck", Name: "sample-platform", Tier: "image"},
 		{Owner: "coilyco-flight-deck", Name: "ward", Tier: "image"},
-		{Owner: "coilyco-gaming", Name: "eco-ops", Tier: "cache"},
+		{Owner: "coilyco-gaming", Name: "sample-gameops", Tier: "cache"},
 		// A manifest repo forgejo does not return still gets an entry.
 		{Owner: "coilyco-flight-deck", Name: "ghost", Tier: "image"},
 	}
 	lister := &fakeRepoLister{byOwner: map[string][]repoBrief{
 		"coilyco-flight-deck": {
-			{Name: "infrastructure", FullName: "coilyco-flight-deck/infrastructure", Description: "k3s cluster", Topics: []string{"k3s", "homelab"}},
+			{Name: "sample-platform", FullName: "coilyco-flight-deck/sample-platform", Description: "k3s cluster", Topics: []string{"k3s", "homelab"}},
 			{Name: "ward", FullName: "coilyco-flight-deck/ward", Description: "Harness driver"},
 			{Name: "unrelated", FullName: "coilyco-flight-deck/unrelated", Description: "not on the manifest"},
 		},
 		"coilyco-gaming": {
-			{Name: "eco-ops", FullName: "coilyco-gaming/eco-ops", Description: "game ops", Topics: []string{"game"}},
+			{Name: "sample-gameops", FullName: "coilyco-gaming/sample-gameops", Description: "game ops", Topics: []string{"game"}},
 		},
 	}}
 
@@ -54,9 +54,9 @@ func TestBuildSubstrateCatalog(t *testing.T) {
 	// Entries sort by full_name.
 	wantOrder := []string{
 		"coilyco-flight-deck/ghost",
-		"coilyco-flight-deck/infrastructure",
+		"coilyco-flight-deck/sample-platform",
 		"coilyco-flight-deck/ward",
-		"coilyco-gaming/eco-ops",
+		"coilyco-gaming/sample-gameops",
 	}
 	if len(cat.Repos) != len(wantOrder) {
 		t.Fatalf("got %d entries, want %d: %+v", len(cat.Repos), len(wantOrder), cat.Repos)
@@ -70,11 +70,11 @@ func TestBuildSubstrateCatalog(t *testing.T) {
 	for _, e := range cat.Repos {
 		byName[e.FullName] = e
 	}
-	infra := byName["coilyco-flight-deck/infrastructure"]
+	infra := byName["coilyco-flight-deck/sample-platform"]
 	if infra.Description != "k3s cluster" {
 		t.Errorf("infra description = %q", infra.Description)
 	}
-	if infra.MountPath != "/substrate/infrastructure" {
+	if infra.MountPath != "/substrate/sample-platform" {
 		t.Errorf("infra mount_path = %q", infra.MountPath)
 	}
 	if infra.Tier != "image" {
@@ -101,8 +101,8 @@ func TestBuildSubstrateCatalog(t *testing.T) {
 func TestFilterSubstrateTier(t *testing.T) {
 	manifest := []substrateRepo{
 		{Owner: "coilyco-flight-deck", Name: "ward", Tier: "image"},
-		{Owner: "coilyco-gaming", Name: "eco-ops", Tier: "cache"},
-		{Owner: "coilyco-flight-deck", Name: "infrastructure", Tier: "image"},
+		{Owner: "coilyco-gaming", Name: "sample-gameops", Tier: "cache"},
+		{Owner: "coilyco-flight-deck", Name: "sample-platform", Tier: "image"},
 	}
 
 	// Empty tier is a no-op: the whole manifest passes through.

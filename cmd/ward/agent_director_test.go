@@ -108,7 +108,7 @@ func TestDirectorDispatchDisposition(t *testing.T) {
 		t.Errorf("deferred outcome = %+v, want status=deferred", outcome)
 	}
 
-	// A launch-time infrastructure failure (the forgejo issue-fetch breakage that wedged
+	// A launch-time sample-platform failure (the forgejo issue-fetch breakage that wedged
 	// the director) must defer too - the issue was never judged and no run was spent.
 	fetchErr := fmt.Errorf("forgejo: get issue a/b#5: %w", errors.New("502 bad gateway"))
 	state, outcome, deferred = directorDispatchDisposition(fetchErr)
@@ -1192,8 +1192,8 @@ func TestDirectorScopeIgnoresOperatorBundleBurndownRules(t *testing.T) {
         trusted-owner coilyco-flight-deck
     }
     burndown default=#true {
-        repo "coilyco-flight-deck/infrastructure" #false
-        repo "coilyco-gaming/eco-ops" #false
+        repo "coilyco-flight-deck/sample-platform" #false
+        repo "coilyco-gaming/sample-gameops" #false
     }
 }`), 0o644); err != nil {
 		t.Fatal(err)
@@ -1208,8 +1208,8 @@ func TestDirectorScopeIgnoresOperatorBundleBurndownRules(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orgs/coilyco-flight-deck/repos":
 			_ = json.NewEncoder(w).Encode([]repoBrief{
 				{Name: "ward"},
-				{Name: "infrastructure"},
-				{Name: "agentic-os"},
+				{Name: "sample-platform"},
+				{Name: "sample-tooling"},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/users/coilyco-flight-deck/repos":
 			http.NotFound(w, r)
@@ -1253,7 +1253,7 @@ func TestDirectorScopeIgnoresOperatorBundleBurndownRules(t *testing.T) {
 		t.Fatalf("read stderr pipe: %v", err)
 	}
 
-	if want := []string{"coilyco-flight-deck/ward", "coilyco-flight-deck/infrastructure", "coilyco-flight-deck/agentic-os"}; !reflect.DeepEqual(got, want) {
+	if want := []string{"coilyco-flight-deck/ward", "coilyco-flight-deck/sample-platform", "coilyco-flight-deck/sample-tooling"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("scope = %v, want baked-policy %v", got, want)
 	}
 	if strings.Contains(string(logs), "burndown: skipping") {
@@ -1270,7 +1270,7 @@ func TestDirectorPlainScopeDoesNotApplyBurndownFilter(t *testing.T) {
         trusted-owner coilyco-flight-deck
     }
     burndown default=#true {
-        repo "coilyco-flight-deck/infrastructure" #false
+        repo "coilyco-flight-deck/sample-platform" #false
     }
 }`), 0o644); err != nil {
 		t.Fatal(err)
@@ -1286,14 +1286,14 @@ func TestDirectorPlainScopeDoesNotApplyBurndownFilter(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			want := []string{"coilyco-flight-deck/infrastructure"}
+			want := []string{"coilyco-flight-deck/sample-platform"}
 			if !reflect.DeepEqual(got, want) {
 				return fmt.Errorf("scope = %v, want %v", got, want)
 			}
 			return nil
 		},
 	}
-	if err := cmd.Run(t.Context(), []string{"director", "--repo", "coilyco-flight-deck/infrastructure"}); err != nil {
+	if err := cmd.Run(t.Context(), []string{"director", "--repo", "coilyco-flight-deck/sample-platform"}); err != nil {
 		t.Fatalf("resolveDirectorScope: %v", err)
 	}
 }

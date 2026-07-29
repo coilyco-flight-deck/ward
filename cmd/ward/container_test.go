@@ -139,12 +139,12 @@ func TestParseRepoRef(t *testing.T) {
 		wantName  string
 		wantErr   bool
 	}{
-		{"coilyco-gaming/eco-app", "coilyco-gaming", "eco-app", false},
-		{"coilyco-gaming/eco-app.git", "coilyco-gaming", "eco-app", false},
-		{"https://forgejo.coilysiren.me/coilyco-gaming/eco-app.git", "coilyco-gaming", "eco-app", false},
-		{"https://forgejo.coilysiren.me/coilyco-gaming/eco-app", "coilyco-gaming", "eco-app", false},
-		{"git@github.com:coilyco-gaming/eco-app.git", "coilyco-gaming", "eco-app", false},
-		{"../eco-app", "", "", true},
+		{"coilyco-gaming/sample-game", "coilyco-gaming", "sample-game", false},
+		{"coilyco-gaming/sample-game.git", "coilyco-gaming", "sample-game", false},
+		{"https://forgejo.coilysiren.me/coilyco-gaming/sample-game.git", "coilyco-gaming", "sample-game", false},
+		{"https://forgejo.coilysiren.me/coilyco-gaming/sample-game", "coilyco-gaming", "sample-game", false},
+		{"git@github.com:coilyco-gaming/sample-game.git", "coilyco-gaming", "sample-game", false},
+		{"../sample-game", "", "", true},
 		{"org/..", "", "", true},
 		{"", "", "", true},
 		{"not-a-ref", "", "", true},
@@ -175,7 +175,7 @@ func TestTargetFromRemoteURL(t *testing.T) {
 	}{
 		{"https://forgejo.coilysiren.me/coilyco-flight-deck/ward.git", "coilyco-flight-deck/ward", false},
 		{"git@github.com:coilyco-flight-deck/ward.git", "coilyco-flight-deck/ward", false},
-		{"https://forgejo.coilysiren.me/coilyco-gaming/eco-app", "coilyco-gaming/eco-app", false},
+		{"https://forgejo.coilysiren.me/coilyco-gaming/sample-game", "coilyco-gaming/sample-game", false},
 		{"garbage", "", true},
 	}
 	for _, c := range cases {
@@ -197,7 +197,7 @@ func TestTargetFromRemoteURL(t *testing.T) {
 }
 
 func TestDirectorContainerNameUniqueAndSafe(t *testing.T) {
-	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
+	repo := targetRepo{Owner: "coilyco-gaming", Name: "sample-game"}
 	suffixRe := regexp.MustCompile(`^[a-hjkm-pqrstuvwxyz]{2}[456789]{2}$`)
 	a := containerRoleName(roleDirector, modeClaude, repo, 0, "ab85")
 	b := containerRoleName(roleDirector, modeClaude, repo, 0, "cd97")
@@ -489,7 +489,7 @@ func TestParseMode(t *testing.T) {
 // TestParseExtraRepos covers the --repo grant parsing: refs, target drop,
 // canonical dedupe, and owner-qualified workspace paths (ward#1526).
 func TestParseExtraRepos(t *testing.T) {
-	target := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
+	target := targetRepo{Owner: "coilyco-gaming", Name: "sample-game"}
 
 	// Bare owner/name and a clone URL both resolve; order preserved.
 	got, err := parseExtraRepos([]string{
@@ -514,8 +514,8 @@ func TestParseExtraRepos(t *testing.T) {
 
 	// The target itself, blanks, and exact duplicates are dropped (not errors).
 	got, err = parseExtraRepos([]string{
-		"coilyco-gaming/eco-app", // the target: no-op
-		"  ",                     // blank
+		"coilyco-gaming/sample-game", // the target: no-op
+		"  ",                         // blank
 		"coilyco-gaming/eco-protos",
 		"coilyco-gaming/eco-protos", // dup slug
 	}, target)
@@ -532,14 +532,14 @@ func TestParseExtraRepos(t *testing.T) {
 	}
 
 	// Duplicate basenames across owners coexist in owner-qualified directories.
-	got, err = parseExtraRepos([]string{"coilyco-flight-deck/.github", "coilyco-gaming/.github", "coilyco-gaming/.github.git"}, target)
+	got, err = parseExtraRepos([]string{"example-owner/.github", "coilyco-gaming/.github", "coilyco-gaming/.github.git"}, target)
 	if err != nil {
 		t.Fatalf("duplicate basenames should resolve: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("duplicate basenames = %+v, want two repos", got)
 	}
-	if gotPath := grantedRepoWorkspaceDir(containerWorkspace, got[0]); gotPath != "/workspace/coilyco-flight-deck/.github" {
+	if gotPath := grantedRepoWorkspaceDir(containerWorkspace, got[0]); gotPath != "/workspace/example-owner/.github" {
 		t.Errorf("first grant path = %q", gotPath)
 	}
 	if gotPath := grantedRepoWorkspaceDir(containerWorkspace, got[1]); gotPath != "/workspace/coilyco-gaming/.github" {
@@ -552,7 +552,7 @@ func TestParseExtraRepos(t *testing.T) {
 		t.Errorf("canonical duplicate = %+v, %v; want one grant", got, err)
 	}
 
-	if gotPath := primaryWorkspaceDir(containerWorkspace, target); gotPath != "/workspace/eco-app" {
+	if gotPath := primaryWorkspaceDir(containerWorkspace, target); gotPath != "/workspace/sample-game" {
 		t.Errorf("primary workspace path = %q, want legacy primary cwd", gotPath)
 	}
 }
@@ -703,10 +703,10 @@ func TestWardEnvContainerMarker(t *testing.T) {
 }
 
 func sampleUpPlan() upPlan {
-	repo := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
+	repo := targetRepo{Owner: "coilyco-gaming", Name: "sample-game"}
 	return upPlan{
 		Image:       imageRef(containerImageDefault, containerImageTagDefault),
-		Name:        "engineer-claude-eco-app-140",
+		Name:        "engineer-claude-sample-game-140",
 		Role:        roleEngineer,
 		Machine:     "deadbeef",
 		Issue:       140,
@@ -1088,11 +1088,11 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		t.Errorf("argv[0] = %q, want run", argv[0])
 	}
 	for _, want := range []string{
-		"--name engineer-claude-eco-app-140",
+		"--name engineer-claude-sample-game-140",
 		"--label " + containerLabel,
 		"--label ward.role=engineer",
 		"--label ward.driver=claude",
-		"--label ward.repo=coilyco-gaming/eco-app",
+		"--label ward.repo=coilyco-gaming/sample-game",
 		"--label ward.machine=deadbeef",
 		"--label ward.issue=140",
 		"--entrypoint " + containerEntrypointPath,
@@ -1100,8 +1100,8 @@ func TestDockerCreateArgvShape(t *testing.T) {
 		"--memory-swap=4g",
 		"-it",
 		"--env-file /tmp/ward-env-xyz",
-		"-e WARD_CONTAINER_NAME=engineer-claude-eco-app-140",
-		"-e WARD_TARGET_REPO=coilyco-gaming/eco-app",
+		"-e WARD_CONTAINER_NAME=engineer-claude-sample-game-140",
+		"-e WARD_TARGET_REPO=coilyco-gaming/sample-game",
 		"-e WARD_MODE=claude",
 		"-e WARD_CONTEXT_LEVEL=2",
 		"-e WARD_BRANCH=feat/foo",
@@ -1232,13 +1232,13 @@ func TestDockerCreateNoBindsArgv(t *testing.T) {
 		t.Errorf("argv[0] = %q, want create (a stopped container to cp into)", argv[0])
 	}
 	for _, want := range []string{
-		"--name engineer-claude-eco-app-140",
+		"--name engineer-claude-sample-game-140",
 		"--entrypoint " + containerEntrypointPath,
 		"-v " + containerGitcacheVol + ":" + containerGitcacheMnt, // the named volume survives
 		"--memory=2g",
 		"--memory-swap=4g",
 		"--env-file /tmp/ward-env-xyz",
-		"-e WARD_TARGET_REPO=coilyco-gaming/eco-app",
+		"-e WARD_TARGET_REPO=coilyco-gaming/sample-game",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("create argv missing %q\n got: %s", want, joined)
@@ -1855,11 +1855,11 @@ func TestResolveAgentCredsRouting(t *testing.T) {
 }
 
 func TestRepoCloneURLAndMirror(t *testing.T) {
-	r := targetRepo{Owner: "coilyco-gaming", Name: "eco-app"}
-	if got := r.cloneURL("https://forgejo.coilysiren.me"); got != "https://forgejo.coilysiren.me/coilyco-gaming/eco-app.git" {
+	r := targetRepo{Owner: "coilyco-gaming", Name: "sample-game"}
+	if got := r.cloneURL("https://forgejo.coilysiren.me"); got != "https://forgejo.coilysiren.me/coilyco-gaming/sample-game.git" {
 		t.Errorf("cloneURL = %q", got)
 	}
-	if got := r.mirrorName(); got != "coilyco-gaming__eco-app.git" {
+	if got := r.mirrorName(); got != "coilyco-gaming__sample-game.git" {
 		t.Errorf("mirrorName = %q", got)
 	}
 }

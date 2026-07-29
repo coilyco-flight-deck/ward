@@ -54,7 +54,7 @@ func TestRepoFromURL(t *testing.T) {
 		ok          bool
 	}{
 		{"https://forgejo.coilysiren.me/coilyco-flight-deck/ward.git", "coilyco-flight-deck", "ward", true},
-		{"https://github.com/coilysiren/coilysiren", "coilysiren", "coilysiren", true},
+		{"https://github.com/coilysiren/sample-profile", "coilysiren", "sample-profile", true},
 		{"git@github.com:coilyco-gaming/lore.git", "coilyco-gaming", "lore", true},
 		{"ssh://git@host:2222/Owner/Name.git", "owner", "name", true},
 		{"git@host:o/r", "o", "r", true},

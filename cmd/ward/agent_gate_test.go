@@ -30,7 +30,7 @@ func TestRenderScratchGateContents(t *testing.T) {
 	got := b.String()
 	for _, want := range []string{
 		"read-only",                         // access
-		"coilyco-gaming/eco-app",            // repo slug
+		"coilyco-gaming/sample-game",        // repo slug
 		"claude (claude)",                   // agent binary (mode)
 		p.Image,                             // resolved image
 		"explicit pin v0.16.0",              // ward version pin

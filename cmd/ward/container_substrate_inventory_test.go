@@ -33,7 +33,7 @@ func TestSubstrateInventoryBlock(t *testing.T) {
 	}
 
 	dest := t.TempDir()
-	writeRepo(t, dest, "infrastructure", "# infrastructure\n\nEverything needed to stand up and operate the cluster.\n")
+	writeRepo(t, dest, "sample-platform", "# sample-platform\n\nEverything needed to stand up and operate the cluster.\n")
 	writeRepo(t, dest, "cli-guard", "# cli-guard\n\n[![badge][x]][y]\n\nThe policy and routing engine.\n")
 	// A README that opens with a code fence and has no heading yields no tagline,
 	// but the repo is still listed (bare path) so the mount is never hidden.
@@ -49,7 +49,7 @@ func TestSubstrateInventoryBlock(t *testing.T) {
 	}
 	for _, want := range []string{
 		"read these BEFORE asking",
-		"- **" + filepath.Join(dest, "infrastructure") + "** - Everything needed to stand up and operate the cluster.",
+		"- **" + filepath.Join(dest, "sample-platform") + "** - Everything needed to stand up and operate the cluster.",
 		"- **" + filepath.Join(dest, "cli-guard") + "** - The policy and routing engine.",
 		"- **" + filepath.Join(dest, "coilysiren") + "**",
 	} {
@@ -69,17 +69,17 @@ func TestSubstrateInventoryBlock(t *testing.T) {
 
 func TestRenderSubstrateInventoryWithCatalog(t *testing.T) {
 	dest := t.TempDir()
-	writeRepo(t, dest, "infrastructure", "# infra\n\nREADME tagline, should be overridden.\n")
+	writeRepo(t, dest, "sample-platform", "# infra\n\nREADME tagline, should be overridden.\n")
 	writeRepo(t, dest, "ward", "# ward\n\nREADME tagline for ward.\n")
 	// A mounted repo with no catalog entry falls back to its README tagline.
 	writeRepo(t, dest, "orphan", "# orphan\n\nOnly a README here.\n")
 
 	catalog := map[string]catalogEntry{
-		"infrastructure": {
-			FullName:    "coilyco-flight-deck/infrastructure",
+		"sample-platform": {
+			FullName:    "coilyco-flight-deck/sample-platform",
 			Description: "k3s cluster and systemd units",
 			Topics:      []string{"k3s", "homelab"},
-			MountPath:   "/substrate/infrastructure",
+			MountPath:   "/substrate/sample-platform",
 		},
 		// ward has an entry but no description: falls back to README, keeps full_name.
 		"ward": {FullName: "coilyco-flight-deck/ward", Topics: []string{"agents"}},
@@ -87,7 +87,7 @@ func TestRenderSubstrateInventoryWithCatalog(t *testing.T) {
 
 	block := renderSubstrateInventory(dest, catalog)
 	for _, want := range []string{
-		"- **" + filepath.Join(dest, "infrastructure") + "** (coilyco-flight-deck/infrastructure) - k3s cluster and systemd units [topics: k3s, homelab]",
+		"- **" + filepath.Join(dest, "sample-platform") + "** (coilyco-flight-deck/sample-platform) - k3s cluster and systemd units [topics: k3s, homelab]",
 		"- **" + filepath.Join(dest, "ward") + "** (coilyco-flight-deck/ward) - README tagline for ward. [topics: agents]",
 		"- **" + filepath.Join(dest, "orphan") + "** - Only a README here.",
 	} {
@@ -118,7 +118,7 @@ func TestReadCatalogIndex(t *testing.T) {
 	// A well-formed catalog indexes by the full_name's last segment.
 	good := filepath.Join(dir, "substrate-catalog.json")
 	cat := substrateCatalog{Schema: 1, Repos: []catalogEntry{
-		{FullName: "coilyco-flight-deck/infrastructure", Description: "d"},
+		{FullName: "coilyco-flight-deck/sample-platform", Description: "d"},
 	}}
 	data, err := renderSubstrateCatalog(cat)
 	if err != nil {
@@ -128,8 +128,8 @@ func TestReadCatalogIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	idx := readCatalogIndex(good)
-	if e, ok := idx["infrastructure"]; !ok || e.Description != "d" {
-		t.Errorf("index[infrastructure] = %+v, ok=%v", e, ok)
+	if e, ok := idx["sample-platform"]; !ok || e.Description != "d" {
+		t.Errorf("index[sample-platform] = %+v, ok=%v", e, ok)
 	}
 }
 

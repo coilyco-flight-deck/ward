@@ -2096,7 +2096,7 @@ workflow default=merge-remote-main {
 	}
 	forgejo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/agentic-os/issues":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/sample-tooling/issues":
 			if got := r.Header.Get("Authorization"); got != "token forgejo-token" {
 				select {
 				case issueErr <- fmt.Errorf("authorization header = %q, want token forgejo-token", got):
@@ -2150,7 +2150,7 @@ workflow default=merge-remote-main {
 	t.Setenv(envAgentImage, "")
 	t.Setenv(envAgentTag, "")
 
-	dockerName := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "agentic-os"}, 400)
+	dockerName := issueScopedContainerName(roleEngineer, modeCodex, targetRepo{Owner: "coilyco-flight-deck", Name: "sample-tooling"}, 400)
 	dockerScript := filepath.Join(t.TempDir(), "docker")
 	writeTestShellCommand(t, dockerScript, "#!/bin/sh\n"+
 		"if [ \"$1\" = ps ]; then\n"+
@@ -2171,7 +2171,7 @@ workflow default=merge-remote-main {
 		t.Fatalf("write instructions: %v", err)
 	}
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
-		"engineer", "coilyco-flight-deck/agentic-os", "--instructions-file", instructions, "--skip-preflight",
+		"engineer", "coilyco-flight-deck/sample-tooling", "--instructions-file", instructions, "--skip-preflight",
 	})
 	if err := r.runAgentTask(context.Background(), cmd, modeCodex); err != nil {
 		t.Fatalf("runAgentTaskDirect smoke: %v", err)
@@ -2205,7 +2205,7 @@ workflow default=merge-remote-main {
 	if req.Role != "engineer" {
 		t.Fatalf("broker role = %q, want engineer", req.Role)
 	}
-	wantArgv := []string{"engineer", forgejoBaseURL + "/coilyco-flight-deck/agentic-os/issues/400", "--harness", "codex", "--skip-preflight"}
+	wantArgv := []string{"engineer", forgejoBaseURL + "/coilyco-flight-deck/sample-tooling/issues/400", "--harness", "codex", "--skip-preflight"}
 	if !reflect.DeepEqual(req.Argv, wantArgv) {
 		t.Fatalf("broker argv = %v, want %v", req.Argv, wantArgv)
 	}
@@ -2539,7 +2539,7 @@ func TestStartHostDispatchBrokerRequestReportsCrossOwnerVisibilityCollisionAsync
 	setTestHome(t, t.TempDir())
 	dir := t.TempDir()
 	script := filepath.Join(dir, "docker")
-	collidingName := "engineer-codex-website-66"
+	collidingName := "engineer-codex-sample-site-66"
 	body := "#!/bin/sh\n" +
 		"if [ \"$1\" = ps ]; then\n" +
 		"  for arg in \"$@\"; do\n" +
@@ -2595,7 +2595,7 @@ func TestStartHostDispatchBrokerRequestReportsCrossOwnerVisibilityCollisionAsync
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilysiren/website#66", "--harness", "codex", "--pr"},
+		Argv:      []string{"engineer", "coilysiren/sample-site#66", "--harness", "codex", "--pr"},
 		Requester: "director-codex-host",
 		Token:     "nonce-collision",
 	}

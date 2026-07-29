@@ -57,8 +57,8 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
         repo "coilysiren/*" forge=github
     }
     burndown default=#true {
-        repo "coilyco-flight-deck/infrastructure" #false
-        repo "coilyco-gaming/eco-ops" #false
+        repo "coilyco-flight-deck/sample-platform" #false
+        repo "coilyco-gaming/sample-gameops" #false
     }
 }`
 	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
@@ -110,8 +110,8 @@ func TestSmartDefaultsFromBundleSource(t *testing.T) {
 	if !defs.burndownEnabled("coilyco-flight-deck/ward") {
 		t.Error("bundle burndown default should leave ordinary repos eligible")
 	}
-	if defs.burndownEnabled("coilyco-flight-deck/infrastructure") || defs.burndownEnabled("coilyco-gaming/eco-ops") {
-		t.Errorf("bundle burndown exclusions = infra:%t eco-ops:%t, want both false", defs.burndownEnabled("coilyco-flight-deck/infrastructure"), defs.burndownEnabled("coilyco-gaming/eco-ops"))
+	if defs.burndownEnabled("coilyco-flight-deck/sample-platform") || defs.burndownEnabled("coilyco-gaming/sample-gameops") {
+		t.Errorf("bundle burndown exclusions = infra:%t sample-gameops:%t, want both false", defs.burndownEnabled("coilyco-flight-deck/sample-platform"), defs.burndownEnabled("coilyco-gaming/sample-gameops"))
 	}
 }
 

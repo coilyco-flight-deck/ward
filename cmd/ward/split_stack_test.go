@@ -11,14 +11,14 @@ func TestSplitStackIssueURLKeepsTrackerThroughBroker(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(`repos {
     repo-authority default=forgejo {
         trusted-owner "coilysiren"
-        repo "coilysiren/coilysiren" forge=github tracker=forgejo landing=github mirrors="forgejo"
+        repo "coilysiren/sample-profile" forge=github tracker=forgejo landing=github mirrors="forgejo"
     }
 }`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(wardConfigRefEnv, "file://"+dir)
 
-	issueURL := forgejoBaseURL + "/coilysiren/coilysiren/issues/18"
+	issueURL := forgejoBaseURL + "/coilysiren/sample-profile/issues/18"
 	ref, err := parseAgentIssueRef(issueURL)
 	if err != nil {
 		t.Fatalf("parseAgentIssueRef: %v", err)

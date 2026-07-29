@@ -774,13 +774,13 @@ func TestParsePreflightVerdict(t *testing.T) {
 		{"empty", "", verdictUnknown, "", ""},
 		{"prose only", "This needs more thought before anyone takes it on.", verdictUnknown, "", ""},
 		// WRONG-REPO (ward#159): captures the target repo + the trailing reason.
-		{"wrong-repo with reason", "This is an ops verb.\nWRONG-REPO: coilyco-gaming/eco-ops - belongs with ops", verdictWrongRepo, "belongs with ops", "coilyco-gaming/eco-ops"},
+		{"wrong-repo with reason", "This is an ops verb.\nWRONG-REPO: coilyco-gaming/sample-gameops - belongs with ops", verdictWrongRepo, "belongs with ops", "coilyco-gaming/sample-gameops"},
 		{"wrong-repo no hyphen", "WRONG REPO coilyco-flight-deck/cli-guard: engine change", verdictWrongRepo, "engine change", "coilyco-flight-deck/cli-guard"},
-		{"wrong-repo run together", "WRONGREPO coilyco-gaming/eco-ops", verdictWrongRepo, "", "coilyco-gaming/eco-ops"},
-		{"wrong-repo bare repo only", "WRONG-REPO: coilyco-gaming/eco-ops", verdictWrongRepo, "", "coilyco-gaming/eco-ops"},
-		{"wrong-repo markdown bold", "**WRONG-REPO: coilyco-gaming/eco-ops - move it**", verdictWrongRepo, "move it", "coilyco-gaming/eco-ops"},
+		{"wrong-repo run together", "WRONGREPO coilyco-gaming/sample-gameops", verdictWrongRepo, "", "coilyco-gaming/sample-gameops"},
+		{"wrong-repo bare repo only", "WRONG-REPO: coilyco-gaming/sample-gameops", verdictWrongRepo, "", "coilyco-gaming/sample-gameops"},
+		{"wrong-repo markdown bold", "**WRONG-REPO: coilyco-gaming/sample-gameops - move it**", verdictWrongRepo, "move it", "coilyco-gaming/sample-gameops"},
 		{"wrong-repo without a repo is not a verdict", "WRONG-REPO: it goes elsewhere", verdictUnknown, "", ""},
-		{"wrong-repo beats nogo on the same line concept", "NO-GO: hmm\nWRONG-REPO: coilyco-gaming/eco-ops - clearer", verdictWrongRepo, "clearer", "coilyco-gaming/eco-ops"},
+		{"wrong-repo beats nogo on the same line concept", "NO-GO: hmm\nWRONG-REPO: coilyco-gaming/sample-gameops - clearer", verdictWrongRepo, "clearer", "coilyco-gaming/sample-gameops"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -840,7 +840,7 @@ func TestWrongRepoTarget(t *testing.T) {
 		wantName  string
 		wantOK    bool
 	}{
-		{"coilyco-gaming/eco-ops", "coilyco-gaming", "eco-ops", true},
+		{"coilyco-gaming/sample-gameops", "coilyco-gaming", "sample-gameops", true},
 		{"  coilyco-flight-deck/cli-guard  ", "coilyco-flight-deck", "cli-guard", true},
 		{"", "", "", false},
 		{"noslash", "", "", false},
@@ -943,16 +943,16 @@ func TestBlindfireIssueBody(t *testing.T) {
 }
 
 func TestPreflightWrongRepoComment(t *testing.T) {
-	filed := agentIssueRef{Owner: "coilyco-gaming", Repo: "eco-ops", Number: 42}
-	got := preflightWrongRepoComment(modeClaude, "engineer", filed, "ops verb", "It's ops.\nWRONG-REPO: coilyco-gaming/eco-ops - ops verb")
+	filed := agentIssueRef{Owner: "coilyco-gaming", Repo: "sample-gameops", Number: 42}
+	got := preflightWrongRepoComment(modeClaude, "engineer", filed, "ops verb", "It's ops.\nWRONG-REPO: coilyco-gaming/sample-gameops - ops verb")
 	if visible := visibleLinesBeforeDetails(got); visible != "WARD-WORKFLOW: pre-flight-wrong-repo 🎯" {
 		t.Fatalf("preflightWrongRepoComment visible line = %q\n%s", visible, got)
 	}
 	for _, want := range []string{
-		"WRONG-REPO",             // names the verdict
-		"coilyco-gaming/eco-ops", // the target repo slug
-		filed.url(),              // links the freshly-filed issue
-		"ops verb",               // the reason
+		"WRONG-REPO",                    // names the verdict
+		"coilyco-gaming/sample-gameops", // the target repo slug
+		filed.url(),                     // links the freshly-filed issue
+		"ops verb",                      // the reason
 		"No container was launched here",
 		"--skip-preflight", // how to override if the routing is wrong
 		"<details>",        // folds the read away

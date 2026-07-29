@@ -208,10 +208,10 @@ func TestGetPullRequestMergeabilityReportsNotFoundWithoutRaw404(t *testing.T) {
 }
 
 // TestForgejoGetIssueFlattensLabels pins that getIssue flattens the Forgejo
-// label objects to the name list the ceiling gate reads (agentic-os#246).
+// label objects to the name list the ceiling gate reads (sample-tooling#246).
 func TestForgejoGetIssueFlattensLabels(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/repos/coilyco-flight-deck/agentic-os/issues/246" {
+		if r.URL.Path != "/api/v1/repos/coilyco-flight-deck/sample-tooling/issues/246" {
 			t.Fatalf("path = %q, want issue endpoint", r.URL.Path)
 		}
 		_, _ = w.Write([]byte(`{"number":246,"title":"t","body":"b","state":"open","html_url":"https://f/246","labels":[{"name":"interactive"},{"name":"P3"}]}`))
@@ -219,7 +219,7 @@ func TestForgejoGetIssueFlattensLabels(t *testing.T) {
 	defer srv.Close()
 
 	c := &forgejoClient{baseURL: srv.URL}
-	issue, err := c.GetIssue(context.Background(), "coilyco-flight-deck", "agentic-os", 246)
+	issue, err := c.GetIssue(context.Background(), "coilyco-flight-deck", "sample-tooling", 246)
 	if err != nil {
 		t.Fatalf("getIssue: %v", err)
 	}
