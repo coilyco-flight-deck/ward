@@ -2,21 +2,16 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
-// agentRoleExecutionLimit resolves the embedded role's execution budget.
+// agentRoleExecutionLimit resolves the fixed workflow's command-local budget.
 func agentRoleExecutionLimit(role string) (time.Duration, bool) {
-	cat, err := cachedBuiltInAgentRoleCatalog()
-	if err != nil {
+	limit := fixedRoleExecutionLimit(role)
+	if limit <= 0 {
 		return 0, false
 	}
-	def, ok := cat.Definitions[strings.TrimSpace(role)]
-	if !ok || !def.ExecutionLimitSet {
-		return 0, false
-	}
-	return def.ExecutionTimeLimit, true
+	return limit, true
 }
 
 // agentRunBudgetNote renders the launch-time budget block that gets folded into

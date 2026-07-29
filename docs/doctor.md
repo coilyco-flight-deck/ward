@@ -1,12 +1,13 @@
 # ward doctor
 
-`ward doctor` validates Ward's embedded native policy before a run leans on it.
+`ward doctor` validates Ward's typed defaults and supported YAML before a run
+leans on them.
 
 ## What it checks
 
-- smart-defaults and repo-authority policy.
-- route-mode intake repo policy (`route-intake-repo` in the bundled smart defaults).
-- baked fleet defaults and required roles.
+- typed defaults and repository authority.
+- route-mode intake repository settings.
+- typed harness adapters and fixed workflows.
 - native launch assets.
 - placeholder or example values that should not survive in an operating deployment.
 - `WARD_DOCTOR_ALLOW_PLACEHOLDERS=1` permits the baked ward surface to carry its
@@ -19,5 +20,5 @@
 
 ## See also
 
-- [config-source.md](config-source.md) - native-policy boundary.
+- [config-source.md](config-source.md) - runtime setting ownership.
 - [aosguard-boundary.md](aosguard-boundary.md) - the AOSguard boundary.

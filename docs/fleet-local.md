@@ -1,15 +1,15 @@
 ---
-doc_goal: Keep the operator-local fleet config anchor stable after the old page was collapsed.
+doc_goal: Direct operators from the removed fleet-local surface to supported YAML.
 ---
-# fleet local
+# Operator launch preferences
 
-This page is the durable anchor for `~/.ward/fleet.local.kdl`.
+Ward reads operator launch preferences from `~/.ward/config.yaml`. There is no
+second fleet-local file and no role-profile merge.
 
-- It is hand-edited and git-ignored.
-- It is the operator-local override layer, not embedded product config.
-- It exists beside the launch-time config source model.
+Supported keys include `default-harness`, `agent.image`,
+`agent.release-channel`, `agent.workflow`, and director limits. Repository YAML
+and explicit inputs take precedence as documented in
+[agent-config-overrides.md](agent-config-overrides.md).
 
-## See also
-
-- [config-source.md](config-source.md) - the launch-time source model.
-- [config-discovery.md](config-discovery.md) - how ward finds config.
+See [config-migration.md](config-migration.md) for direct migrations from older
+files.

@@ -96,9 +96,9 @@ func TestResolveTailnet(t *testing.T) {
 	}
 }
 
-// TestBuildUpPlanTailnet covers ward#362: the role's guardfile set selects the
-// platform mechanism.
-func TestBuildUpPlanTailnet(t *testing.T) {
+// TestBuildUpPlanNetworkIsRoleIndependent proves role metadata cannot change
+// container network reach.
+func TestBuildUpPlanNetworkIsRoleIndependent(t *testing.T) {
 	run := func(role string, args []string) upPlan {
 		var got upPlan
 		probe := &cli.Command{
@@ -119,18 +119,9 @@ func TestBuildUpPlanTailnet(t *testing.T) {
 		return got
 	}
 
-	// Director carries the live-observe set.
-	p := run(roleDirector, nil)
-	if goos := launchHostGOOS(); goos == "linux" {
-		if !p.HostNet || p.TSSidecar {
-			t.Errorf("director role on linux should resolve host-net, got HostNet=%v TSSidecar=%v", p.HostNet, p.TSSidecar)
+	for _, role := range []string{roleDirector, roleEngineer, roleQA, "external-role"} {
+		if p := run(role, nil); p.HostNet || p.TSSidecar {
+			t.Errorf("%s metadata: HostNet=%v TSSidecar=%v, want all false", role, p.HostNet, p.TSSidecar)
 		}
-	} else if !p.TSSidecar || p.HostNet {
-		t.Errorf("director role on %s should resolve the sidecar, got HostNet=%v TSSidecar=%v", goos, p.HostNet, p.TSSidecar)
-	}
-
-	// Engineer stays least-access.
-	if p := run(roleEngineer, nil); p.HostNet || p.TSSidecar {
-		t.Errorf("engineer default: HostNet=%v TSSidecar=%v, want all false", p.HostNet, p.TSSidecar)
 	}
 }

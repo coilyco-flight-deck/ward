@@ -29,8 +29,8 @@ The strict manifest binds the context to the selected Ward role and agent:
 
 Ward rejects unknown manifest fields. In particular, a bundle cannot declare
 permissions, credentials, network access, mounts, or other capabilities. A
-matching role selects context only. Ward computes authority from its own
-embedded role definition and launch policy.
+matching role selects context only. Ward's fixed launch and broker paths own
+authority.
 
 ## Accepted home projection
 

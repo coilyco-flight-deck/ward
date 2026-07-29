@@ -9,6 +9,9 @@ This file tells ward which repo verbs are allowed and how the gate behaves.
 
 - `commands` - the allowed repo verbs.
 - `security` - optional policy settings for stricter runs.
+- `agent.workflow` - optional repository workflow override.
+- `agent.image` - optional repository container image override.
+- `agent.release-channel` - optional repository image tag override.
 
 ## Typical shape
 
@@ -20,18 +23,27 @@ commands:
 security:
   allow:
     - git status
+agent:
+  workflow: pull-request
+  image: registry.example/ward
+  release-channel: release
 ```
 
 The real file can carry more verbs, but the shape stays simple: a command map
-plus optional security policy.
+plus optional security and agent launch preferences.
 
 ## Rules
 
 - The file lives at the repo root under `.ward/ward.yaml`.
 - It is the whole contract for `ward exec` adoption.
+- Agent values override operator YAML and are overridden by explicit command
+  inputs.
+- Role profiles and authority settings are not valid repository configuration.
 - It does not replace the agent container or AOSguard operator surface.
 
 ## See also
 
 - [exec-verb.md](exec-verb.md) - how the gate uses the file.
 - [config-discovery.md](config-discovery.md) - how ward finds it.
+- [config-source.md](config-source.md) - runtime preference ownership.
+- [../.ward/README.md](../.ward/README.md) - repository config pointer.

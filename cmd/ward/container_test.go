@@ -261,21 +261,7 @@ func TestBuildUpPlanDirectorUsesDictatableSuffix(t *testing.T) {
 }
 
 func TestBuildUpPlanIgnoresOperatorBundleAttribution(t *testing.T) {
-	dir := writeBundleFixture(t)
-	writeBundleFixtureFile(t, dir, bundleFixtureAgentsPath, `
-agents {
-    schema-version 2
-    defaults {
-        agent codex
-        attribution name=coilyco-ops email=coilyco-ops@coilysiren.me
-    }
-    agent claude {
-    }
-    agent codex {
-    }
-}
-`)
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	t.Setenv(wardConfigRefEnv, "ignored")
 
 	var got upPlan
 	probe := &cli.Command{
@@ -294,14 +280,14 @@ agents {
 		t.Fatalf("probe run: %v", err)
 	}
 
-	want, err := loadFleetConfig()
+	want, err := loadLaunchConfig()
 	if err != nil {
-		t.Fatalf("load baked fleet config: %v", err)
+		t.Fatalf("load typed launch config: %v", err)
 	}
 	env := got.wardEnv()
-	if env["WARD_GIT_NAME"] != want.Defaults.Attribution.Name || env["WARD_GIT_EMAIL"] != want.Defaults.Attribution.Email {
+	if env["WARD_GIT_NAME"] != want.Attribution.Name || env["WARD_GIT_EMAIL"] != want.Attribution.Email {
 		t.Fatalf("wardEnv git attribution = <%s %s>, want baked <%s %s>",
-			env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"], want.Defaults.Attribution.Name, want.Defaults.Attribution.Email)
+			env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"], want.Attribution.Name, want.Attribution.Email)
 	}
 }
 
@@ -1122,31 +1108,14 @@ func TestDockerCreateArgvShape(t *testing.T) {
 	}
 }
 
-func TestDockerCreateArgvOOMScoreAdjByRole(t *testing.T) {
-	cases := []struct {
-		name    string
-		role    string
-		wantArg string
-	}{
-		{name: "engineer", role: roleEngineer, wantArg: "--oom-score-adj=250"},
-		{name: "director", role: roleDirector, wantArg: "--oom-score-adj=-250"},
-		{name: "session", role: roleSession, wantArg: "--oom-score-adj=-250"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			p := sampleUpPlan()
-			p.Role = tc.role
-			joined := strings.Join(dockerCreateArgv(p, ""), " ")
-			if tc.wantArg != "" {
-				if !strings.Contains(joined, tc.wantArg) {
-					t.Fatalf("docker argv missing %q\n got: %s", tc.wantArg, joined)
-				}
-				return
-			}
-			if strings.Contains(joined, "--oom-score-adj=") {
-				t.Fatalf("role %q must not get an oom-score override\n got: %s", tc.role, joined)
-			}
-		})
+func TestDockerCreateArgvRoleCannotSelectOOMPolicy(t *testing.T) {
+	for _, role := range []string{roleEngineer, roleDirector, roleQA, roleSession, "external-role"} {
+		p := sampleUpPlan()
+		p.Role = role
+		joined := strings.Join(dockerCreateArgv(p, ""), " ")
+		if strings.Contains(joined, "--oom-score-adj=") {
+			t.Fatalf("role %q selected an OOM policy\n got: %s", role, joined)
+		}
 	}
 }
 

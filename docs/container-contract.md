@@ -58,7 +58,7 @@ failure behavior.
 ## What it does not cover
 
 - feature work belongs in the agent docs.
-- host-side fleet policy belongs in operator docs.
+- host-side launch preferences belong in operator YAML.
 - repo policy belongs in `.ward/ward.yaml`.
 
 ## See also

@@ -148,10 +148,9 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	if err != nil {
 		return upPlan{}, err
 	}
-	// Host capability is the role's guardfile set (ward#578; docs/agent-flags.md),
-	// resolved to the mechanisms ward composes.
-	capab := resolveCapabilityWithOptOut(role, c.Bool("no-tailnet"))
-	hostNet, tsSidecar := resolveTailnetMechanism(launchHostGOOS(), capab.tailnet)
+	// Role metadata never selects network reach. Explicit endpoints still use
+	// the ordinary container network.
+	hostNet, tsSidecar := false, false
 	// extraRepoGrant reads the --repo grant on the agent surfaces and --with-repo on
 	// director (ward#280, ward#362; docs/container-multi-repo.md).
 	extra, err := parseExtraRepos(extraRepoGrant(c), repo)
@@ -162,7 +161,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// not be the target repo, so the container resolves it from the fresh clone (ward#580).
 
 	// Config-source env resolution fails loud here before any container spins.
-	configEnv, err := resolveLaunchConfigEnv(c.StringSlice("config"), cwd, role, mode)
+	configEnv, err := resolveLaunchConfigEnv(c.StringSlice("config"), cwd, mode)
 	if err != nil {
 		return upPlan{}, err
 	}
@@ -297,7 +296,11 @@ func isCharDevice(f *os.File) bool {
 func (r *Runner) resolveTarget(ctx context.Context, arg string) (targetRepo, string, error) {
 	if arg != "" {
 		repo, err := parseRepoRef(arg)
-		return repo, resolveInvokeCWD(), err
+		cwd := resolveInvokeCWD()
+		if info, statErr := os.Stat(cwd); statErr != nil || !info.IsDir() {
+			cwd = ""
+		}
+		return repo, cwd, err
 	}
 	cwd := resolveInvokeCWD()
 	if cwd == "" {

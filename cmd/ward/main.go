@@ -93,7 +93,6 @@ func rootCommand() *cli.Command {
 		},
 		Commands: []*cli.Command{
 			versionCommand(),
-			configCommand(),
 			setupCommand(),
 			doctorCommand(),
 			execCommand(),

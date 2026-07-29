@@ -41,7 +41,7 @@ func surfaceScratchBudgetDiagnostic(scratchDir string) string {
 	parts = append(parts,
 		"an empty visible scratch directory can still fail when its backing filesystem is full",
 		fmt.Sprintf("inspect Ward-owned cache on the same host disk with `df -h %s %s; du -h --max-depth=1 %s %s 2>/dev/null | sort -h`", scratchDir, containerGitcacheMnt, scratchDir, containerGitcacheMnt),
-		fmt.Sprintf("safe cleanup candidates are stale/cache state under %s, %s, and repo mirrors %s/<owner>__<repo>.git", rootedPathJoin(containerGitcacheMnt, "config-bundle"), rootedPathJoin(containerGitcacheMnt, "surface-scratch"), containerGitcacheMnt),
+		fmt.Sprintf("safe cleanup candidates are stale/cache state under %s, %s, and repo mirrors %s/<owner>__<repo>.git", rootedPathJoin(containerGitcacheMnt, "git-ref-cache"), rootedPathJoin(containerGitcacheMnt, "surface-scratch"), containerGitcacheMnt),
 	)
 	return "; " + strings.Join(parts, "; ")
 }

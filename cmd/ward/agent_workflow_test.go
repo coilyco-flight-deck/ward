@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -323,28 +321,7 @@ func TestWorkflowEnvAndLabels(t *testing.T) {
 }
 
 func TestAgentWorkflowIgnoresOperatorBundleDefaults(t *testing.T) {
-	dir := t.TempDir()
-	defaultsBody := `defaults {
-}
-workflow default="merge-remote-main" {
-    repo "coilyco-flight-deck/ward" workflow="pull-request-and-merge"
-}
-`
-	reposBody := `repos {
-    repo-authority default=forgejo {
-        trusted-owner "coilysiren"
-        trusted-owner "coilyco-flight-deck"
-        repo "coilysiren/*" forge=github
-        repo "coilyco-flight-deck/*" forge=forgejo
-    }
-}`
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
-		t.Fatalf("write defaults bundle: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
-		t.Fatalf("write repos bundle: %v", err)
-	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	t.Setenv(wardConfigRefEnv, "ignored")
 
 	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/sample-tooling#1"})
 	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/sample-tooling")

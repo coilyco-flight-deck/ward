@@ -1,29 +1,18 @@
 ---
-doc_goal: Explain the split-stack tracker and git authority model for agent launches.
+doc_goal: Explain tracker and git authority without a runtime policy bundle.
 ---
-# split-stack agent dispatch
+# Split-stack agent dispatch
 
 Issue tracking and git hosting are separate authorities. A full issue URL pins
-the tracker for the whole run, including a brokered launch; Ward does not reduce
-it to `owner/repo#N` before forwarding. Checkout remains selected by repository
-policy. This supports a Forgejo issue tracker with GitHub as the canonical git
-host even when GitHub Issues is disabled.
+the tracker for the whole run, including brokered launch. Ward does not reduce
+it to `owner/repo#N` before forwarding.
 
-For compact refs or freeform issue creation, set the tracker beside checkout
-policy in the runtime bundle:
+Ward's typed repository authority defaults select checkout, tracker, landing,
+and known mirrors. A full tracker URL always wins for that invocation. A role
+label cannot change any of these authorities.
 
-```kdl
-repo-authority default=forgejo {
-    trusted-owner coilysiren
-    repo "coilysiren/coilysiren" forge=github tracker=forgejo landing=github mirrors="forgejo"
-}
-```
+Deployment-specific authority belongs below Ward in the deployment layer. Ward
+does not fetch it from a reference repository at launch time.
 
-`forge` is the checkout host and keeps its legacy behavior. `tracker` selects
-the issue API; when omitted it follows `forge` for backward compatibility.
-`landing` and `mirrors` describe the intended landing host and known git
-mirrors for launch diagnostics. A full tracker URL always wins over `tracker`.
-
-## See also
-
-- [agent-lifecycle.md](agent-lifecycle.md) - the launch path.
+See [agent-lifecycle.md](agent-lifecycle.md) and
+[aosguard-boundary.md](aosguard-boundary.md).

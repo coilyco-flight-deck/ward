@@ -18,7 +18,8 @@ layers, use the canonical vocabulary in [terminology.md](terminology.md).
 - `cli-guard` owns the policy and routing framework.
 - specgen turns AOS guardfiles into AOSguard's audited operator surface.
 - AOSguard ships from AOS and does not depend on Ward at runtime.
-- Ward ships the hand-written agent, container, git, reservation, and dev-verb code plus its baked role and launch policy.
+- Ward ships hand-written agent, container, git, reservation, and dev-verb
+  code plus typed harness mechanics and fixed workflows.
 
 ## See also
 

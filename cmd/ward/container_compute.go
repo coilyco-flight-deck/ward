@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
 )
 
@@ -233,8 +232,8 @@ const (
 	roleOps      = "ops"
 	roleAdmin    = "admin"
 	roleSession  = "session"
-	// roleDirector keys the director's per-role capability lookup (ward#578); empty
-	// set by default - it forwards capability to children, holds none itself.
+	// roleDirector labels the director session for reporting. It grants no
+	// credentials, mounts, network access, or broker authority.
 	roleDirector = "director"
 )
 
@@ -461,8 +460,8 @@ type upPlan struct {
 	Name  string
 	// Role leads the name + the ward.role label (engineer/qa/session).
 	Role string
-	// ConfigRole resolves the per-role model/effort overlay in-container (WARD_ROLE,
-	// ward#620): the capability role, not the `session` label the director surface wears.
+	// ConfigRole carries the workflow label in-container as WARD_ROLE
+	// (ward#620). Consumers must treat it as opaque metadata.
 	ConfigRole string
 	// Machine is the per-container disambiguator on the ward.machine label (ward#364).
 	Machine     string
@@ -682,57 +681,44 @@ func parseConfigOverrides(entries []string) (map[string]string, error) {
 	return out, nil
 }
 
-func resolveLaunchConfigEnv(configEntries []string, cwd, role string, mode containerMode) (map[string]string, error) {
+func resolveLaunchConfigEnv(configEntries []string, cwd string, mode containerMode) (map[string]string, error) {
 	configEnv, err := parseConfigOverrides(configEntries)
 	if err != nil {
 		return nil, err
 	}
-	_, provider := currentProfileSourceProvider()
-	fleet, err := provider.Fleet()
+	launch, err := loadLaunchConfig()
 	if err != nil {
-		return nil, fmt.Errorf("load selected fleet config: %w", err)
+		return nil, fmt.Errorf("load typed harness config: %w", err)
 	}
-	configEnv = addHarnessConfigEnv(configEnv, fleet, role)
-	configEnv = addAgentIdentityConfigEnv(configEnv, fleet, role, mode)
-	configEnv = addFleetAttributionConfigEnv(configEnv, fleet, cwd)
-	// Validate the staged container-topology bundle once here so a malformed live
-	// bundle fails before launch, while a missing optional file still falls back.
-	if _, err := currentContainerTopologyWithError(); err != nil {
-		return nil, err
-	}
+	configEnv = addHarnessConfigEnv(configEnv, launch)
+	configEnv = addAgentIdentityConfigEnv(configEnv, mode)
+	configEnv = addLaunchAttributionConfigEnv(configEnv, launch, cwd)
 	return configEnv, nil
 }
 
-// addHarnessConfigEnv projects model settings from the selected source into the
-// container. Explicit config wins over environment, role, and fleet.
-func addHarnessConfigEnv(env map[string]string, fleet fleetconfig.Fleet, role string) map[string]string {
+// addHarnessConfigEnv projects only explicit environment settings into the
+// container. Role values never select models, reasoning, endpoints, or identity.
+func addHarnessConfigEnv(env map[string]string, launch launchConfig) map[string]string {
 	if env == nil {
 		env = map[string]string{}
 	}
-	claude := fleetAgentByName(fleet, string(modeClaude))
-	codex := fleetAgentByName(fleet, string(modeCodex))
-	opencode := fleetAgentByName(fleet, string(modeOpencode))
-	goose := fleetAgentByName(fleet, string(modeGoose))
-	claudeOv := roleAgentOverride(fleet, role, string(modeClaude))
-	codexOv := roleAgentOverride(fleet, role, string(modeCodex))
-	opencodeOv := roleAgentOverride(fleet, role, string(modeOpencode))
-	gooseOv := roleAgentOverride(fleet, role, string(modeGoose))
-	addConfigEnvDefault(env, "WARD_CLAUDE_MODEL", claudeOv.Model, claude.Model)
-	addConfigEnvDefault(env, "WARD_CLAUDE_REASONING_EFFORT", claudeOv.ReasoningEffort, claude.ReasoningEffort)
-	addConfigEnvDefault(env, "WARD_CODEX_MODEL", codexOv.Model, codex.Model)
-	addConfigEnvDefault(env, "WARD_CODEX_REASONING_EFFORT", codexOv.ReasoningEffort, codex.ReasoningEffort)
-	addConfigEnvDefault(env, "WARD_CODEX_VERBOSITY", codexOv.Verbosity, codex.Verbosity)
-	addConfigEnvDefault(env, "WARD_OPENCODE_MODEL", opencodeOv.Model, opencode.Model)
-	addConfigEnvDefault(env, "WARD_OLLAMA_URL", opencodeOv.Endpoint, opencode.Endpoint)
-	addConfigEnvDefault(env, "WARD_GOOSE_MODEL", gooseOv.Model, goose.Model)
+	_ = launch
+	addConfigEnvDefault(env, "WARD_CLAUDE_MODEL")
+	addConfigEnvDefault(env, "WARD_CLAUDE_REASONING_EFFORT")
+	addConfigEnvDefault(env, "WARD_CODEX_MODEL")
+	addConfigEnvDefault(env, "WARD_CODEX_REASONING_EFFORT")
+	addConfigEnvDefault(env, "WARD_CODEX_VERBOSITY")
+	addConfigEnvDefault(env, "WARD_OPENCODE_MODEL")
+	addConfigEnvDefault(env, "WARD_OLLAMA_URL")
+	addConfigEnvDefault(env, "WARD_GOOSE_MODEL")
 	return env
 }
 
-func addAgentIdentityConfigEnv(env map[string]string, fleet fleetconfig.Fleet, role string, mode containerMode) map[string]string {
+func addAgentIdentityConfigEnv(env map[string]string, mode containerMode) map[string]string {
 	if env == nil {
 		env = map[string]string{}
 	}
-	identity := resolvedAgentIdentity(fleet, role, mode)
+	identity := mode.defaultAgentIdentity()
 	if strings.TrimSpace(env[envAgentDisplayName]) == "" {
 		env[envAgentDisplayName] = identity.Name
 	}
@@ -742,19 +728,13 @@ func addAgentIdentityConfigEnv(env map[string]string, fleet fleetconfig.Fleet, r
 	return env
 }
 
-func addConfigEnvDefault(env map[string]string, key string, values ...string) {
+func addConfigEnvDefault(env map[string]string, key string) {
 	if strings.TrimSpace(env[key]) != "" {
 		return
 	}
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		env[key] = value
 		return
-	}
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			env[key] = value
-			return
-		}
 	}
 }
 
@@ -775,13 +755,13 @@ func validateLocalHarnessConfig(mode containerMode, model, endpoint string) erro
 	return nil
 }
 
-// addFleetAttributionConfigEnv projects the baked fleet's commit identity into
+// addLaunchAttributionConfigEnv projects the typed fallback commit identity into
 // the explicit bootstrap env vars, falling back to git config before the placeholder.
-func addFleetAttributionConfigEnv(env map[string]string, fleet fleetconfig.Fleet, cwd string) map[string]string {
+func addLaunchAttributionConfigEnv(env map[string]string, launch launchConfig, cwd string) map[string]string {
 	if env == nil {
 		env = map[string]string{}
 	}
-	attribution := fleet.Defaults.Attribution
+	attribution := launch.Attribution
 	if strings.TrimSpace(env["WARD_GIT_NAME"]) == "" {
 		env["WARD_GIT_NAME"] = resolveLaunchGitIdentity(cwd, attribution.Name, "user.name")
 	}
@@ -944,8 +924,8 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	if p.Branch != "" {
 		env["WARD_BRANCH"] = p.Branch
 	}
-	// The config role carries the per-role model/effort overlay in-container (ward#620);
-	// empty (a bare `container up`) leaves today's env intact.
+	// The workflow label is descriptive metadata only. A bare `container up`
+	// leaves it empty.
 	if p.ConfigRole != "" {
 		env["WARD_ROLE"] = p.ConfigRole
 	}
@@ -1079,28 +1059,12 @@ func dockerArgvHead(verb string, p upPlan) []string {
 	if p.MemorySwap != "" {
 		argv = append(argv, "--memory-swap="+p.MemorySwap)
 	}
-	// Under memory pressure Docker's OOM killer should shed engineer work first,
-	// then leave director surfaces above the default container priority.
-	if oomScoreAdj, ok := dockerOOMScoreAdj(p.Role); ok {
-		argv = append(argv, "--oom-score-adj="+oomScoreAdj)
-	}
 	// Map host.docker.internal to the host gateway so the surface's broker dial
 	// works on Linux too; --network=host already resolves it, so skip it there.
 	if strings.HasPrefix(p.DispatchBrokerAddr, containerHostGateway+":") && !p.HostNet {
 		argv = append(argv, "--add-host", containerHostGateway+":host-gateway")
 	}
 	return argv
-}
-
-func dockerOOMScoreAdj(role string) (string, bool) {
-	switch role {
-	case roleEngineer:
-		return "250", true
-	case roleDirector, roleSession:
-		return "-250", true
-	default:
-		return "", false
-	}
 }
 
 // proxyBoxAttached reports whether the standing box is among the space-separated

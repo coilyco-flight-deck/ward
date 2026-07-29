@@ -1,13 +1,14 @@
 ---
-doc_goal: Keep the agent adapter manifest anchor stable after the manifest page was collapsed.
+doc_goal: Describe Ward's typed harness adapter boundary.
 ---
-# agent adapter manifest
+# Agent adapters
 
-This page is the durable anchor for the launch adapter manifest.
+Ward's harness adapters are typed product code.
 
-- The manifest projects the fleet roster onto the launcher shape.
 - Each adapter records binary, context level, auth, stream, and argv shape.
-- The manifest is the source of truth for how a mode is invoked.
+- The typed roster is the source of truth for how a harness is invoked.
+- Model, endpoint, reasoning, and identity are explicit harness-owner inputs.
+- A workflow role never changes an adapter.
 
 ## See also
 

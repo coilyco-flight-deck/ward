@@ -336,19 +336,21 @@ func reviewerCandidates(worker string) []reviewpanel.Reviewer {
 	return out
 }
 
-// reviewerModel reads a family's default model off the effective fleet roster,
-// best-effort (an unresolved model is cosmetic, so a load slip yields "").
+// reviewerModel reads only explicit harness-owner inputs. Ward carries no
+// model catalog and a role never selects a reviewer model.
 func reviewerModel(family string) string {
-	fleet, err := loadFleetConfig()
-	if err != nil {
+	switch family {
+	case string(modeClaude):
+		return os.Getenv("WARD_CLAUDE_MODEL")
+	case string(modeCodex):
+		return os.Getenv("WARD_CODEX_MODEL")
+	case string(modeOpencode):
+		return os.Getenv("WARD_OPENCODE_MODEL")
+	case string(modeGoose):
+		return os.Getenv("WARD_GOOSE_MODEL")
+	default:
 		return ""
 	}
-	for _, a := range fleet.Agents {
-		if a.Name == family {
-			return a.Model
-		}
-	}
-	return ""
 }
 
 // reviewerRunner bounds one reviewer harness run by the selected reviewer timeout.

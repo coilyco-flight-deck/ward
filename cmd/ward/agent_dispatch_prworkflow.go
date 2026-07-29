@@ -131,7 +131,7 @@ func execDispatchBrokerCIRerun(ctx context.Context, cl *forgejoClient, req dispa
 }
 
 // validateDispatchBrokerPRWorkflow checks the ward#1067 request shape: no launch
-// argv, a known embedded role, an in-scope coily* target, and per-action fields.
+// argv, non-empty opaque role metadata, an in-scope target, and action fields.
 func validateDispatchBrokerPRWorkflow(req dispatchBrokerRequest) error {
 	action := dispatchAction(req.Action)
 	if !prWorkflowDispatchActions[action] {
@@ -149,12 +149,10 @@ func validateDispatchBrokerPRWorkflowShape(action string, req dispatchBrokerRequ
 	}
 	role := strings.TrimSpace(req.Role)
 	if role == "" {
-		return fmt.Errorf("dispatch broker: %s requires the requesting role (fail-closed)", action)
+		return fmt.Errorf("dispatch broker: %s requires opaque launch role metadata", action)
 	}
-	if cat, err := cachedBuiltInAgentRoleCatalog(); err != nil {
-		return fmt.Errorf("dispatch broker: %s: load embedded role catalog: %w", action, err)
-	} else if _, ok := cat.Definitions[role]; !ok {
-		return fmt.Errorf("dispatch broker: %s: role %q is not in ward's embedded role catalog - refusing fail-closed", action, role)
+	if strings.ContainsRune(role, '\x00') {
+		return fmt.Errorf("dispatch broker: %s received malformed role metadata", action)
 	}
 	target := strings.TrimSpace(req.Target)
 	if target == "" || strings.ContainsRune(target, '\x00') || strings.HasPrefix(target, "-") {

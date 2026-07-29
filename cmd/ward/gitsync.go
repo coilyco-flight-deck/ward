@@ -198,7 +198,7 @@ func refreshDeniedBackoff(ttl time.Duration) time.Duration {
 	if ttl > 0 {
 		return ttl
 	}
-	return configBundleTTLDefault()
+	return gitRefCacheTTLDefault()
 }
 
 func markRefreshDenied(mirror string) {

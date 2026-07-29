@@ -1,24 +1,23 @@
 ---
-doc_goal: Explain that Ward's native policy is embedded after operator config moved to AOSguard.
+doc_goal: Explain Ward's supported runtime settings and their ownership.
 ---
-# Ward config source
+# Ward runtime configuration
 
-Ward's native agent control plane uses baked AOS-authored role, fleet, topology,
-and launch-policy assets. That keeps `ward agent`, `ward container`, `ward exec`,
-help, and version independent of an operator configuration checkout.
+Ward launches without an external policy bundle. Harness adapters, topology,
+execution limits, and the three workflow labels are typed product code.
 
-`WARD_CONFIG_REF` is no longer a Ward runtime dependency. AOSguard owns operator
-spec configuration inside the AOS image and exposes its generated APIs through
-`aosguard ops ...`.
+Supported preferences have these owners:
 
-For compatibility examples that still need a Ward-owned value, use this repo's
-own policy bundle from a checkout: `WARD_CONFIG_REF=file://$PWD/.ward`.
+- `~/.ward/config.yaml` holds operator defaults such as `default-harness`,
+  `agent.image`, `agent.release-channel`, workflow defaults, and director limits.
+- `.ward/ward.yaml` holds repository-local `agent.workflow`, `agent.image`, and
+  `agent.release-channel` values beside the repository's dev verbs.
+- Explicit command flags win over YAML for the setting they name.
+- Harness-owned environment variables select models, endpoints, reasoning, and
+  display identity. Ward does not supply those values through a role profile.
 
-`ward config drop` clears the retired top-level `config-ref` field from
-`~/.ward/config.yaml` while preserving other local preferences. If
-`WARD_CONFIG_REF` is still inherited by the current process, the command reports
-that environment source and exits non-zero because the environment still wins.
-With neither source set, Ward reports the baked/default native policy source.
+The effective precedence is explicit flag or harness environment, repository
+YAML, operator YAML, then Ward's typed default.
 
-Ward retains typed Forgejo, GitHub, and Shortcut adapters only where its own
-issue-to-merge workflow needs them. Those adapters do not route through AOSguard.
+See [config-migration.md](config-migration.md) for the removed configuration
+surfaces and direct replacements.

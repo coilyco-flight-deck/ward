@@ -124,8 +124,8 @@ const (
 	dispatchActionPRStatus = "pr-status"
 	// dispatchActionPRLogs reads one PR CI log stream through the native status hook.
 	dispatchActionPRLogs = "pr-logs"
-	// dispatchActionPRMerge merges one PR through ward's compiled client, gated by
-	// the embedded role x workflow permission table (ward#1067).
+	// dispatchActionPRMerge merges one PR through Ward's compiled client, gated
+	// by the PR workflow marker (ward#1067).
 	dispatchActionPRMerge = "pr-merge"
 	// dispatchActionPRClose closes one PR through ward's compiled client.
 	dispatchActionPRClose = "pr-close"

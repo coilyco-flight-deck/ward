@@ -1,4 +1,3 @@
-# Ward native policy assets
+# Ward repository configuration
 
-Ward embeds these canonical KDL files directly. Operator specs live in AOS
-`.specgen/aosguard`. See [the boundary](../docs/aosguard-boundary.md).
+See [the YAML reference](../docs/ward-yaml.md) for dev verbs and launch preferences.

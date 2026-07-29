@@ -89,7 +89,7 @@ func TestCommitTrailer(t *testing.T) {
 	}
 }
 
-func TestAgentSignerUsesResolvedRoleIdentity(t *testing.T) {
+func TestAgentSignerUsesExplicitIdentityEnvironment(t *testing.T) {
 	t.Setenv(envAgentDisplayName, "terran engineer")
 	t.Setenv(envAgentPronouns, "he")
 

@@ -288,7 +288,7 @@ func TestBacklogPrintDirectorPlanUsesBakedPolicy(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
-		"config source:   baked native policy",
+		"config source:   typed defaults + YAML overrides",
 		"limit:           17",
 		"max-parallel:    4",
 		"poll-interval:   45s",
@@ -950,12 +950,6 @@ func TestPlainDirectorPrintDoesNotEnumerateIssues(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
-	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
-
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
 
@@ -1023,7 +1017,6 @@ func TestBacklogRefreshReservationStates(t *testing.T) {
 	defer srv.Close()
 	forgejoBaseURL = srv.URL
 
-	t.Setenv("WARD_CONFIG_REF", "")
 	t.Setenv("WARD_AGENT_RESERVE_RECHECK", "off")
 	r := &Runner{}
 	if err := r.backlogRefresh(t.Context(), "director", []string{"coilyco-flight-deck/ward"}, 50); err != nil {
@@ -1044,12 +1037,6 @@ func TestBacklogRefreshReservationStates(t *testing.T) {
 func TestDirectorIssueScopeUsesOnlyTheReferencedIssue(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")
-
-	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
 
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
@@ -1123,15 +1110,6 @@ func TestIssueScopedDirectorRefreshStaysOnOneIssue(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
-	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "defaults.kdl"), []byte("defaults {\n}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
-
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
 
@@ -1185,20 +1163,6 @@ func TestIssueScopedDirectorRefreshStaysOnOneIssue(t *testing.T) {
 func TestDirectorScopeIgnoresOperatorBundleBurndownRules(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	t.Setenv("WARD_CONFIG_REF", "file://"+t.TempDir())
-
-	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte(`repos {
-    repo-authority default=forgejo {
-        trusted-owner coilyco-flight-deck
-    }
-    burndown default=#true {
-        repo "coilyco-flight-deck/sample-platform" #false
-        repo "coilyco-gaming/sample-gameops" #false
-    }
-}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
 
 	oldBase := forgejoBaseURL
 	defer func() { forgejoBaseURL = oldBase }()
@@ -1264,19 +1228,6 @@ func TestDirectorScopeIgnoresOperatorBundleBurndownRules(t *testing.T) {
 func TestDirectorPlainScopeDoesNotApplyBurndownFilter(t *testing.T) {
 	setTestHome(t, t.TempDir())
 
-	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte(`repos {
-    repo-authority default=forgejo {
-        trusted-owner coilyco-flight-deck
-    }
-    burndown default=#true {
-        repo "coilyco-flight-deck/sample-platform" #false
-    }
-}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
-
 	cmd := &cli.Command{
 		Name:  "director",
 		Flags: directorFlags(),
@@ -1302,11 +1253,6 @@ func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	t.Setenv("FORGEJO_TOKEN", "secret")
 
-	bundleDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bundleDir, "repos.kdl"), []byte("repos {\n  repo-authority default=forgejo {\n    trusted-owner coilyco-flight-deck\n  }\n}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("WARD_CONFIG_REF", "file://"+bundleDir)
 	reservedAt := time.Now().UTC().Add(-10 * time.Minute).Format(time.RFC3339)
 
 	oldBase := forgejoBaseURL

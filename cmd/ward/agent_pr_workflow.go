@@ -18,7 +18,7 @@ import (
 // agent_pr_workflow.go wires ward#1067: the native PR-workflow tools (merge,
 // per-PR CI status, run status, rerun). See docs/agent-pr-workflow.md.
 
-// prWorkflowOp names one native PR-workflow capability for the permission gate.
+// prWorkflowOp names one native PR-workflow operation for the workflow gate.
 type prWorkflowOp string
 
 const (
@@ -41,70 +41,23 @@ func prWorkflowRole() string {
 	return roleDirector
 }
 
-// prWorkflowPermitted is the embedded permission gate (ward#1067), answering
-// from the shipped role catalog fail-closed. docs/agent-pr-workflow.md.
-func prWorkflowPermitted(role string, wf workflowMode, op prWorkflowOp) error {
-	cat, err := cachedBuiltInAgentRoleCatalog()
-	if err != nil {
-		return fmt.Errorf("pr %s: load embedded role catalog: %w", op, err)
-	}
-	def, ok := cat.Definitions[strings.TrimSpace(role)]
-	if !ok {
-		return fmt.Errorf("pr %s: role %q is not in ward's embedded role catalog (%s) - refusing fail-closed",
-			op, role, strings.Join(builtInAgentRoleDefinitionOrder(), ", "))
-	}
-	return prWorkflowPermittedForDefinition(def, role, wf, op)
-}
-
-func prWorkflowPermittedForDefinition(def agentRoleDefinition, role string, wf workflowMode, op prWorkflowOp) error {
+// prWorkflowPermitted is Ward's fixed broker boundary. The role argument is
+// opaque launch metadata and cannot grant or attenuate an operation.
+func prWorkflowPermitted(_ string, wf workflowMode, op prWorkflowOp) error {
 	switch op {
 	case prOpStatus, prOpLogs, prOpRuns, prOpRecover:
-		return prWorkflowReadPermitted(def, role, op)
+		return nil
 	case prOpRerun:
-		return prWorkflowRerunPermitted(def, role, op)
+		return nil
 	case prOpClose, prOpReopen, prOpMerge:
-		return prMergePermitted(def, role, wf)
+		if wf.orDefault() != workflowPullRequestAndMerge {
+			return fmt.Errorf("pr %s: workflow %s does not permit the brokered mutation; want %s",
+				op, wf.orDefault(), workflowPullRequestAndMerge)
+		}
+		return nil
 	default:
 		return fmt.Errorf("pr: unknown PR-workflow op %q - refusing fail-closed", op)
 	}
-}
-
-func prWorkflowReadPermitted(def agentRoleDefinition, role string, op prWorkflowOp) error {
-	if !def.Capabilities.Has(semanticCapabilityRead) {
-		return fmt.Errorf("pr %s: role %q lacks the read capability", op, role)
-	}
-	return nil
-}
-
-func prWorkflowRerunPermitted(def agentRoleDefinition, role string, op prWorkflowOp) error {
-	if !def.Capabilities.Has(semanticCapabilityEngineering) && !def.Capabilities.Has(semanticCapabilityProjectManagement) {
-		return fmt.Errorf("pr %s: role %q holds neither engineering nor project-management - rerun is withheld", op, role)
-	}
-	return nil
-}
-
-// prMergePermitted answers the merge half of the gate from the role's
-// merge-authority grant in the embedded catalog.
-func prMergePermitted(def agentRoleDefinition, role string, wf workflowMode) error {
-	wf = wf.orDefault()
-	for _, granted := range def.MergeAuthority {
-		if granted == wf {
-			return nil
-		}
-	}
-	if len(def.MergeAuthority) == 0 {
-		return fmt.Errorf("pr merge: role %q holds no merge authority in ward's embedded role catalog", role)
-	}
-	return fmt.Errorf("pr merge: role %q may not merge under workflow %s (its merge authority covers %s)",
-		role, wf, workflowModesJoin(def.MergeAuthority))
-}
-
-func workflowModesJoin(modes []workflowMode) string {
-	parts := make([]string, 0, len(modes))
-	for _, m := range modes {
-		parts = append(parts, string(m))
-	}
-	return strings.Join(parts, ", ")
 }
 
 // prWorkflowMarkerMode reads the workflow mode from a PR's body marker; no
@@ -583,17 +536,15 @@ func prWorkflowRerunExec(ctx context.Context, cl *forgejoClient, owner, repo str
 func agentPRCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "pr",
-		Usage: "Native PR-workflow tools: close, reopen, recover, merge, per-PR CI status, Actions run status, rerun - compiled ward capabilities gated by the embedded role x workflow permission table (ward#1067).",
+		Usage: "Native PR-workflow tools: close, reopen, recover, merge, per-PR CI status, Actions run status, and rerun. Mutations are gated by workflow, never by role metadata.",
 		Description: `pr carries the PR-workflow management verbs as native ward code on the compiled
-Forgejo client, gated by ward's embedded role permission system - not by the
-runtime KDL specgen surface, so they keep working with the '.ward/' guardfile
+Forgejo client, gated by fixed workflow rules - not by a role profile or
+runtime operator-spec surface, so they keep working with the '.ward/' guardfile
 bundle absent or rolled back (infrastructure#538).
 
-Merge authority is keyed to the workflow-mode model in the embedded role
-catalog: the director merges under pull-request and pull-request-and-merge,
-the engineer self-merges under pull-request-and-merge only, and remote-branch-only
-withholds merge from everyone. Status, logs, and runs are read verbs; rerun
-needs an engineering or project-management role.
+Close, reopen, and merge require a pull-request-and-merge marker. Status,
+logs, runs, recover, and rerun use fixed operation gates. Role metadata cannot
+grant or attenuate any operation.
 
 Close and reopen use the same workflow-mode gate as merge, with the close verb
 requiring a reason or superseding issue/PR reference. Recover is read-only
@@ -602,7 +553,7 @@ and the next safe action.
 
 On a read-only director surface each verb forwards through the host dispatch
 broker (the same TCP + token channel as stop/list/logs) and the host re-checks
-the permission gate; elsewhere it runs in-process against the forge API.
+the workflow gate. Elsewhere it runs in-process against the forge API.
 
   ward agent pr status coilyco-flight-deck/ward#123   # combined CI status for the PR head
   ward agent pr wait   coilyco-flight-deck/ward#123   # wait for the current head to turn green
@@ -671,7 +622,7 @@ func agentPRLogsCommand() *cli.Command {
 func agentPRMergeCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "merge",
-		Usage:     "Merge one PR natively: embedded role x workflow gate, live status gate, head-pinned merge, merge-style selection, merged-state check.",
+		Usage:     "Merge one PR natively: fixed workflow gate, live status gate, head-pinned merge, merge-style selection, merged-state check.",
 		ArgsUsage: "<owner/repo#N | #N>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "style", Usage: "Forgejo merge style: merge, squash, fast-forward-only, rebase, or rebase-merge (default: smart-defaults pr-merge-style when set, else repo default_merge_style when allowed)"},

@@ -29,6 +29,32 @@ func repoRoot(t *testing.T) string {
 	return filepath.Dir(filepath.Dir(self))
 }
 
+func testBash(t *testing.T) string {
+	t.Helper()
+	for _, candidate := range []string{os.Getenv("WARD_TEST_BASH"), "/opt/homebrew/bin/bash", "/usr/local/bin/bash"} {
+		if candidate == "" {
+			continue
+		}
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return "bash"
+}
+
+func releaseTestEnv(extra ...string) []string {
+	env := append(os.Environ(),
+		"TERM=xterm",
+		"GIT_EDITOR=true",
+		"GIT_CONFIG_COUNT=2",
+		"GIT_CONFIG_KEY_0=tag.gpgSign",
+		"GIT_CONFIG_VALUE_0=false",
+		"GIT_CONFIG_KEY_1=commit.gpgSign",
+		"GIT_CONFIG_VALUE_1=false",
+	)
+	return append(env, extra...)
+}
+
 func readRepoFile(t *testing.T, rel string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(repoRoot(t), rel))
@@ -325,7 +351,7 @@ func TestRegistryCopyTagPublishesManifestWithoutDockerDaemon(t *testing.T) {
 
 	u := strings.TrimPrefix(srv.URL, "http://")
 	script := filepath.Join(repoRoot(t), "scripts", "registry-copy-tag.sh")
-	cmd := exec.Command("bash", script)
+	cmd := exec.Command(testBash(t), script)
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(),
 		"SOURCE_IMAGE="+u+"/coilyco-flight-deck/sample-tooling:latest",
@@ -388,7 +414,7 @@ func TestRegistryManifestExistsChecksAliasWithoutDockerDaemon(t *testing.T) {
 			defer srv.Close()
 
 			host := strings.TrimPrefix(srv.URL, "http://")
-			cmd := exec.Command("bash", filepath.Join(repoRoot(t), "scripts", "registry-manifest-exists.sh"))
+			cmd := exec.Command(testBash(t), filepath.Join(repoRoot(t), "scripts", "registry-manifest-exists.sh"))
 			cmd.Dir = repoRoot(t)
 			cmd.Env = append(os.Environ(),
 				"IMAGE="+host+"/coilyco-flight-deck/ward:release",
@@ -500,7 +526,7 @@ func TestPublishDraftReleaseCreatesBodyWithoutAssets(t *testing.T) {
 	dist := t.TempDir()
 
 	script := filepath.Join(repoRoot(t), "scripts", "publish-draft-release.sh")
-	cmd := exec.Command("bash", script)
+	cmd := exec.Command(testBash(t), script)
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(),
 		"DRAFT_TAG=draft-testsha",
@@ -528,6 +554,7 @@ func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = releaseTestEnv()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v failed: %v\noutput: %s", args, err, out)
 	}
@@ -544,9 +571,9 @@ func runReleaseTagHelper(t *testing.T, repo string) map[string]string {
 	t.Helper()
 	output := filepath.Join(t.TempDir(), "outputs.txt")
 	script := filepath.Join(repoRoot(t), "scripts", "release-tag.sh")
-	cmd := exec.Command("bash", script)
+	cmd := exec.Command(testBash(t), script)
 	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "GITHUB_OUTPUT="+output)
+	cmd.Env = releaseTestEnv("GITHUB_OUTPUT=" + output)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("release-tag.sh failed: %v\noutput: %s", err, out)
 	}
@@ -595,9 +622,9 @@ esac
 	}
 
 	script := filepath.Join(repoRoot(t), "scripts", "release-tag.sh")
-	cmd := exec.Command("bash", script)
+	cmd := exec.Command(testBash(t), script)
 	cmd.Dir = repo
-	cmd.Env = append(os.Environ(),
+	cmd.Env = releaseTestEnv(
 		"GITHUB_OUTPUT="+output,
 		"PATH="+binDir+":"+os.Getenv("PATH"),
 		"REAL_GIT="+realGit,
@@ -670,7 +697,7 @@ func TestPublishDraftReleaseHandles404AndIdempotentAssetRewrites(t *testing.T) {
 
 	script := filepath.Join(repoRoot(t), "scripts", "publish-draft-release.sh")
 	run := func() string {
-		cmd := exec.Command("bash", script)
+		cmd := exec.Command(testBash(t), script)
 		cmd.Dir = repoRoot(t)
 		cmd.Env = append(os.Environ(),
 			"DRAFT_TAG=draft-testsha",
@@ -717,7 +744,7 @@ func TestPublishDraftReleaseHandles404AndIdempotentAssetRewrites(t *testing.T) {
 func TestForgejoReleaseAssetHelperReadsRawAssetBody(t *testing.T) {
 	srv := newReleaseAssetTestServer(t)
 	script := filepath.Join(repoRoot(t), "scripts", "forgejo-release-asset.sh")
-	cmd := exec.Command("bash", script)
+	cmd := exec.Command(testBash(t), script)
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(),
 		"RELEASE_TAG=v9.9.9",
@@ -755,7 +782,7 @@ func TestForgejoReleaseAssetHelperPassesMultilineBodiesThrough(t *testing.T) {
 	// raw instead of requiring one digest (ward#1493).
 	srv := newReleaseAssetTestServer(t)
 	script := filepath.Join(repoRoot(t), "scripts", "forgejo-release-asset.sh")
-	cmd := exec.Command("bash", script)
+	cmd := exec.Command(testBash(t), script)
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(),
 		"RELEASE_TAG=v9.9.9",
@@ -776,7 +803,7 @@ func TestPromoteDraftAssetsVerifiesAndStagesRawBytes(t *testing.T) {
 	srv := newPromotionReleaseTestServer(t)
 	script := filepath.Join(repoRoot(t), "scripts", "promote-draft-assets.sh")
 	dist := t.TempDir()
-	cmd := exec.Command("bash", script)
+	cmd := exec.Command(testBash(t), script)
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(),
 		"DRAFT_TAG=draft-testsha",
@@ -863,7 +890,7 @@ func TestPromoteDraftAssetsRejectsBadDraftPayloads(t *testing.T) {
 			srv := newPromotionReleaseTestServer(t)
 			tc.mut(srv)
 			dist := t.TempDir()
-			cmd := exec.Command("bash", filepath.Join(repoRoot(t), "scripts", "promote-draft-assets.sh"))
+			cmd := exec.Command(testBash(t), filepath.Join(repoRoot(t), "scripts", "promote-draft-assets.sh"))
 			cmd.Dir = repoRoot(t)
 			cmd.Env = append(os.Environ(),
 				"DRAFT_TAG=draft-testsha",
@@ -890,7 +917,7 @@ func TestVerifyReleaseAssetsReadsBackStableBytes(t *testing.T) {
 		t.Fatalf("prepare draft assets failed: %v\noutput: %s", err, out)
 	}
 	script := filepath.Join(repoRoot(t), "scripts", "verify-release-assets.sh")
-	cmd := exec.Command("bash", script)
+	cmd := exec.Command(testBash(t), script)
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(),
 		"RELEASE_TAG=v0.1.0",
@@ -1259,7 +1286,7 @@ func (s *promotionReleaseTestServer) record(r *http.Request) {
 
 func runPromoteDraftAssets(t *testing.T, srv *promotionReleaseTestServer, dist string) (string, error) {
 	t.Helper()
-	cmd := exec.Command("bash", filepath.Join(repoRoot(t), "scripts", "promote-draft-assets.sh"))
+	cmd := exec.Command(testBash(t), filepath.Join(repoRoot(t), "scripts", "promote-draft-assets.sh"))
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(),
 		"DRAFT_TAG=draft-testsha",
@@ -1346,7 +1373,7 @@ func TestForgejoAssetURLResolverFollowsMetadataHops(t *testing.T) {
 	srvURL = srv.URL
 
 	script := filepath.Join(repoRoot(t), "scripts", "forgejo-asset-url.sh")
-	cmd := exec.Command("bash", script)
+	cmd := exec.Command(testBash(t), script)
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(),
 		"DOWNLOAD_BASE="+srv.URL+"/owner/ward/releases/download/v9.9.9",

@@ -2,10 +2,7 @@ package main
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
-
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 )
 
 // TestAgentManifestParses guards the embedded manifest: it must parse, declare
@@ -164,69 +161,5 @@ func TestValidateAgentManifestAccepts(t *testing.T) {
 	argv, ok := a.preflightArgv("go?")
 	if !ok || fmt.Sprint(argv) != fmt.Sprint([]string{"claude", "-p", "go?"}) {
 		t.Errorf("preflightArgv = %v (ok=%v), want [claude -p go?]", argv, ok)
-	}
-}
-
-// fleetAgent looks a parsed fleet agent up by name (test helper).
-func fleetAgent(f fleetconfig.Fleet, name string) (fleetconfig.Agent, bool) {
-	for _, a := range f.Agents {
-		if a.Name == name {
-			return a, true
-		}
-	}
-	return fleetconfig.Agent{}, false
-}
-
-// TestFleetSwitchesTwoWayPin pins the effective fleet against the parseMode roster
-// via structural invariants, not a duplicate fixture (agent-adapter-manifest.md).
-func TestFleetSwitchesTwoWayPin(t *testing.T) {
-	fleet, err := loadFleetConfig()
-	if err != nil {
-		t.Fatalf("loadFleetConfig: %v", err)
-	}
-
-	// Header invariants the dialect-2 loader depends on.
-	if fleet.SchemaVersion != 2 {
-		t.Errorf("fleet schema-version = %d, want 2", fleet.SchemaVersion)
-	}
-	if fleet.Defaults.Agent != string(modeClaude) {
-		t.Errorf("fleet defaults.agent = %q, want %q", fleet.Defaults.Agent, modeClaude)
-	}
-	if fleet.Defaults.Attribution.Name == "" || fleet.Defaults.Attribution.Email == "" {
-		t.Errorf("fleet defaults.attribution incomplete: name=%q email=%q",
-			fleet.Defaults.Attribution.Name, fleet.Defaults.Attribution.Email)
-	}
-
-	// Roster: exactly the modes ward ships, no more, no fewer.
-	want := map[containerMode]bool{modeClaude: true, modeCodex: true, modeOpencode: true, modeGoose: true}
-	got := map[containerMode]bool{}
-	for _, a := range fleet.Agents {
-		got[containerMode(a.Name)] = true
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("fleet roster = %v, want %v", got, want)
-	}
-
-	// Each agent is well-formed and round-trips through parseMode (the two-way pin).
-	for _, a := range fleet.Agents {
-		if a.Binary == "" {
-			t.Errorf("agent %q has no binary", a.Name)
-		}
-		if a.ContextLevel < 0 || a.ContextLevel > 2 {
-			t.Errorf("agent %q context-level %d out of range 0..2", a.Name, a.ContextLevel)
-		}
-		if len(a.Argv.Headless) == 0 {
-			t.Errorf("agent %q has no headless argv", a.Name)
-		} else if a.Argv.Headless[0] != a.Binary {
-			t.Errorf("agent %q headless argv starts with %q, not its binary %q", a.Name, a.Argv.Headless[0], a.Binary)
-		}
-		rt, err := parseMode(a.Name)
-		if err != nil {
-			t.Errorf("parseMode(%q): %v", a.Name, err)
-			continue
-		}
-		if rt != containerMode(a.Name) {
-			t.Errorf("parseMode(%q) = %q, want %q", a.Name, rt, a.Name)
-		}
 	}
 }

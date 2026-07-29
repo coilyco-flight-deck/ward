@@ -19,7 +19,7 @@ Ward is the better fit for parallel, separable, auditable, failure-prone work. A
 
 If the orchestration itself is flaky, that is a Ward product bug, not an operator burden. The target model is still the one above.
 
-`ward agent` launches an authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow or an issue-to-PR workflow, while bounded by credential scoping and a durable audit trail. Functionally it is a manifest-backed harness driver - it knows how to launch each agent through its own CLI dialect - but the external product is the governed execution layer around it, not the driver. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
+`ward agent` launches an authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow or an issue-to-PR workflow, while bounded by credential scoping and a durable audit trail. Functionally it is a typed harness driver. It knows how to launch each agent through its own CLI dialect, but the external product is the governed execution layer around it. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
 
 Ward's operational vocabulary is defined in [`docs/terminology.md`](docs/terminology.md). Use it when a term such as dispatch, launch, run, workflow, reservation, reap, drain, role, or harness could be read more than one way.
 
@@ -42,15 +42,7 @@ Wraps a project's dev verbs behind cli-guard's policy gate. Every ward-managed r
 
 **Enforcement depth is platform-conditional.** On **Linux** sandboxed verbs run inside cli-guard's sandbox jail, so the gate holds at arbitrary process depth. On **macOS and Windows** - what the brew-first path predominantly serves - enforcement is **depth-0** (the harness allowlist only): a child spawned by a gated verb can invoke a wrapped tool without re-entering the gate, a known limitation by design. See [`docs/exec-verb.md`](docs/exec-verb.md) (Enforcement depth by platform).
 
-Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema see [`docs/ward-yaml.md`](docs/ward-yaml.md). Ward's native agent policy is baked into the binary and release image, and [`ward doctor`](docs/doctor.md) validates that the selected runtime config is operational.
-
-`WARD_CONFIG_REF` is retained for compatibility with older launch-time config flows, but normal Ward launches do not need it. When an example needs a concrete Ward-owned value, point it at this repo's policy bundle while running from a Ward checkout:
-
-```sh
-export WARD_CONFIG_REF="file://$PWD/.ward"
-```
-
-See [`docs/config-source.md`](docs/config-source.md) for the current source boundary.
+Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema see [`docs/ward-yaml.md`](docs/ward-yaml.md). Agent launch mechanics are typed product code. Supported launch preferences come from `~/.ward/config.yaml`, repository YAML, explicit flags, and harness-owned environment variables. [`ward doctor`](docs/doctor.md) validates the resulting runtime settings.
 
 ## Install
 
@@ -84,8 +76,8 @@ ward exec build          # run a declared dev verb through the gate
 ward exec test
 ward git commit -m ...   # concurrency-safe, audited git
 ward audit tail --follow # stream the audit log
-ward setup               # validate embedded native policy
-ward doctor              # validate embedded native policy
+ward setup               # bootstrap and validate Ward configuration
+ward doctor              # validate Ward configuration
 ```
 
 The agent driver, against the repo's authoritative issue thread. `warded` is a thin symlink onto `ward agent` - read it as a protective circle, the container bounding the agent's reach, not "warded off":
@@ -111,7 +103,7 @@ The boundary is easiest to keep straight by **when** each layer runs:
 
 - **[cli-guard][cli-guard]** - the **engine**. The policy-and-routing framework ward consumes (pinned via go.mod). Thin consumer, not a fork.
 - **`aosguard`** - the AOS **operator CLI**. Specgen builds its `aosguard ops <api>` REST and exec surfaces. It is standalone at runtime and does not invoke or configure Ward.
-- **`ward`** - the native **run-time control plane**. It provides `agent`, `container`, `exec`, reservations, reaping, and PR workflow. It embeds only the AOS-authored role and launch-policy data it needs.
+- **`ward`** - the native **run-time control plane**. It provides `agent`, `container`, `exec`, reservations, reaping, and PR workflow. Its three workflow labels do not grant permissions.
 
 See [`docs/architecture.md`](docs/architecture.md).
 

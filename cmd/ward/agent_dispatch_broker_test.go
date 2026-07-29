@@ -2058,34 +2058,14 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
 	t.Setenv(envDispatchBrokerToken, "nonce-freeform")
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 
-	bundleDir := t.TempDir()
-	defaultsBody := canonicalSmartDefaultsBlock(t, func(defs *smartDefaults) {
-		defs.directorMaxParallel = 10
-	}) + `
-workflow default=merge-remote-main {
-}
-`
-	reposBody := `repos {
-    repo-authority default=forgejo {
-        trusted-owner coilysiren
-        trusted-owner coilyco-flight-deck
-        repo "coilysiren/*" forge=github
-    }
-}`
-	if err := os.WriteFile(filepath.Join(bundleDir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
-		t.Fatalf("write bundle defaults: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(bundleDir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
-		t.Fatalf("write bundle repos: %v", err)
-	}
-	t.Setenv(wardConfigRefEnv, "file://"+bundleDir)
+	t.Setenv(wardConfigRefEnv, "ignored")
 
 	defs, err := currentSmartDefaultsWithError()
 	if err != nil {
-		t.Fatalf("load trusted bundle: %v", err)
+		t.Fatalf("load typed defaults: %v", err)
 	}
 	if !slices.Contains(defs.trustedOwners, "coilyco-flight-deck") {
-		t.Fatalf("trusted owners = %v, want coilyco-flight-deck in the real bundle", defs.trustedOwners)
+		t.Fatalf("trusted owners = %v, want coilyco-flight-deck in typed defaults", defs.trustedOwners)
 	}
 
 	issueCreated := make(chan struct{}, 1)

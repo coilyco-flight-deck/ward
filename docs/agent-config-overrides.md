@@ -1,17 +1,18 @@
 ---
-doc_goal: Keep the config-overrides anchor stable after the old page was collapsed.
+doc_goal: Keep the runtime override precedence explicit and testable.
 ---
-# agent config overrides
+# Agent configuration overrides
 
-This page is the durable anchor for per-role overlay precedence.
+Ward resolves supported launch settings in this order:
 
-- It covers the merge between fleet defaults and role-specific overrides.
-- It keeps the embedded fleet config and the launch source model distinct.
-- The comment trail points here when a role overlay wins over a base value.
-- The shared model override shape is `agent.<harness>.model`, including Goose
-  through `--config agent.goose.model=<model>`.
+1. An explicit command flag or harness-owned environment variable.
+2. Repository values under `agent` in `.ward/ward.yaml`.
+3. Operator values in `~/.ward/config.yaml`.
+4. Ward's typed product default.
 
-## See also
+Role labels never participate in this merge. Changing `WARD_ROLE` cannot alter
+the model, identity, credentials, mounts, network, broker grants, merge
+authority, or container topology.
 
-- [config-source.md](config-source.md) - launch-time source selection.
-- [agent-harnesses.md](agent-harnesses.md) - the harness axis.
+See [config-source.md](config-source.md) for field ownership and
+[agent-harnesses.md](agent-harnesses.md) for harness-specific environment.

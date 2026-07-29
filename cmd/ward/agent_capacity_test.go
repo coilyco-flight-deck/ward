@@ -365,48 +365,6 @@ func TestEngineerCapacityLockWaitsForVisibleContainerBeforeRelease(t *testing.T)
 	}
 }
 
-func TestEngineerContainerLimitIgnoresOperatorBundleOverride(t *testing.T) {
-	dir := t.TempDir()
-	defaultsBody := canonicalSmartDefaultsBlock(t, func(defs *smartDefaults) {
-		defs.engineerContainerLimit = 15
-		defs.directorMaxParallel = 10
-	}) + `
-workflow default=merge-remote-main {
-    repo "coilyco-flight-deck/ward" workflow=pull-request-and-merge
-}
-`
-	reposBody := `repos {
-    repo-authority default=forgejo {
-        trusted-owner coilysiren
-        repo "coilyco-flight-deck/*" forge=forgejo
-    }
-}`
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
-		t.Fatalf("write defaults bundle: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
-		t.Fatalf("write repos bundle: %v", err)
-	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
-	if got := engineerContainerLimitDefault(); got != 12 {
-		t.Fatalf("engineerContainerLimitDefault() = %d, want baked 12", got)
-	}
-
-	r, _, _ := bufRunner(engineerCountDockerStub(t, 11))
-	if err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", false); err != nil {
-		t.Fatalf("enforceEngineerContainerLimit below baked limit: %v", err)
-	}
-
-	r, _, _ = bufRunner(engineerCountDockerStub(t, 12))
-	err := r.enforceEngineerContainerLimit(context.Background(), "ward agent engineer", false)
-	if err == nil {
-		t.Fatal("enforceEngineerContainerLimit at baked limit: want error, got nil")
-	}
-	if !strings.Contains(err.Error(), "limit 12") {
-		t.Fatalf("enforceEngineerContainerLimit baked limit error = %v", err)
-	}
-}
-
 func TestLaunchRepoEngineerBackpressureIgnoresStaleDockerWhenIssueThreadIsClear(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	oldBase := forgejoBaseURL

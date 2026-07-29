@@ -166,7 +166,7 @@ func directorFlags() []cli.Flag {
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped (ward#370)"},
 		&cli.StringSliceFlag{Name: "with-repo", Usage: "grant director's own session an additional writable repo to clone (owner/name; repeatable), landed at /workspace/<owner>/<repo> (ward#1526)."},
-		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight container cap from the bundled smart-defaults file"},
+		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight container cap from typed defaults or ~/.ward/config.yaml"},
 		&cli.BoolFlag{Name: "burndown", Aliases: []string{"drain"}, Usage: "run the autonomous headless backlog burndown loop. Without this flag, director opens its read-only surface after status refresh"},
 		&cli.BoolFlag{Name: "triage", Value: true, Usage: "run the startup triage pass before burndown: label each untriaged open issue's tier (P0-P4) + automation mode (headless/interactive/consult) to warm the headless lane (ward#397). On by default for --burndown. --no-triage skips it"},
 		&cli.BoolFlag{Name: "no-triage", Usage: "skip the startup triage pass and leave existing labels untouched (ward#397)"},
@@ -771,10 +771,20 @@ func scalarNode(value string) *yaml.Node {
 
 // wardGlobalConfig is the slice of ~/.ward/config.yaml ward reads today.
 type wardGlobalConfig struct {
-	Director struct {
+	DefaultHarness string `yaml:"default-harness"`
+	Director       struct {
 		DefaultScope []string `yaml:"default-scope"`
+		MaxParallel  int      `yaml:"max-parallel"`
+		Limit        int      `yaml:"limit"`
+		PollInterval string   `yaml:"poll-interval"`
 	} `yaml:"director"`
 	Agent struct {
+		Image          string `yaml:"image"`
+		ReleaseChannel string `yaml:"release-channel"`
+		Workflow       struct {
+			Default      string            `yaml:"default"`
+			Repositories map[string]string `yaml:"repositories"`
+		} `yaml:"workflow"`
 		Review struct {
 			Skip []string `yaml:"skip"`
 		} `yaml:"review"`
@@ -893,7 +903,7 @@ func (r *Runner) filterBurndownRepos(label string, repos []string) ([]string, er
 		kept = append(kept, slug)
 	}
 	if len(kept) == 0 {
-		return nil, fmt.Errorf("%s: scope resolved to no repos (every repo has burndown disabled in repos.kdl)", label)
+		return nil, fmt.Errorf("%s: scope resolved to no repos (every repo has burndown disabled)", label)
 	}
 	return kept, nil
 }
@@ -2125,9 +2135,8 @@ func (r *Runner) backlogPrintDirectorPlan(label string, repos []string, cfg back
 // appendDirectorLaunchConfig renders native launch policy. AOSguard's operator
 // config is intentionally absent from this control-plane path.
 func appendDirectorLaunchConfig(b *strings.Builder, cfg backlogConfig) error {
-	src := bakedConfigSource()
 	cy := cfg.dispatch
-	fmt.Fprintf(b, "config source:   %s\n", src.sourceDesc())
+	fmt.Fprintf(b, "config source:   typed defaults + YAML overrides\n")
 	fmt.Fprintf(b, "director harness: %s (its own heartbeat one-shot + drain surface)\n", cfg.mode)
 	fmt.Fprintf(b, "limit:           %d\n", cfg.limit)
 	fmt.Fprintf(b, "max-parallel:    %d\n", cfg.maxParallel)

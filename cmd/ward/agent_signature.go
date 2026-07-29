@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 )
 
 // agent_signature.go signs ward's Forgejo bodies and reaper commit with the
@@ -38,20 +37,6 @@ func (m containerMode) defaultAgentIdentity() attribution.Identity {
 	default:
 		return attribution.Identity{Name: "Claude", Pronouns: "she/her"}
 	}
-}
-
-// resolvedAgentIdentity applies the selected role's sparse harness override over
-// the harness default. Display name and pronouns are independent fields.
-func resolvedAgentIdentity(fleet fleetconfig.Fleet, role string, mode containerMode) attribution.Identity {
-	identity := mode.defaultAgentIdentity()
-	ov := roleAgentOverride(fleet, role, string(mode))
-	if name := strings.TrimSpace(ov.DisplayName); name != "" {
-		identity.Name = name
-	}
-	if pronouns := strings.TrimSpace(ov.Pronouns); pronouns != "" {
-		identity.Pronouns = pronouns
-	}
-	return identity
 }
 
 func agentIdentityFromEnv(mode, name, pronouns string) attribution.Identity {

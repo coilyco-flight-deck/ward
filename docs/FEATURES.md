@@ -7,7 +7,6 @@ Inventory of what `ward` ships today.
 - `ward exec` - gated repo dev verbs.
 - `ward audit` - append-only audit trail.
 - `ward git` - audited git.
-- `ward config drop` - clear local `config-ref`.
 - `ward setup` - first-run local config bootstrap + policy check.
 - `ward doctor` - runtime config validation.
 - `source-doc-refs` - source-comment documentation path validation.
@@ -17,7 +16,8 @@ Inventory of what `ward` ships today.
 
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
-* Config: env or `~/.ward/config.yaml`.
+- Typed harness adapters and three fixed workflow labels. Role metadata grants
+  no authority. Preferences use explicit inputs or YAML.
 - `ward agent director queue` / `status` - read-only queue view.
 - Read-only Forgejo issue-comment guard.
 - Reservation and dispatch comments clean up after release.
@@ -33,14 +33,13 @@ Inventory of what `ward` ships today.
 - Compose dispatch broker with durable IDs, restart recovery, sibling launch
   isolation, and credential-free director Forgejo RPC. See
   [agent-dispatch-broker.md](agent-dispatch-broker.md).
-- PR-workflow tools with KDL defaults. See [agent-pr-workflow.md](agent-pr-workflow.md).
+- PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR lifecycle close/reopen/recovery tools.
 - PR repair classification.
 - Ward-owned Claude tool-failure producer and local schema-v1 buffer. See [tool-failures.md](tool-failures.md).
 - Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
 - `ward agent issue create` files a Forgejo issue through the read-only
   director credential broker without dispatching an engineer.
-- `ward agent` roles and workflows. See [agent.md](agent.md).
 - Dispatch-health, PR repair input, and logs artifact selector.
 
 ## Container surface
@@ -56,9 +55,8 @@ Inventory of what `ward` ships today.
 
 ## AOS policy and AOSguard boundary
 
-- Ward directly embeds its native agent role catalog and launch policy from [roles.kdl](../.ward/roles.kdl).
+- Ward owns typed launch mechanics without role profiles or runtime bundles.
 - AOSguard owns generated operator APIs in AOS. Ward does not ship generated operator leaves.
-- A stale or unavailable AOSguard config reference cannot affect Ward's native `agent`, `container`, `exec`, help, or version paths.
 
 ## Release and docs
 

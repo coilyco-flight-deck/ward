@@ -2,20 +2,19 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io/fs"
+	"os"
 	"path"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	kdl "github.com/calico32/kdl-go"
 	"github.com/urfave/cli/v3"
+	"gopkg.in/yaml.v3"
 )
 
-// smartDefaults is Ward-owned native runtime policy baked with the agent image.
-// AOSguard operator configuration cannot override it at process startup.
+// smartDefaults contains Ward product mechanics. The defaults are typed Go
+// values. Supported consumer overrides are loaded from YAML at the edge.
 type smartDefaults struct {
 	agentReservationTTL           time.Duration
 	reservationRecheckDefaultMax  time.Duration
@@ -31,7 +30,7 @@ type smartDefaults struct {
 	directorLimit                 int
 	directorPollInterval          time.Duration
 	reviewerTimeout               time.Duration
-	configBundleTTL               time.Duration
+	gitRefCacheTTL                time.Duration
 	containerAssetsTTL            time.Duration
 	containerReadOnlyExtraRepoTTL time.Duration
 	containerReapTTL              time.Duration
@@ -62,41 +61,77 @@ type burndownRule struct {
 	Enabled bool
 }
 
-var bakedSmartDefaultsCache struct {
-	sync.Once
-	defaults smartDefaults
-	err      error
+type operatorPreferences struct {
+	DefaultHarness string
+	AgentImage     string
+	AgentTag       string
+	Workflow       workflowMode
+	WorkflowRepos  map[string]workflowMode
+	MaxParallel    int
+	DirectorLimit  int
+	PollInterval   time.Duration
+}
+
+func defaultSmartDefaults() smartDefaults {
+	return smartDefaults{
+		agentReservationTTL:           3 * time.Hour,
+		reservationRecheckDefaultMax:  15 * time.Second,
+		agentReapIdleDefault:          time.Hour,
+		agentReapMaxCPUDefault:        5,
+		agentImage:                    "forgejo.coilysiren.me/coilyco-flight-deck/ward",
+		agentTag:                      "release",
+		containerMemoryLimit:          "2g",
+		engineerContainerLimit:        12,
+		engineerRepoWorkingLimit:      3,
+		engineerOpenPRBranchLimit:     6,
+		directorMaxParallel:           6,
+		directorLimit:                 50,
+		directorPollInterval:          30 * time.Second,
+		reviewerTimeout:               8 * time.Minute,
+		gitRefCacheTTL:                10 * time.Minute,
+		containerAssetsTTL:            time.Hour,
+		containerReadOnlyExtraRepoTTL: 24 * time.Hour,
+		containerReapTTL:              48 * time.Hour,
+		agentWorkflowDefault:          workflowDirectToMain,
+		agentWorkflowRepos:            map[string]workflowMode{},
+		routeIntakeRepo:               targetRepo{Owner: "coilysiren", Name: "inbox"},
+		trustedOwners:                 []string{"coilysiren", "coilyco-flight-deck", "coilyco-gaming"},
+		repoAuthorityDefault:          forgeForgejo,
+		repoAuthorityRules: []repoAuthorityRule{
+			{Pattern: "coilysiren/*", Forge: forgeGitHub},
+			{Pattern: "coilyco-flight-deck/*", Forge: forgeForgejo},
+			{Pattern: "coilyco-gaming/*", Forge: forgeForgejo},
+		},
+	}
 }
 
 func bakedSmartDefaults() smartDefaults {
-	defs, err := bakedSmartDefaultsWithError()
-	if err != nil {
-		panic(fmt.Sprintf("load baked smart defaults: %v", err))
-	}
-	return cloneSmartDefaults(defs)
+	return cloneSmartDefaults(defaultSmartDefaults())
 }
 
-func bakedSmartDefaultsWithError() (smartDefaults, error) {
-	bakedSmartDefaultsCache.Do(func() {
-		b, err := fs.ReadFile(bakedAssets, defaultsKDLPath)
-		if err != nil {
-			bakedSmartDefaultsCache.err = fmt.Errorf("read baked smart defaults %s: %w", defaultsKDLPath, err)
-			return
-		}
-		bakedSmartDefaultsCache.defaults, bakedSmartDefaultsCache.err = parseSmartDefaultsBundle(b)
-	})
-	return cloneSmartDefaults(bakedSmartDefaultsCache.defaults), bakedSmartDefaultsCache.err
-}
-
-// currentSmartDefaults returns Ward's native policy, independent of any
-// operator config reference.
 func currentSmartDefaults() smartDefaults {
-	defs, _ := currentSmartDefaultsWithError()
+	defs, err := currentSmartDefaultsWithError()
+	if err != nil {
+		return bakedSmartDefaults()
+	}
 	return defs
 }
 
 func currentSmartDefaultsWithError() (smartDefaults, error) {
-	return bakedSmartDefaultsWithError()
+	defs := bakedSmartDefaults()
+	prefs, err := loadOperatorPreferences()
+	if err != nil {
+		return smartDefaults{}, err
+	}
+	applyOperatorPreferences(&defs, prefs)
+	if err := applyRepoRuntimeConfig(&defs); err != nil {
+		return smartDefaults{}, err
+	}
+	if defs.agentReservationTTL <= fixedRoleExecutionLimit(roleEngineer) {
+		return smartDefaults{}, fmt.Errorf("agent reservation TTL %s must exceed engineer execution limit %s",
+			conciseDuration(defs.agentReservationTTL), conciseDuration(fixedRoleExecutionLimit(roleEngineer)))
+	}
+	return defs, nil
 }
 
 func smartDefaultsGuard(surface string) cli.BeforeFunc {
@@ -108,623 +143,127 @@ func smartDefaultsGuard(surface string) cli.BeforeFunc {
 	}
 }
 
-func loadSmartDefaultsFrom(src configSource) (smartDefaults, error) {
-	if src.defaultsKDL != "" {
-		b, err := fs.ReadFile(src.fsys, src.defaultsKDL)
-		if err != nil {
-			return smartDefaults{}, fmt.Errorf("read smart defaults %s: %w", src.defaultsKDL, err)
-		}
-		defs, err := parseSmartDefaultsBundle(b)
-		if err != nil {
-			return smartDefaults{}, err
-		}
-		if err := validateReservationTTLInvariant(defs); err != nil {
-			return smartDefaults{}, err
-		}
-		return defs, nil
-	}
-	return loadBundleSmartDefaultsFrom(src)
-}
-
-func loadBundleSmartDefaultsFrom(src configSource) (smartDefaults, error) {
-	files, err := loadBundleKDLFiles(src)
+func loadOperatorPreferences() (operatorPreferences, error) {
+	cfg, err := loadWardGlobalConfig()
 	if err != nil {
-		return smartDefaults{}, err
+		return operatorPreferences{}, err
 	}
-	defs := bakedSmartDefaults()
-	defaultsFile, defaultsNode, ok, err := findOptionalNamedBundleNode(files, "top-level `defaults` block", "defaults", "smart-defaults")
-	if err != nil {
-		return smartDefaults{}, err
+	out := operatorPreferences{
+		DefaultHarness: strings.TrimSpace(cfg.DefaultHarness),
+		AgentImage:     strings.TrimSpace(cfg.Agent.Image),
+		AgentTag:       strings.TrimSpace(cfg.Agent.ReleaseChannel),
+		MaxParallel:    cfg.Director.MaxParallel,
+		DirectorLimit:  cfg.Director.Limit,
 	}
-	if ok {
-		if err := parseBundleDefaultsNode(defaultsFile.path, defaultsNode, &defs); err != nil {
-			return smartDefaults{}, err
+	if raw := strings.TrimSpace(cfg.Director.PollInterval); raw != "" {
+		out.PollInterval, err = time.ParseDuration(raw)
+		if err != nil || out.PollInterval <= 0 {
+			return operatorPreferences{}, fmt.Errorf("director.poll-interval must be a positive duration")
 		}
 	}
-	workflowFile, workflowNode, ok, err := findOptionalNamedBundleNode(files, "top-level `workflow` block", "workflow")
-	if err != nil {
-		return smartDefaults{}, err
-	}
-	if ok {
-		if err := parseBundleWorkflowNode(workflowFile.path, workflowNode, &defs); err != nil {
-			return smartDefaults{}, err
-		}
-	}
-	reposFile, reposNode, ok, err := findOptionalNamedBundleNode(files, "top-level `repos` or `repo-authority` block", "repos", "repo-authority")
-	if err != nil {
-		return smartDefaults{}, err
-	}
-	if !ok {
-		return smartDefaults{}, fmt.Errorf("bundle: missing top-level `repos` or `repo-authority` block (fail-closed)")
-	}
-	if err := parseBundleReposNode(reposFile.path, reposNode, &defs); err != nil {
-		return smartDefaults{}, err
-	}
-	if err := validateReservationTTLInvariant(defs); err != nil {
-		return smartDefaults{}, err
-	}
-	return defs, nil
-}
-
-func parseSmartDefaultsBundle(src []byte) (smartDefaults, error) {
-	doc, err := kdl.ParseString(string(src))
-	if err != nil {
-		return smartDefaults{}, fmt.Errorf("smart defaults: parse KDL: %w", err)
-	}
-	defs := smartDefaults{}
-	seenDefaults := false
-	seenAuthority := false
-	for _, n := range doc.Nodes {
-		if err := applySmartDefaultsTopLevelNode(&defs, &seenDefaults, &seenAuthority, n); err != nil {
-			return smartDefaults{}, err
-		}
-	}
-	if !seenDefaults {
-		return smartDefaults{}, fmt.Errorf("smart defaults: missing top-level `smart-defaults` block (fail-closed)")
-	}
-	if !seenAuthority {
-		return smartDefaults{}, fmt.Errorf("smart defaults: missing top-level `repo-authority` block (fail-closed)")
-	}
-	return defs, nil
-}
-
-func cloneSmartDefaults(in smartDefaults) smartDefaults {
-	out := in
-	if in.agentWorkflowRepos != nil {
-		out.agentWorkflowRepos = make(map[string]workflowMode, len(in.agentWorkflowRepos))
-		for repo, wf := range in.agentWorkflowRepos {
-			out.agentWorkflowRepos[repo] = wf
-		}
-	}
-	if in.trustedOwners != nil {
-		out.trustedOwners = append([]string{}, in.trustedOwners...)
-	}
-	if in.repoAuthorityRules != nil {
-		out.repoAuthorityRules = append([]repoAuthorityRule{}, in.repoAuthorityRules...)
-		for i := range out.repoAuthorityRules {
-			if in.repoAuthorityRules[i].Mirrors != nil {
-				out.repoAuthorityRules[i].Mirrors = append([]forge{}, in.repoAuthorityRules[i].Mirrors...)
-			}
-		}
-	}
-	if in.burndownRules != nil {
-		out.burndownRules = append([]burndownRule{}, in.burndownRules...)
-	}
-	return out
-}
-
-func parseBundleDefaultsNode(srcPath string, n *kdl.Node, defs *smartDefaults) error {
-	if n.Name() != "defaults" && n.Name() != "smart-defaults" {
-		return unknownSmartDefaultsNode("top-level", n.Name(), "defaults")
-	}
-	if len(n.Arguments()) != 0 {
-		return fmt.Errorf("smart defaults: `%s` takes no arguments (fail-closed)", n.Name())
-	}
-	if len(n.Properties()) != 0 {
-		return fmt.Errorf("smart defaults: `%s` takes no properties (fail-closed)", n.Name())
-	}
-	for _, c := range n.Children().Nodes {
-		if err := applySmartDefaultNode(defs, c); err != nil {
-			return fmt.Errorf("%s: %w", srcPath, err)
-		}
-	}
-	return nil
-}
-
-func parseBundleWorkflowNode(srcPath string, n *kdl.Node, defs *smartDefaults) error {
-	if n.Name() != "workflow" {
-		return unknownSmartDefaultsNode("top-level", n.Name(), "workflow")
-	}
-	if len(n.Arguments()) != 0 {
-		return fmt.Errorf("smart defaults: `workflow` takes no arguments (fail-closed)")
-	}
-	if err := applyBundleWorkflowDefault(defs, n); err != nil {
-		return fmt.Errorf("%s: %w", srcPath, err)
-	}
-	if err := requireBundleWorkflowProperties(n); err != nil {
-		return fmt.Errorf("%s: %w", srcPath, err)
-	}
-	if defs.agentWorkflowRepos == nil {
-		defs.agentWorkflowRepos = map[string]workflowMode{}
-	}
-	for _, c := range n.Children().Nodes {
-		repo, wf, err := parseBundleWorkflowRepo(c)
+	if raw := strings.TrimSpace(cfg.Agent.Workflow.Default); raw != "" {
+		out.Workflow, err = parseWorkflow(raw)
 		if err != nil {
-			return fmt.Errorf("%s: %w", srcPath, err)
-		}
-		if _, dup := defs.agentWorkflowRepos[repo]; dup {
-			return fmt.Errorf("smart defaults: workflow > repo %q repeated (fail-closed)", repo)
-		}
-		defs.agentWorkflowRepos[repo] = wf
-	}
-	return nil
-}
-
-func parseBundleReposNode(srcPath string, n *kdl.Node, defs *smartDefaults) error {
-	switch n.Name() {
-	case "repos":
-		if len(n.Arguments()) != 0 {
-			return fmt.Errorf("repo authority: `repos` takes no arguments (fail-closed)")
-		}
-		if len(n.Properties()) != 0 {
-			return fmt.Errorf("repo authority: `repos` takes no properties (fail-closed)")
-		}
-		var repoAuthoritySeen, burndownSeen bool
-		for _, c := range n.Children().Nodes {
-			if err := applyBundleReposChild(defs, srcPath, c, &repoAuthoritySeen, &burndownSeen); err != nil {
-				return err
-			}
-		}
-		if !repoAuthoritySeen {
-			return fmt.Errorf("repo authority: missing top-level `repo-authority` block (fail-closed)")
-		}
-		return nil
-	case "repo-authority":
-		return applyRepoAuthority(defs, n)
-	default:
-		return unknownSmartDefaultsNode("top-level", n.Name(), "repos")
-	}
-}
-
-func applySmartDefaultsTopLevelNode(defs *smartDefaults, seenDefaults, seenAuthority *bool, n *kdl.Node) error {
-	switch n.Name() {
-	case "smart-defaults":
-		if *seenDefaults {
-			return fmt.Errorf("smart defaults: duplicate top-level `smart-defaults` block (fail-closed)")
-		}
-		*seenDefaults = true
-		if len(n.Arguments()) != 0 {
-			return fmt.Errorf("smart defaults: `smart-defaults` takes no arguments (fail-closed)")
-		}
-		if len(n.Properties()) != 0 {
-			return fmt.Errorf("smart defaults: `smart-defaults` takes no properties (fail-closed)")
-		}
-		for _, c := range n.Children().Nodes {
-			if err := applySmartDefaultNode(defs, c); err != nil {
-				return err
-			}
-		}
-	case "repo-authority":
-		if *seenAuthority {
-			return fmt.Errorf("smart defaults: duplicate top-level `repo-authority` block (fail-closed)")
-		}
-		*seenAuthority = true
-		if err := applyRepoAuthority(defs, n); err != nil {
-			return err
-		}
-	default:
-		return unknownSmartDefaultsNode("top-level", n.Name(), "smart-defaults | repo-authority")
-	}
-	return nil
-}
-
-func applySmartDefaultNode(defs *smartDefaults, n *kdl.Node) error { //nolint:gocognit,gocyclo,cyclop,funlen
-	switch n.Name() {
-	case "agent-reservation-ttl":
-		v, err := smartDefaultsDurationArg(n, "smart-defaults > agent-reservation-ttl")
-		if err != nil {
-			return err
-		}
-		defs.agentReservationTTL = v
-	case "agent-reservation-recheck-max":
-		v, err := smartDefaultsDurationArg(n, "smart-defaults > agent-reservation-recheck-max")
-		if err != nil {
-			return err
-		}
-		defs.reservationRecheckDefaultMax = v
-	case "agent-reap-idle":
-		v, err := smartDefaultsDurationArg(n, "smart-defaults > agent-reap-idle")
-		if err != nil {
-			return err
-		}
-		defs.agentReapIdleDefault = v
-	case "agent-reap-max-cpu":
-		v, err := smartDefaultsFloatArg(n, "smart-defaults > agent-reap-max-cpu")
-		if err != nil {
-			return err
-		}
-		defs.agentReapMaxCPUDefault = v
-	case "agent-image":
-		v, err := smartDefaultsStringArg(n, "smart-defaults > agent-image")
-		if err != nil {
-			return err
-		}
-		defs.agentImage = v
-	case "agent-tag":
-		v, err := smartDefaultsStringArg(n, "smart-defaults > agent-tag")
-		if err != nil {
-			return err
-		}
-		defs.agentTag = v
-	case "container-memory-limit":
-		v, err := smartDefaultsStringArg(n, "smart-defaults > container-memory-limit")
-		if err != nil {
-			return err
-		}
-		if _, err := parseDockerMemoryBytes(v); err != nil {
-			return fmt.Errorf("smart defaults: smart-defaults > container-memory-limit: %w", err)
-		}
-		defs.containerMemoryLimit = v
-	case "engineer-container-limit":
-		v, err := smartDefaultsIntArg(n, "smart-defaults > engineer-container-limit")
-		if err != nil {
-			return err
-		}
-		defs.engineerContainerLimit = v
-	case "engineer-repo-working-limit":
-		v, err := smartDefaultsIntArg(n, "smart-defaults > engineer-repo-working-limit")
-		if err != nil {
-			return err
-		}
-		defs.engineerRepoWorkingLimit = v
-	case "engineer-open-pr-branch-limit":
-		v, err := smartDefaultsIntArg(n, "smart-defaults > engineer-open-pr-branch-limit")
-		if err != nil {
-			return err
-		}
-		defs.engineerOpenPRBranchLimit = v
-	case "director-max-parallel":
-		v, err := smartDefaultsIntArg(n, "smart-defaults > director-max-parallel")
-		if err != nil {
-			return err
-		}
-		defs.directorMaxParallel = v
-	case "director-limit":
-		v, err := smartDefaultsIntArg(n, "smart-defaults > director-limit")
-		if err != nil {
-			return err
-		}
-		defs.directorLimit = v
-	case "director-poll-interval":
-		v, err := smartDefaultsDurationArg(n, "smart-defaults > director-poll-interval")
-		if err != nil {
-			return err
-		}
-		defs.directorPollInterval = v
-	case "reviewer-timeout":
-		v, err := smartDefaultsDurationArg(n, "smart-defaults > reviewer-timeout")
-		if err != nil {
-			return err
-		}
-		defs.reviewerTimeout = v
-	case "config-bundle-ttl":
-		v, err := smartDefaultsDurationOrSecondsArg(n, "smart-defaults > config-bundle-ttl")
-		if err != nil {
-			return err
-		}
-		defs.configBundleTTL = v
-	case "container-assets-ttl":
-		v, err := smartDefaultsDurationArg(n, "smart-defaults > container-assets-ttl")
-		if err != nil {
-			return err
-		}
-		defs.containerAssetsTTL = v
-	case "container-read-only-extra-repo-ttl":
-		v, err := smartDefaultsDurationArg(n, "smart-defaults > container-read-only-extra-repo-ttl")
-		if err != nil {
-			return err
-		}
-		defs.containerReadOnlyExtraRepoTTL = v
-	case "container-reap-ttl":
-		v, err := smartDefaultsDurationArg(n, "smart-defaults > container-reap-ttl")
-		if err != nil {
-			return err
-		}
-		defs.containerReapTTL = v
-	case "agent-workflow":
-		if err := applySmartDefaultWorkflow(defs, n); err != nil {
-			return err
-		}
-	case "pr-merge-style":
-		v, err := smartDefaultsStringArg(n, "smart-defaults > pr-merge-style")
-		if err != nil {
-			return err
-		}
-		if !mergeStyleSupported(v) {
-			return fmt.Errorf("smart defaults: smart-defaults > pr-merge-style %q is not supported (want merge, squash, fast-forward-only, rebase, or rebase-merge; fail-closed)", v)
-		}
-		defs.prMergeStyle = v
-	case "route-intake-repo":
-		repo, err := smartDefaultsRepoArg(n, "smart-defaults > route-intake-repo")
-		if err != nil {
-			return err
-		}
-		defs.routeIntakeRepo = repo
-	default:
-		return unknownSmartDefaultsNode("smart-defaults body", n.Name(),
-			"agent-reservation-ttl | agent-reservation-recheck-max | agent-reap-idle | agent-reap-max-cpu | agent-image | agent-tag | container-memory-limit | engineer-container-limit | engineer-repo-working-limit | engineer-open-pr-branch-limit | director-max-parallel | director-limit | director-poll-interval | reviewer-timeout | config-bundle-ttl | container-assets-ttl | container-read-only-extra-repo-ttl | container-reap-ttl | agent-workflow | pr-merge-style | route-intake-repo")
-	}
-	return nil
-}
-
-func applyRepoAuthority(defs *smartDefaults, n *kdl.Node) error {
-	if len(n.Arguments()) != 0 {
-		return fmt.Errorf("smart defaults: repo-authority takes no arguments (fail-closed)")
-	}
-	if err := applyRepoAuthorityDefault(defs, n); err != nil {
-		return err
-	}
-	if err := requireRepoAuthorityProperties(n); err != nil {
-		return err
-	}
-	if defs.trustedOwners == nil {
-		defs.trustedOwners = []string{}
-	}
-	if defs.repoAuthorityRules == nil {
-		defs.repoAuthorityRules = []repoAuthorityRule{}
-	}
-	seenOwners := map[string]bool{}
-	seenPatterns := map[string]bool{}
-	for _, c := range n.Children().Nodes {
-		if err := applyRepoAuthorityChild(defs, c, seenOwners, seenPatterns); err != nil {
-			return err
+			return operatorPreferences{}, fmt.Errorf("agent.workflow.default: %w", err)
 		}
 	}
-	return nil
-}
-
-func applyRepoAuthorityChild(defs *smartDefaults, c *kdl.Node, seenOwners, seenPatterns map[string]bool) error {
-	switch c.Name() {
-	case "trusted-owner":
-		owner, err := smartDefaultsStringArg(c, "repo-authority > trusted-owner")
-		if err != nil {
-			return err
+	out.WorkflowRepos = map[string]workflowMode{}
+	for slug, raw := range cfg.Agent.Workflow.Repositories {
+		if !validWorkflowRepoSlug(slug) {
+			return operatorPreferences{}, fmt.Errorf("agent.workflow.repositories key %q must be owner/name", slug)
 		}
-		if strings.Contains(owner, "/") {
-			return fmt.Errorf("smart defaults: repo-authority > trusted-owner %q must be an owner only (fail-closed)", owner)
+		mode, parseErr := parseWorkflow(raw)
+		if parseErr != nil {
+			return operatorPreferences{}, fmt.Errorf("agent.workflow.repositories[%s]: %w", slug, parseErr)
 		}
-		if seenOwners[owner] {
-			return fmt.Errorf("smart defaults: repo-authority > trusted-owner %q repeated (fail-closed)", owner)
-		}
-		seenOwners[owner] = true
-		defs.trustedOwners = append(defs.trustedOwners, owner)
-	case "repo":
-		pattern, err := smartDefaultsStringArg(c, "repo-authority > repo")
-		if err != nil {
-			return err
-		}
-		if !validRepoAuthorityPattern(pattern) {
-			return fmt.Errorf("smart defaults: repo-authority > repo %q must be owner/repo or owner/* (fail-closed)", pattern)
-		}
-		if seenPatterns[pattern] {
-			return fmt.Errorf("smart defaults: repo-authority > repo %q repeated (fail-closed)", pattern)
-		}
-		rule, err := parseRepoAuthorityRule(c, pattern)
-		if err != nil {
-			return err
-		}
-		seenPatterns[pattern] = true
-		defs.repoAuthorityRules = append(defs.repoAuthorityRules, rule)
-	default:
-		return unknownSmartDefaultsNode("repo-authority body", c.Name(), "trusted-owner | repo")
+		out.WorkflowRepos[slug] = mode
 	}
-	return nil
-}
-
-func parseRepoAuthorityRule(c *kdl.Node, pattern string) (repoAuthorityRule, error) {
-	forge, err := smartDefaultsForgeProp(c, "forge", "repo-authority > repo forge")
-	if err != nil {
-		return repoAuthorityRule{}, err
-	}
-	tracker, trackerSet, err := smartDefaultsTrackerProp(c, "tracker", "repo-authority > repo tracker")
-	if err != nil {
-		return repoAuthorityRule{}, err
-	}
-	landing, landingSet, err := smartDefaultsOptionalForgeProp(c, "landing", "repo-authority > repo landing")
-	if err != nil {
-		return repoAuthorityRule{}, err
-	}
-	mirrors, err := smartDefaultsMirrorsProp(c, "mirrors", "repo-authority > repo mirrors")
-	if err != nil {
-		return repoAuthorityRule{}, err
-	}
-	for prop := range c.Properties() {
-		switch prop {
-		case "forge", "tracker", "landing", "mirrors":
-		default:
-			return repoAuthorityRule{}, fmt.Errorf("smart defaults: repo-authority > repo %q unknown property %q (want forge, tracker, landing, or mirrors; fail-closed)", pattern, prop)
-		}
-	}
-	return repoAuthorityRule{Pattern: pattern, Forge: forge, Tracker: tracker, TrackerSet: trackerSet, Landing: landing, LandingSet: landingSet, Mirrors: mirrors}, nil
-}
-
-func applyRepoAuthorityDefault(defs *smartDefaults, n *kdl.Node) error {
-	v, ok, err := smartDefaultsStringProp(n, "default", "repo-authority default")
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("smart defaults: repo-authority missing `default` property (fail-closed)")
-	}
-	if v != "forgejo" && v != "github" {
-		return fmt.Errorf("smart defaults: repo-authority default must be forgejo or github (fail-closed)")
-	}
-	defs.repoAuthorityDefault = parseForge(v)
-	return nil
-}
-
-func requireRepoAuthorityProperties(n *kdl.Node) error {
-	for prop := range n.Properties() {
-		if prop != "default" {
-			return fmt.Errorf("smart defaults: repo-authority unknown property %q (want default; fail-closed)", prop)
-		}
-	}
-	return nil
-}
-
-func smartDefaultsForgeProp(n *kdl.Node, name, label string) (forge, error) {
-	raw, ok, err := smartDefaultsStringProp(n, name, label)
-	if err != nil {
-		return forgeForgejo, err
-	}
-	if !ok {
-		return forgeForgejo, fmt.Errorf("smart defaults: %s missing (fail-closed)", label)
-	}
-	if raw != "forgejo" && raw != "github" {
-		return forgeForgejo, fmt.Errorf("smart defaults: %s must be forgejo or github (fail-closed)", label)
-	}
-	return parseForge(raw), nil
-}
-
-func smartDefaultsOptionalForgeProp(n *kdl.Node, name, label string) (forge, bool, error) {
-	raw, ok, err := smartDefaultsStringProp(n, name, label)
-	if err != nil || !ok {
-		return forgeForgejo, ok, err
-	}
-	if raw != "forgejo" && raw != "github" && raw != "gitlab" {
-		return forgeForgejo, true, fmt.Errorf("smart defaults: %s must be forgejo, github, or gitlab (fail-closed)", label)
-	}
-	return parseForge(raw), true, nil
-}
-
-func smartDefaultsTrackerProp(n *kdl.Node, name, label string) (tracker, bool, error) {
-	raw, ok, err := smartDefaultsStringProp(n, name, label)
-	if err != nil || !ok {
-		return trackerForgejo, ok, err
-	}
-	switch raw {
-	case "forgejo":
-		return trackerForgejo, true, nil
-	case "github":
-		return trackerGitHub, true, nil
-	case "gitlab":
-		return trackerGitLab, true, nil
-	default:
-		return trackerForgejo, true, fmt.Errorf("smart defaults: %s must be forgejo, github, or gitlab (fail-closed)", label)
-	}
-}
-
-func smartDefaultsMirrorsProp(n *kdl.Node, name, label string) ([]forge, error) {
-	raw, ok, err := smartDefaultsStringProp(n, name, label)
-	if err != nil || !ok {
-		return nil, err
-	}
-	seen := map[forge]bool{}
-	var out []forge
-	for _, part := range strings.Split(raw, ",") {
-		f, set, err := smartDefaultsOptionalForgePropValue(strings.TrimSpace(part), label)
-		if err != nil {
-			return nil, err
-		}
-		if !set || seen[f] {
-			continue
-		}
-		seen[f] = true
-		out = append(out, f)
+	if out.DefaultHarness != "" && launchAgentByName(builtInLaunchConfig(), out.DefaultHarness).Name == "" {
+		return operatorPreferences{}, fmt.Errorf("default-harness %q must be one of %s", out.DefaultHarness, strings.Join(frontierAgentNames(), "|"))
 	}
 	return out, nil
 }
 
-func smartDefaultsOptionalForgePropValue(raw, label string) (forge, bool, error) {
-	if raw == "" {
-		return forgeForgejo, false, fmt.Errorf("smart defaults: %s must not contain an empty host (fail-closed)", label)
+func applyOperatorPreferences(defs *smartDefaults, prefs operatorPreferences) {
+	if prefs.AgentImage != "" {
+		defs.agentImage = prefs.AgentImage
 	}
-	if raw != "forgejo" && raw != "github" && raw != "gitlab" {
-		return forgeForgejo, true, fmt.Errorf("smart defaults: %s must list forgejo, github, or gitlab (fail-closed)", label)
+	if prefs.AgentTag != "" {
+		defs.agentTag = prefs.AgentTag
 	}
-	return parseForge(raw), true, nil
+	if prefs.Workflow != "" {
+		defs.agentWorkflowDefault = prefs.Workflow
+	}
+	for slug, mode := range prefs.WorkflowRepos {
+		defs.agentWorkflowRepos[slug] = mode
+	}
+	if prefs.MaxParallel > 0 {
+		defs.directorMaxParallel = prefs.MaxParallel
+	}
+	if prefs.DirectorLimit > 0 {
+		defs.directorLimit = prefs.DirectorLimit
+	}
+	if prefs.PollInterval > 0 {
+		defs.directorPollInterval = prefs.PollInterval
+	}
 }
 
-func applyBundleReposChild(defs *smartDefaults, srcPath string, c *kdl.Node, repoAuthoritySeen, burndownSeen *bool) error {
-	switch c.Name() {
-	case "repo-authority":
-		if *repoAuthoritySeen {
-			return fmt.Errorf("repo authority: duplicate top-level `repo-authority` block (fail-closed)")
-		}
-		*repoAuthoritySeen = true
-		if err := applyRepoAuthority(defs, c); err != nil {
-			return fmt.Errorf("%s: %w", srcPath, err)
-		}
-	case "burndown":
-		if *burndownSeen {
-			return fmt.Errorf("burndown: duplicate `burndown` block (fail-closed)")
-		}
-		*burndownSeen = true
-		if err := applyBurndown(defs, c); err != nil {
-			return fmt.Errorf("%s: %w", srcPath, err)
-		}
-	default:
-		return unknownSmartDefaultsNode("repos body", c.Name(), "repo-authority | burndown")
-	}
-	return nil
+type repoRuntimeConfig struct {
+	Agent struct {
+		Workflow string `yaml:"workflow"`
+		Image    string `yaml:"image"`
+		Channel  string `yaml:"release-channel"`
+	} `yaml:"agent"`
 }
 
-// applyBurndown reads the burndown repo-exclusion block (ward#1105).
-// `default` sets the fleet-wide posture and each `repo` overrides it.
-func applyBurndown(defs *smartDefaults, n *kdl.Node) error {
-	if len(n.Arguments()) != 0 {
-		return fmt.Errorf("smart defaults: burndown takes no arguments (fail-closed)")
-	}
-	def, ok, err := smartDefaultsBoolProp(n, "default", "burndown default")
+func applyRepoRuntimeConfig(defs *smartDefaults) error {
+	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return fmt.Errorf("smart defaults: burndown missing `default` property (fail-closed)")
-	}
-	defs.burndownConfigured = true
-	defs.burndownDefault = def
-	if defs.burndownRules == nil {
-		defs.burndownRules = []burndownRule{}
-	}
-	seenPatterns := map[string]bool{}
-	for _, c := range n.Children().Nodes {
-		if c.Name() != "repo" {
-			return unknownSmartDefaultsNode("burndown body", c.Name(), "repo")
-		}
-		if err := applyBurndownRepo(defs, c, seenPatterns); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func applyBurndownRepo(defs *smartDefaults, c *kdl.Node, seenPatterns map[string]bool) error {
-	args := c.Arguments()
-	if len(args) != 2 {
-		return fmt.Errorf("smart defaults: burndown > repo expects `repo \"owner/name\"|glob #true|#false`, got %d value(s) (fail-closed)", len(args))
-	}
-	if args[0].Kind() != kdl.String {
-		return fmt.Errorf("smart defaults: burndown > repo slug must be a string (fail-closed)")
-	}
-	slug := strings.TrimSpace(args[0].String())
-	if !validRepoAuthorityPattern(slug) {
-		return fmt.Errorf("smart defaults: burndown > repo %q must be owner/name or glob pattern (fail-closed)", slug)
-	}
-	if seenPatterns[slug] {
-		return fmt.Errorf("smart defaults: burndown > repo %q repeated (fail-closed)", slug)
-	}
-	enabled, err := smartDefaultsBoolValue(args[1], "burndown > repo "+slug)
+	configPath, err := discoverConfig(cwd)
 	if err != nil {
+		if errors.Is(err, errNoConfig) {
+			return nil
+		}
 		return err
 	}
-	seenPatterns[slug] = true
-	defs.burndownRules = append(defs.burndownRules, burndownRule{Pattern: slug, Enabled: enabled})
+	body, err := os.ReadFile(configPath) // #nosec G304 -- discovered .ward/ward.yaml is the intended input.
+	if err != nil {
+		return fmt.Errorf("read repository Ward config %s: %w", configPath, err)
+	}
+	var cfg repoRuntimeConfig
+	if err := yaml.Unmarshal(body, &cfg); err != nil {
+		return fmt.Errorf("parse repository Ward config %s: %w", configPath, err)
+	}
+	if raw := strings.TrimSpace(cfg.Agent.Workflow); raw != "" {
+		mode, parseErr := parseWorkflow(raw)
+		if parseErr != nil {
+			return fmt.Errorf("repository agent.workflow: %w", parseErr)
+		}
+		defs.agentWorkflowDefault = mode
+	}
+	if value := strings.TrimSpace(cfg.Agent.Image); value != "" {
+		defs.agentImage = value
+	}
+	if value := strings.TrimSpace(cfg.Agent.Channel); value != "" {
+		defs.agentTag = value
+	}
 	return nil
 }
 
-// burndownEnabled reports whether the director may burn a repo's backlog down.
-// An absent burndown block excludes nothing, so it cannot silently drain scope.
+func cloneSmartDefaults(in smartDefaults) smartDefaults {
+	out := in
+	out.agentWorkflowRepos = make(map[string]workflowMode, len(in.agentWorkflowRepos))
+	for slug, mode := range in.agentWorkflowRepos {
+		out.agentWorkflowRepos[slug] = mode
+	}
+	out.trustedOwners = append([]string{}, in.trustedOwners...)
+	out.repoAuthorityRules = append([]repoAuthorityRule{}, in.repoAuthorityRules...)
+	out.burndownRules = append([]burndownRule{}, in.burndownRules...)
+	return out
+}
+
 func (d smartDefaults) burndownEnabled(slug string) bool {
 	if !d.burndownConfigured {
 		return true
@@ -745,18 +284,11 @@ func (d smartDefaults) burndownEnabled(slug string) bool {
 	return bestEnabled
 }
 
-func validRepoAuthorityPattern(s string) bool {
-	s = strings.TrimSpace(s)
-	owner, repo, ok := strings.Cut(s, "/")
-	return ok && owner != "" && repo != "" && !strings.Contains(owner, "/") && !strings.Contains(repo, "/") && !strings.ContainsAny(s, " \t#")
-}
-
 func repoPatternSpecificity(pattern string) int {
 	score := 0
 	for _, r := range pattern {
 		switch r {
 		case '*', '?', '[':
-			continue
 		default:
 			score++
 		}
@@ -764,174 +296,15 @@ func repoPatternSpecificity(pattern string) int {
 	return score
 }
 
-func applySmartDefaultWorkflow(defs *smartDefaults, n *kdl.Node) error {
-	if len(n.Arguments()) != 0 {
-		return fmt.Errorf("smart defaults: smart-defaults > agent-workflow takes no arguments (fail-closed)")
-	}
-	if err := applySmartDefaultWorkflowDefault(defs, n); err != nil {
-		return err
-	}
-	if err := requireSmartDefaultWorkflowProperties(n); err != nil {
-		return err
-	}
-	if defs.agentWorkflowRepos == nil {
-		defs.agentWorkflowRepos = map[string]workflowMode{}
-	}
-	for _, c := range n.Children().Nodes {
-		repo, wf, err := parseSmartDefaultWorkflowRepo(c)
-		if err != nil {
-			return err
-		}
-		if _, dup := defs.agentWorkflowRepos[repo]; dup {
-			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q repeated (fail-closed)", repo)
-		}
-		defs.agentWorkflowRepos[repo] = wf
-	}
-	return nil
-}
-
-func applyBundleWorkflowDefault(defs *smartDefaults, n *kdl.Node) error {
-	v, ok, err := smartDefaultsStringProp(n, "default", "workflow default")
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("smart defaults: `workflow` missing `default` property (fail-closed)")
-	}
-	wf, err := parseWorkflow(v)
-	if err != nil {
-		return fmt.Errorf("smart defaults: workflow default: %w (fail-closed)", err)
-	}
-	defs.agentWorkflowDefault = wf
-	return nil
-}
-
-func requireBundleWorkflowProperties(n *kdl.Node) error {
-	for prop := range n.Properties() {
-		if prop != "default" {
-			return fmt.Errorf("smart defaults: workflow unknown property %q (want default; fail-closed)", prop)
-		}
-	}
-	return nil
-}
-
-func parseBundleWorkflowRepo(c *kdl.Node) (string, workflowMode, error) {
-	if c.Name() != "repo" {
-		return "", workflowMode(""), unknownSmartDefaultsNode("workflow body", c.Name(), "repo")
-	}
-	repo, err := smartDefaultsStringArg(c, "workflow > repo")
-	if err != nil {
-		return "", workflowMode(""), err
-	}
-	if !validWorkflowRepoSlug(repo) {
-		return "", workflowMode(""), fmt.Errorf("smart defaults: workflow > repo %q must be owner/name (fail-closed)", repo)
-	}
-	wfRaw, ok, err := smartDefaultsStringProp(c, "workflow", "workflow > repo workflow")
-	if err != nil {
-		return "", workflowMode(""), err
-	}
-	if !ok {
-		return "", workflowMode(""), fmt.Errorf("smart defaults: workflow > repo %q missing workflow property (fail-closed)", repo)
-	}
-	for prop := range c.Properties() {
-		if prop != "workflow" {
-			return "", workflowMode(""), fmt.Errorf("smart defaults: workflow > repo unknown property %q (want workflow; fail-closed)", prop)
-		}
-	}
-	wf, err := parseWorkflow(wfRaw)
-	if err != nil {
-		return "", workflowMode(""), fmt.Errorf("smart defaults: workflow > repo %q: %w (fail-closed)", repo, err)
-	}
-	return repo, wf, nil
-}
-
-func validateReservationTTLInvariant(defs smartDefaults) error {
-	cat, err := cachedBuiltInAgentRoleCatalog()
-	if err != nil {
-		return fmt.Errorf("smart defaults: load embedded role catalog: %w", err)
-	}
-	ttl := defs.agentReservationTTL
-	for _, name := range cat.Order {
-		def, ok := cat.Definitions[name]
-		if !ok || !def.ExecutionLimitSet || def.ExecutionTimeLimit <= 0 {
-			continue
-		}
-		if ttl <= def.ExecutionTimeLimit {
-			return fmt.Errorf("smart defaults: agent-reservation-ttl %s must exceed role %q execution-time-limit %s (fail-closed)",
-				conciseDuration(ttl), name, conciseDuration(def.ExecutionTimeLimit))
-		}
-	}
-	return nil
-}
-
-func applySmartDefaultWorkflowDefault(defs *smartDefaults, n *kdl.Node) error {
-	v, ok, err := smartDefaultsStringProp(n, "default", "smart-defaults > agent-workflow default")
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
-	wf, err := parseWorkflow(v)
-	if err != nil {
-		return fmt.Errorf("smart defaults: smart-defaults > agent-workflow default: %w (fail-closed)", err)
-	}
-	defs.agentWorkflowDefault = wf
-	return nil
-}
-
-func requireSmartDefaultWorkflowProperties(n *kdl.Node) error {
-	for prop := range n.Properties() {
-		if prop != "default" {
-			return fmt.Errorf("smart defaults: smart-defaults > agent-workflow unknown property %q (want default; fail-closed)", prop)
-		}
-	}
-	return nil
-}
-
-func parseSmartDefaultWorkflowRepo(c *kdl.Node) (string, workflowMode, error) {
-	if c.Name() != "repo" {
-		return "", workflowMode(""), unknownSmartDefaultsNode("smart-defaults > agent-workflow body", c.Name(), "repo")
-	}
-	repo, err := smartDefaultsStringArg(c, "smart-defaults > agent-workflow > repo")
-	if err != nil {
-		return "", workflowMode(""), err
-	}
-	if !validWorkflowRepoSlug(repo) {
-		return "", workflowMode(""), fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q must be owner/name (fail-closed)", repo)
-	}
-	wf, err := parseSmartDefaultRepoWorkflow(c, repo)
-	return repo, wf, err
-}
-
-func parseSmartDefaultRepoWorkflow(c *kdl.Node, repo string) (workflowMode, error) {
-	wfRaw, ok, err := smartDefaultsStringProp(c, "workflow", "smart-defaults > agent-workflow > repo workflow")
-	if err != nil {
-		return workflowMode(""), err
-	}
-	if !ok {
-		return workflowMode(""), fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q missing workflow property (fail-closed)", repo)
-	}
-	for prop := range c.Properties() {
-		if prop != "workflow" {
-			return workflowMode(""), fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo unknown property %q (want workflow; fail-closed)", prop)
-		}
-	}
-	wf, err := parseWorkflow(wfRaw)
-	if err != nil {
-		return workflowMode(""), fmt.Errorf("smart defaults: smart-defaults > agent-workflow > repo %q: %w (fail-closed)", repo, err)
-	}
-	return wf, nil
+func validWorkflowRepoSlug(s string) bool {
+	owner, repo, ok := strings.Cut(strings.TrimSpace(s), "/")
+	return ok && owner != "" && repo != "" && !strings.Contains(repo, "/")
 }
 
 func (d smartDefaults) trustedOwnerList() []string {
-	out := make([]string, 0, len(d.trustedOwners))
-	out = append(out, d.trustedOwners...)
-	return out
+	return append([]string{}, d.trustedOwners...)
 }
 
-// repoAuthority is the resolved split-stack routing plan. Tracker is independent
-// from checkout and landing so an issue URL stays authoritative.
 type repoAuthority struct {
 	Checkout forge
 	Landing  forge
@@ -989,132 +362,6 @@ func trustedOwnerExtras(owners []string) []string {
 	return extra
 }
 
-func smartDefaultsBoolProp(n *kdl.Node, name, label string) (bool, bool, error) {
-	v, ok := n.Properties()[name]
-	if !ok {
-		return false, false, nil
-	}
-	b, err := smartDefaultsBoolValue(v, label)
-	if err != nil {
-		return false, true, err
-	}
-	return b, true, nil
-}
-
-// smartDefaultsBoolValue insists on a KDL v2 boolean (#true / #false). A bare
-// true / false lexes as an identifier, so it never reaches here as a bool.
-func smartDefaultsBoolValue(v kdl.Value, label string) (bool, error) {
-	if v.Kind() != kdl.Bool {
-		return false, fmt.Errorf("smart defaults: %s must be #true or #false (fail-closed)", label)
-	}
-	return v.Bool(), nil
-}
-
-func smartDefaultsStringProp(n *kdl.Node, name, label string) (string, bool, error) {
-	v, ok := n.Properties()[name]
-	if !ok {
-		return "", false, nil
-	}
-	if v.Kind() != kdl.String {
-		return "", true, fmt.Errorf("smart defaults: %s must be a string (fail-closed)", label)
-	}
-	out := strings.TrimSpace(v.String())
-	if out == "" {
-		return "", true, fmt.Errorf("smart defaults: %s must be non-empty (fail-closed)", label)
-	}
-	return out, true, nil
-}
-
-func validWorkflowRepoSlug(s string) bool {
-	owner, repo, ok := strings.Cut(strings.TrimSpace(s), "/")
-	return ok && owner != "" && repo != "" && !strings.Contains(repo, "/") && !strings.ContainsAny(s, " \t#")
-}
-
-func smartDefaultsStringArg(n *kdl.Node, label string) (string, error) {
-	args := n.Arguments()
-	if len(args) != 1 {
-		return "", fmt.Errorf("smart defaults: %s expects exactly one value, got %d (fail-closed)", label, len(args))
-	}
-	if args[0].Kind() != kdl.String {
-		return "", fmt.Errorf("smart defaults: %s must be a string (fail-closed)", label)
-	}
-	v := strings.TrimSpace(args[0].String())
-	if v == "" {
-		return "", fmt.Errorf("smart defaults: %s must be non-empty (fail-closed)", label)
-	}
-	return v, nil
-}
-
-func smartDefaultsRepoArg(n *kdl.Node, label string) (targetRepo, error) {
-	slug, err := smartDefaultsStringArg(n, label)
-	if err != nil {
-		return targetRepo{}, err
-	}
-	if strings.HasSuffix(slug, ".git") || !ownerNameRe.MatchString(slug) {
-		return targetRepo{}, fmt.Errorf("smart defaults: %s must be owner/name (fail-closed)", label)
-	}
-	m := ownerNameRe.FindStringSubmatch(slug)
-	return targetRepo{Owner: m[1], Name: m[2]}, nil
-}
-
-func smartDefaultsDurationArg(n *kdl.Node, label string) (time.Duration, error) {
-	raw, err := smartDefaultsStringArg(n, label)
-	if err != nil {
-		return 0, err
-	}
-	d, err := time.ParseDuration(raw)
-	if err != nil || d <= 0 {
-		return 0, fmt.Errorf("smart defaults: %s must be a positive duration (fail-closed)", label)
-	}
-	return d, nil
-}
-
-func smartDefaultsDurationOrSecondsArg(n *kdl.Node, label string) (time.Duration, error) {
-	raw, err := smartDefaultsStringArg(n, label)
-	if err != nil {
-		return 0, err
-	}
-	if d, err := time.ParseDuration(raw); err == nil {
-		if d <= 0 {
-			return 0, fmt.Errorf("smart defaults: %s must be positive (fail-closed)", label)
-		}
-		return d, nil
-	}
-	sec, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || sec <= 0 {
-		return 0, fmt.Errorf("smart defaults: %s must be positive seconds or duration (fail-closed)", label)
-	}
-	return time.Duration(sec) * time.Second, nil
-}
-
-func smartDefaultsFloatArg(n *kdl.Node, label string) (float64, error) {
-	raw, err := smartDefaultsStringArg(n, label)
-	if err != nil {
-		return 0, err
-	}
-	v, err := strconv.ParseFloat(raw, 64)
-	if err != nil || v <= 0 {
-		return 0, fmt.Errorf("smart defaults: %s must be a positive number (fail-closed)", label)
-	}
-	return v, nil
-}
-
-func smartDefaultsIntArg(n *kdl.Node, label string) (int, error) {
-	raw, err := smartDefaultsStringArg(n, label)
-	if err != nil {
-		return 0, err
-	}
-	v, err := strconv.Atoi(raw)
-	if err != nil || v <= 0 {
-		return 0, fmt.Errorf("smart defaults: %s must be a positive integer (fail-closed)", label)
-	}
-	return v, nil
-}
-
-func unknownSmartDefaultsNode(where, name, want string) error {
-	return fmt.Errorf("smart defaults: %s: unknown node %q (want %s; fail-closed)", where, name, want)
-}
-
 func conciseDuration(d time.Duration) string {
 	d = d.Round(time.Second)
 	switch {
@@ -1130,69 +377,49 @@ func conciseDuration(d time.Duration) string {
 }
 
 func agentReservationTTL() time.Duration { return currentSmartDefaults().agentReservationTTL }
-
 func reservationRecheckDefaultMax() time.Duration {
 	return currentSmartDefaults().reservationRecheckDefaultMax
 }
-
 func agentReapIdleDefault() time.Duration { return currentSmartDefaults().agentReapIdleDefault }
-
-func agentReapMaxCPUDefault() float64 { return currentSmartDefaults().agentReapMaxCPUDefault }
-
+func agentReapMaxCPUDefault() float64     { return currentSmartDefaults().agentReapMaxCPUDefault }
 func agentImageDefault() string {
-	v := strings.TrimSpace(currentSmartDefaults().agentImage)
-	if v == "" {
-		return containerImageDefault
+	if value := strings.TrimSpace(currentSmartDefaults().agentImage); value != "" {
+		return value
 	}
-	return v
+	return containerImageDefault
 }
-
 func agentTagDefault() string {
-	v := strings.TrimSpace(currentSmartDefaults().agentTag)
-	if v == "" {
-		return containerImageTagDefault
+	if value := strings.TrimSpace(currentSmartDefaults().agentTag); value != "" {
+		return value
 	}
-	return v
+	return containerImageTagDefault
 }
-
 func containerMemoryLimitDefault() string {
-	v := strings.TrimSpace(currentSmartDefaults().containerMemoryLimit)
-	if v == "" {
-		return "2g"
+	if value := strings.TrimSpace(currentSmartDefaults().containerMemoryLimit); value != "" {
+		return value
 	}
-	return v
+	return "2g"
 }
-
 func engineerContainerLimitDefault() int { return currentSmartDefaults().engineerContainerLimit }
-
 func engineerRepoWorkingLimitDefault() int {
-	v := currentSmartDefaults().engineerRepoWorkingLimit
-	if v <= 0 {
-		return 3
+	if value := currentSmartDefaults().engineerRepoWorkingLimit; value > 0 {
+		return value
 	}
-	return v
+	return 3
 }
-
-func engineerOpenPRBranchLimitDefault() int { return currentSmartDefaults().engineerOpenPRBranchLimit }
-
+func engineerOpenPRBranchLimitDefault() int {
+	return currentSmartDefaults().engineerOpenPRBranchLimit
+}
 func directorMaxParallelDefault() int { return currentSmartDefaults().directorMaxParallel }
-
-func directorLimitDefault() int { return currentSmartDefaults().directorLimit }
-
-func directorPollIntervalDefault() time.Duration { return currentSmartDefaults().directorPollInterval }
-
+func directorLimitDefault() int       { return currentSmartDefaults().directorLimit }
+func directorPollIntervalDefault() time.Duration {
+	return currentSmartDefaults().directorPollInterval
+}
 func reviewerTimeoutDefault() time.Duration { return currentSmartDefaults().reviewerTimeout }
-
-func configBundleTTLDefault() time.Duration { return bakedSmartDefaults().configBundleTTL }
-
-func containerAssetsTTL() time.Duration { return currentSmartDefaults().containerAssetsTTL }
-
+func gitRefCacheTTLDefault() time.Duration  { return bakedSmartDefaults().gitRefCacheTTL }
+func containerAssetsTTL() time.Duration     { return currentSmartDefaults().containerAssetsTTL }
 func containerReadOnlyExtraRepoTTL() time.Duration {
 	return currentSmartDefaults().containerReadOnlyExtraRepoTTL
 }
-
 func containerReapTTL() time.Duration { return currentSmartDefaults().containerReapTTL }
-
-func prMergeStyleDefault() string {
-	return strings.TrimSpace(currentSmartDefaults().prMergeStyle)
-}
+func prMergeStyleDefault() string     { return strings.TrimSpace(currentSmartDefaults().prMergeStyle) }

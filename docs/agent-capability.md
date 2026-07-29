@@ -1,14 +1,13 @@
 ---
-doc_goal: Keep the agent-capability anchor stable after the old page was collapsed.
+doc_goal: State that Ward roles do not grant runtime capability.
 ---
-# agent capability
+# Agent authority boundary
 
-This page is the durable anchor for the capability overlay comments.
+Ward role labels describe workflow. They do not grant runtime authority.
 
-- It covers the role-driven host reach and its opt-out knob.
-- It keeps the role-driven reach and the opt-out knob anchored to one place.
+Credentials, mounts, network access, broker operations, merge behavior, and
+container topology are fixed by their owning product paths. Context bundles and
+role labels can only add descriptive context.
 
-## See also
-
-- [agent-harnesses.md](agent-harnesses.md) - the harness comparison.
-- [container-contract.md](container-contract.md) - the container runtime contract.
+See [agent-roles.md](agent-roles.md) and
+[container-contract.md](container-contract.md).

@@ -1,9 +1,10 @@
 ---
-doc_goal: Describe the native PR-workflow tools (merge, per-PR CI status, Actions run status, rerun) and the embedded role x workflow permission table that gates them.
+doc_goal: Describe the native PR-workflow tools and their fixed workflow gate.
 ---
 # ward agent pr
 
-`ward agent pr` is native ward code on the compiled Forgejo client, gated by ward's embedded role permission system ([ward#1067](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1067)). It does not route through runtime KDL specgen, so a stripped or rolled-back `.ward/` bundle cannot disable it.
+`ward agent pr` is native Ward code on the compiled Forgejo client. It does not
+load a role profile or external policy bundle.
 
 ## The verbs
 
@@ -17,31 +18,31 @@ doc_goal: Describe the native PR-workflow tools (merge, per-PR CI status, Action
 - `ward agent pr runs [owner/repo] [--limit N]` - Actions runs with per-run conclusions.
 - `ward agent pr rerun <owner/repo> <run-id>` - rerun one Actions run. The pinned Forgejo API has no rerun operation yet ([agentic-os#434](https://github.com/coilysiren/agentic-os/issues/434)), so this degrades loudly with the manual retrigger fallback.
 
-## The permission table
+## The workflow gate
 
-Merge authority is product data in the embedded role catalog (`merge-authority`), keyed to workflow mode:
+Status, logs, runs, recovery, and rerun are fixed operations. Close, reopen,
+and merge require the PR's `pull-request-and-merge` workflow marker. The acting
+role string is opaque metadata and cannot grant or attenuate an operation.
 
-- `pull-request` - the director may merge.
-- `pull-request-and-merge` - the engineer self-merges, and the director's sweep also lands it.
-- `remote-branch-only` / `merge-remote-main` - merge withheld from every role.
-
-Close and reopen use the same merge-authority grant as merge. Status, runs, and recover are read verbs. Rerun needs an `engineering` or `project-management` role. Unknown roles are denied fail-closed.
-
-A PR names its own mode with the `ward.workflow:` marker the engineer stamps into a `pull-request-and-merge` PR body. `ward agent pr recover` treats `state: closed`, `merged: false` as recovery and points to the next safe action.
+A PR names its mode with the `ward.workflow:` marker stamped into a
+`pull-request-and-merge` PR body. `ward agent pr recover` treats
+`state: closed`, `merged: false` as recovery and points to the next safe action.
 
 See [agent-human-feedback.md](agent-human-feedback.md).
 
 ## Where it runs
 
 - On a read-only director surface, each verb forwards through the supervised
-  dispatch broker, and broker Ward re-checks the permission gate before touching
+  dispatch broker, and broker Ward re-checks the workflow gate before touching
   the forge.
 - Everywhere else (host, engineer container), the verb runs in-process against the Forgejo API.
 
 The status, wait, and log follow-up object is documented in
 [agent-pr-status-object.md](agent-pr-status-object.md).
 
-The `ward agent director merge` composite keeps its stricter thread-driven policy (`WARD-WORKFLOW:`, review, QA verdict); `ward agent pr merge` is the operator-driven single-PR tool under the same status and permission gates.
+The `ward agent director merge` composite keeps its stricter thread-driven
+policy (`WARD-WORKFLOW:`, review, QA verdict). `ward agent pr merge` is the
+operator-driven single-PR tool under the same status and workflow gates.
 
 The recovery and execution-placement details live in [agent-pr-workflow-recovery.md](agent-pr-workflow-recovery.md).
 

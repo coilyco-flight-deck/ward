@@ -469,9 +469,9 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 		"OpencodeModel":  "",
 		"GooseModel":     "",
 		"OllamaURL":      "",
-		"CodexModel":     "gpt-5.4",
-		"CodexEffort":    "medium",
-		"CodexVerbosity": "low",
+		"CodexModel":     "",
+		"CodexEffort":    "",
+		"CodexVerbosity": "",
 		"GitUserName":    "example-bot",
 		"GitUserEmail":   "bot@example.com",
 		"AgentUID":       "1000",
@@ -489,9 +489,9 @@ func TestReadBootstrapEnvDefaults(t *testing.T) {
 	}
 }
 
-// TestReadBootstrapEnvDirectorCodexOverlay covers the director bootstrap path:
-// the baked fleet overlay resolves high effort and the startup echo prints it.
-func TestReadBootstrapEnvDirectorCodexOverlay(t *testing.T) {
+// TestReadBootstrapEnvRoleDoesNotSelectCodexPolicy proves workflow metadata
+// cannot choose a model, effort, or verbosity.
+func TestReadBootstrapEnvRoleDoesNotSelectCodexPolicy(t *testing.T) {
 	for _, k := range []string{
 		"WARD_MODE", "WARD_AGENT", "WARD_CONTEXT_LEVEL", "WARD_GITCACHE", "WARD_CONTEXT_SRC",
 		"WARD_OPENCODE_MODEL", "WARD_OLLAMA_URL", "WARD_GIT_NAME", "WARD_GIT_EMAIL",
@@ -514,8 +514,8 @@ func TestReadBootstrapEnvDirectorCodexOverlay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if e.CodexEffort != "high" {
-		t.Fatalf("director overlay resolved codex effort = %q, want high", e.CodexEffort)
+	if e.CodexModel != "" || e.CodexEffort != "" || e.CodexVerbosity != "" {
+		t.Fatalf("director role selected codex policy: model=%q effort=%q verbosity=%q", e.CodexModel, e.CodexEffort, e.CodexVerbosity)
 	}
 
 	prev := os.Stderr
@@ -534,8 +534,8 @@ func TestReadBootstrapEnvDirectorCodexOverlay(t *testing.T) {
 	echoAgentConfigGo(e, rc, modeCodex)
 	_ = w.Close()
 	got := <-done
-	if !strings.Contains(got, "agent:         codex") || !strings.Contains(got, "effort:        high") {
-		t.Fatalf("director startup config echo should surface high codex effort; got:\n%s", got)
+	if !strings.Contains(got, "agent:         codex") || !strings.Contains(got, "effort:        (harness default)") {
+		t.Fatalf("director startup config echo must defer codex effort to the harness; got:\n%s", got)
 	}
 }
 

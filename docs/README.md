@@ -16,6 +16,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [git-clone.md](git-clone.md) - destination-gated clone.
 - [config-discovery.md](config-discovery.md) - config lookup.
 - [config-source.md](config-source.md) - launch-time config sources.
+- [config-migration.md](config-migration.md) - removed runtime config migration.
 - [ward-yaml.md](ward-yaml.md) - `.ward/ward.yaml`.
 - [workspace.md](workspace.md) - local checkout mode.
 - [homebrew-build.md](homebrew-build.md) - build and release packaging.

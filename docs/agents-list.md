@@ -1,14 +1,14 @@
 ---
-doc_goal: Keep the agents-list anchor stable after the old page was collapsed.
+doc_goal: Describe the fixed harness list shown by Ward.
 ---
-# agents list
+# Agents list
 
-This page is the durable anchor for the effective fleet roster list.
+Ward's agent list comes from typed harness adapters for Claude, Codex, OpenCode,
+and Goose. A list entry describes invocation mechanics. It does not carry role
+profiles or authority.
 
-- It covers the runtime roster that comes from `fleetconfig.Fleet`.
-- It keeps the generated roster comments readable after the docs collapse.
+The operator may choose a default harness in `~/.ward/config.yaml`. Explicit
+launch selection wins.
 
-## See also
-
-- [agent-roster.md](agent-roster.md) - the generated roster page.
-- [agent-harnesses.md](agent-harnesses.md) - the harness comparison.
+See [agent-roster.md](agent-roster.md) and
+[agent-harnesses.md](agent-harnesses.md).

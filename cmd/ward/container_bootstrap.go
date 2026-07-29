@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/flock"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 	"github.com/urfave/cli/v3"
@@ -50,14 +49,14 @@ type bootstrapEnv struct {
 	// bare launch; WARD_CLAUDE_MODEL / WARD_CLAUDE_REASONING_EFFORT fill them.
 	ClaudeModel  string
 	ClaudeEffort string
-	// AgentDisplayName/Pronouns are the resolved role x harness signing identity
-	// (ward#1465), separate from fleet Git author attribution.
+	// AgentDisplayName/Pronouns are explicit harness-owner inputs (ward#1465),
+	// separate from Git author attribution.
 	AgentDisplayName string
 	AgentPronouns    string
 	GitUserName      string
 	GitUserEmail     string
-	// Role is the run's config role (WARD_ROLE, ward#620): director/engineer/qa,
-	// keying the per-role model/effort overlay resolved below. Empty means no overlay.
+	// Role is opaque workflow metadata (WARD_ROLE, ward#620). It selects no
+	// model, identity, credentials, mounts, network, or authority.
 	Role       string
 	AgentUID   string
 	AgentGID   string
@@ -116,19 +115,7 @@ func envOr(key, def string) string {
 	return def
 }
 
-// fleetAgentByName returns the named agent from the parsed fleet, or a zero Agent
-// when absent (its empty fields then flow through as the envOr default).
-func fleetAgentByName(f fleetconfig.Fleet, name string) fleetconfig.Agent {
-	for _, a := range f.Agents {
-		if a.Name == name {
-			return a
-		}
-	}
-	return fleetconfig.Agent{}
-}
-
-// firstNonEmpty returns the first non-empty string, or "" when both are empty. It
-// slots the per-role overlay ahead of the flat per-agent fleet default (ward#620).
+// firstNonEmpty returns the first non-empty string.
 func firstNonEmpty(a, b string) string {
 	if a != "" {
 		return a
@@ -136,68 +123,38 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
-// roleAgentOverride returns the role's sparse per-agent overlay from the fleet config
-// (cli-guard#192, ward#620), or a zero override when the role/agent carries none.
-func roleAgentOverride(f fleetconfig.Fleet, role, agent string) fleetconfig.RoleAgentOverride {
-	if role == "" {
-		return fleetconfig.RoleAgentOverride{}
-	}
-	for _, r := range f.Roles {
-		if r.Name == role {
-			return r.AgentConfig[agent]
-		}
-	}
-	return fleetconfig.RoleAgentOverride{}
-}
-
 // readBootstrapEnv reads + defaults the entrypoint env, erroring on a missing
 // required var (the bash `: "${X:?...}"` checks). Pure given the environment.
 func readBootstrapEnv() (bootstrapEnv, error) {
-	// Native launch values come from the embedded fleet plus explicit WARD_*
-	// overrides. Runtime edge bundles are not projected into bootstrap.
-	fleet, ferr := loadFleetConfig()
+	// Harness mechanics are typed product defaults. Model, reasoning, identity,
+	// and endpoint values come only from explicit environment or --config inputs.
+	launch, ferr := loadLaunchConfig()
 	if ferr != nil {
-		return bootstrapEnv{}, fmt.Errorf("load embedded fleet config for bootstrap defaults: %w", ferr)
+		return bootstrapEnv{}, fmt.Errorf("load typed harness config for bootstrap defaults: %w", ferr)
 	}
-	opencode := fleetAgentByName(fleet, string(modeOpencode))
-	codex := fleetAgentByName(fleet, string(modeCodex))
-	claude := fleetAgentByName(fleet, string(modeClaude))
-	goose := fleetAgentByName(fleet, string(modeGoose))
-	// Per-role model/effort overlay (ward#620): the resolved role's per-agent overlay
-	// slots into the precedence between WARD_* env and the flat per-agent fleet default.
 	role := os.Getenv("WARD_ROLE")
-	claudeOv := roleAgentOverride(fleet, role, string(modeClaude))
-	codexOv := roleAgentOverride(fleet, role, string(modeCodex))
-	opencodeOv := roleAgentOverride(fleet, role, string(modeOpencode))
-	gooseOv := roleAgentOverride(fleet, role, string(modeGoose))
-	mode := envOr("WARD_MODE", fleet.Defaults.Agent)
-	identity := resolvedAgentIdentity(fleet, role, containerMode(mode))
-	attribution := fleet.Defaults.Attribution
+	mode := envOr("WARD_MODE", launch.DefaultAgent)
+	identity := containerMode(mode).defaultAgentIdentity()
+	attribution := launch.Attribution
 	e := bootstrapEnv{
-		TargetOwner:  os.Getenv("WARD_TARGET_OWNER"),
-		TargetName:   os.Getenv("WARD_TARGET_NAME"),
-		ForgejoBase:  os.Getenv("WARD_FORGEJO_BASE"),
-		Mode:         mode,
-		Container:    os.Getenv("WARD_CONTAINER_NAME"),
-		Issue:        0,
-		Agent:        envOr("WARD_AGENT", string(modeClaude)),
-		ContextLevel: envOr("WARD_CONTEXT_LEVEL", "2"),
-		GitCache:     envOr("WARD_GITCACHE", "/gitcache"),
-		ContextSrc:   envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
-		// Precedence WARD_* env > embedded role overlay > embedded agent default.
-		// Host launches carry selected-bundle values in WARD_* (ward#1497).
-		OpencodeModel: envOr("WARD_OPENCODE_MODEL", firstNonEmpty(opencodeOv.Model, opencode.Model)),
-		GooseModel:    envOr("WARD_GOOSE_MODEL", firstNonEmpty(gooseOv.Model, goose.Model)),
-		OllamaURL:     envOr("WARD_OLLAMA_URL", firstNonEmpty(opencodeOv.Endpoint, opencode.Endpoint)),
-		// Cheapest codex settings (ward#379): fleet manifest's codex node, role overlay
-		// ahead of it (ward#620).
-		CodexModel:     envOr("WARD_CODEX_MODEL", firstNonEmpty(codexOv.Model, codex.Model)),
-		CodexEffort:    envOr("WARD_CODEX_REASONING_EFFORT", firstNonEmpty(codexOv.ReasoningEffort, codex.ReasoningEffort)),
-		CodexVerbosity: envOr("WARD_CODEX_VERBOSITY", firstNonEmpty(codexOv.Verbosity, codex.Verbosity)),
-		// claude model + effort default empty from the fleet claude node (ward#616); the
-		// role overlay (ward#620) fills them per role, and --config / WARD_CLAUDE_* still win.
-		ClaudeModel:  envOr("WARD_CLAUDE_MODEL", firstNonEmpty(claudeOv.Model, claude.Model)),
-		ClaudeEffort: envOr("WARD_CLAUDE_REASONING_EFFORT", firstNonEmpty(claudeOv.ReasoningEffort, claude.ReasoningEffort)),
+		TargetOwner:    os.Getenv("WARD_TARGET_OWNER"),
+		TargetName:     os.Getenv("WARD_TARGET_NAME"),
+		ForgejoBase:    os.Getenv("WARD_FORGEJO_BASE"),
+		Mode:           mode,
+		Container:      os.Getenv("WARD_CONTAINER_NAME"),
+		Issue:          0,
+		Agent:          envOr("WARD_AGENT", string(modeClaude)),
+		ContextLevel:   envOr("WARD_CONTEXT_LEVEL", "2"),
+		GitCache:       envOr("WARD_GITCACHE", "/gitcache"),
+		ContextSrc:     envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
+		OpencodeModel:  os.Getenv("WARD_OPENCODE_MODEL"),
+		GooseModel:     os.Getenv("WARD_GOOSE_MODEL"),
+		OllamaURL:      os.Getenv("WARD_OLLAMA_URL"),
+		CodexModel:     os.Getenv("WARD_CODEX_MODEL"),
+		CodexEffort:    os.Getenv("WARD_CODEX_REASONING_EFFORT"),
+		CodexVerbosity: os.Getenv("WARD_CODEX_VERBOSITY"),
+		ClaudeModel:    os.Getenv("WARD_CLAUDE_MODEL"),
+		ClaudeEffort:   os.Getenv("WARD_CLAUDE_REASONING_EFFORT"),
 		// Bot attribution: email is the load-bearing Forgejo match (ward#245); both
 		// default from the fleet manifest's defaults.attribution.
 		AgentDisplayName:  envOr(envAgentDisplayName, identity.Name),
@@ -1341,7 +1298,7 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
   checks-green-gated), ` + "`ward agent pr runs <owner/repo>`" + ` lists Actions runs with conclusions,
   and ` + "`ward agent pr rerun <owner/repo> <run-id>`" + ` reruns one.
   These forward through the supervised dispatch broker on ward's compiled Forgejo client, gated
-  by the embedded role x workflow permission table, so they keep working even when the
+  by fixed workflow rules, so they keep working even when the
   ` + "`aosguard ops forgejo`" + ` specgen surface is stripped or rolled back (infrastructure#538).
 - Fresh director surfaces mount the host Docker socket at ` + "`/var/run/docker.sock`" + `, so
   ` + "`ward agent reap`" + ` can list and stop stale engineer containers and a dispatched

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -127,19 +126,7 @@ func TestParseAgentIssueRef(t *testing.T) {
 }
 
 func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
-	dir := t.TempDir()
-	reposBody := `repos {
-    repo-authority default=forgejo {
-        trusted-owner "coilysiren"
-        trusted-owner "coilyco-flight-deck"
-        repo "coilysiren/*" forge=github
-        repo "coilyco-flight-deck/*" forge=forgejo
-    }
-}`
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
-		t.Fatalf("write repos bundle: %v", err)
-	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	t.Setenv(wardConfigRefEnv, "ignored")
 
 	gh, err := parseAgentIssueRef("coilysiren/agentic-os#461")
 	if err != nil {
@@ -206,7 +193,7 @@ func TestAgentIssueRefShortcutURL(t *testing.T) {
 // TestUntrustedOwnerErr covers ward#484: the refusal names the owner, the
 // accepted set, and points at docs/agent-trust-gate.md so it is a signpost.
 func TestUntrustedOwnerErr(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
+	t.Setenv(wardConfigRefEnv, "ignored")
 	r := &Runner{}
 	msg := r.untrustedOwnerErr("warded", "evilcorp").Error()
 	for _, want := range []string{
@@ -564,7 +551,7 @@ func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
 }
 
 func TestOwnerAllowed(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "file://"+writeBundleFixture(t))
+	t.Setenv(wardConfigRefEnv, "ignored")
 	r := &Runner{}
 	for _, ok := range []string{"coilysiren", "coilyco-gaming", "coilyco-flight-deck"} {
 		if !r.ownerAllowed(ok) {
@@ -579,19 +566,7 @@ func TestOwnerAllowed(t *testing.T) {
 }
 
 func TestResolveAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
-	dir := t.TempDir()
-	reposBody := `repos {
-    repo-authority default=forgejo {
-        trusted-owner "coilysiren"
-        trusted-owner "coilyco-flight-deck"
-        repo "coilysiren/*" forge=github
-        repo "coilyco-flight-deck/*" forge=forgejo
-    }
-}`
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
-		t.Fatalf("write repos bundle: %v", err)
-	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	t.Setenv(wardConfigRefEnv, "ignored")
 
 	r := &Runner{}
 	ghRef, err := r.resolveAgentIssueRef(t.Context(), "coilysiren/agentic-os#461")
@@ -1106,7 +1081,7 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 }
 
 func TestAgentHarnessIgnoresOperatorBundleDefault(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "file://"+writeSelectedBundleFixture(t))
+	t.Setenv(wardConfigRefEnv, "ignored")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1"})
 	got, err := agentHarness(cmd)
 	if err != nil {
@@ -1211,20 +1186,7 @@ func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
 
 // TestAgentImageFlagsIgnoreOperatorBundleDefaults keeps launch images baked.
 func TestAgentImageFlagsIgnoreOperatorBundleDefaults(t *testing.T) {
-	dir := t.TempDir()
-	defaultsBody := `smart-defaults {
-    agent-image "ghcr.io/example/ward-agent"
-    agent-tag "2026.07"
-}
-repo-authority default=forgejo {
-    trusted-owner coilysiren
-    repo "coilysiren/*" forge=github
-}
-`
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
-		t.Fatalf("write defaults bundle: %v", err)
-	}
-	t.Setenv(wardConfigRefEnv, "file://"+dir)
+	t.Setenv(wardConfigRefEnv, "ignored")
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude"})
 	if got := cmd.String("image"); got != "forgejo.coilysiren.me/coilyco-flight-deck/ward" {
 		t.Fatalf("image default = %q, want baked Ward image", got)

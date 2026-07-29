@@ -6,23 +6,21 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
-// TestPRWorkflowMergeAuthorityMatrix pins the ward#1067 matrix:
-// director merges pull-request and pull-request-and-merge; nobody merges branch modes.
-func TestPRWorkflowMergeAuthorityMatrix(t *testing.T) {
+// TestPRWorkflowMutationBoundaryIsRoleIndependent proves the fixed broker gate
+// reads workflow mechanics, never behavioral role metadata.
+func TestPRWorkflowMutationBoundaryIsRoleIndependent(t *testing.T) {
 	cases := []struct {
 		role    string
 		wf      workflowMode
 		allowed bool
 	}{
-		{roleDirector, workflowPullRequest, true},
+		{roleDirector, workflowPullRequest, false},
 		{roleDirector, workflowPullRequestAndMerge, true},
 		{roleDirector, workflowRemoteBranchOnly, false},
 		{roleDirector, workflowDirectToMain, false},
@@ -31,7 +29,8 @@ func TestPRWorkflowMergeAuthorityMatrix(t *testing.T) {
 		{roleEngineer, workflowRemoteBranchOnly, false},
 		{roleEngineer, workflowDirectToMain, false},
 		{roleQA, workflowPullRequest, false},
-		{roleQA, workflowPullRequestAndMerge, false},
+		{roleQA, workflowPullRequestAndMerge, true},
+		{"external-role", workflowPullRequestAndMerge, true},
 	}
 	for _, tc := range cases {
 		err := prWorkflowPermitted(tc.role, tc.wf, prOpMerge)
@@ -44,46 +43,24 @@ func TestPRWorkflowMergeAuthorityMatrix(t *testing.T) {
 	}
 }
 
-// TestPRWorkflowReadAndRerunGates pins the non-merge gates, including the
-// fail-closed denial of an unknown role.
+// TestPRWorkflowReadAndRerunGates pins the role-independent fixed broker ops.
 func TestPRWorkflowReadAndRerunGates(t *testing.T) {
-	for _, role := range []string{roleEngineer, roleDirector, roleQA} {
-		for _, op := range []prWorkflowOp{prOpStatus, prOpRuns, prOpRecover} {
+	for _, role := range []string{roleEngineer, roleDirector, roleQA, "external-role"} {
+		for _, op := range []prWorkflowOp{prOpStatus, prOpRuns, prOpRecover, prOpRerun} {
 			if err := prWorkflowPermitted(role, "", op); err != nil {
 				t.Errorf("prWorkflowPermitted(%s, %s) = %v, want allowed", role, op, err)
 			}
 		}
 	}
-	for _, tc := range []struct {
-		role    string
-		allowed bool
-	}{
-		{roleEngineer, true},
-		{roleDirector, true},
-		{roleQA, false},
-	} {
-		err := prWorkflowPermitted(tc.role, "", prOpRerun)
-		if tc.allowed && err != nil {
-			t.Errorf("prWorkflowPermitted(%s, rerun) = %v, want allowed", tc.role, err)
-		}
-		if !tc.allowed && err == nil {
-			t.Errorf("prWorkflowPermitted(%s, rerun) = nil, want denied", tc.role)
-		}
-	}
-	for _, op := range []prWorkflowOp{prOpMerge, prOpStatus, prOpRuns, prOpRerun} {
-		if err := prWorkflowPermitted("session", workflowPullRequestAndMerge, op); err == nil {
-			t.Errorf("prWorkflowPermitted(session, %s) = nil, want fail-closed denial", op)
-		}
-	}
 	for _, op := range []prWorkflowOp{prOpClose, prOpReopen} {
-		if err := prWorkflowPermitted(roleDirector, workflowPullRequest, op); err != nil {
-			t.Errorf("prWorkflowPermitted(%s, pull-request, %s) = %v, want allowed", roleDirector, op, err)
+		if err := prWorkflowPermitted(roleDirector, workflowPullRequest, op); err == nil {
+			t.Errorf("prWorkflowPermitted(%s, pull-request, %s) = nil, want denied", roleDirector, op)
 		}
 		if err := prWorkflowPermitted(roleEngineer, workflowPullRequestAndMerge, op); err != nil {
 			t.Errorf("prWorkflowPermitted(%s, pull-request-and-merge, %s) = %v, want allowed", roleEngineer, op, err)
 		}
-		if err := prWorkflowPermitted(roleQA, workflowPullRequest, op); err == nil {
-			t.Errorf("prWorkflowPermitted(%s, pull-request, %s) = nil, want denied", roleQA, op)
+		if err := prWorkflowPermitted("external-role", workflowPullRequestAndMerge, op); err != nil {
+			t.Errorf("prWorkflowPermitted(external-role, pull-request-and-merge, %s) = %v, want allowed", op, err)
 		}
 	}
 }
@@ -104,6 +81,7 @@ func TestPRWorkflowMarkerMode(t *testing.T) {
 
 func TestPRWorkflowCloseBlocksOnHumanFeedback(t *testing.T) {
 	f := &prWorkflowFakeForge{
+		prBody:  "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		prState: "open",
 		comments: []issueComment{
 			{
@@ -524,7 +502,7 @@ func TestPRWorkflowMergeExecIgnoresEmptySummaryWhenTreesDiffer(t *testing.T) {
 // the director can close an open PR with a reason, and the head SHA stays pinned.
 func TestPRWorkflowCloseExecDirectorClosesWithReason(t *testing.T) {
 	fake := &prWorkflowFakeForge{
-		prBody:            "closes #6\n",
+		prBody:            "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		combinedState:     "success",
 		contextState:      "success",
 		defaultMergeStyle: "merge",
@@ -556,7 +534,7 @@ func TestPRWorkflowCloseExecDirectorClosesWithReason(t *testing.T) {
 // ambiguously closing a PR without operator intent.
 func TestPRWorkflowCloseExecRequiresReasonOrSupersedes(t *testing.T) {
 	fake := &prWorkflowFakeForge{
-		prBody:            "closes #6\n",
+		prBody:            "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		combinedState:     "success",
 		contextState:      "success",
 		defaultMergeStyle: "merge",
@@ -577,7 +555,7 @@ func TestPRWorkflowCloseExecRequiresReasonOrSupersedes(t *testing.T) {
 // normalization path used by close requests and broker validation.
 func TestPRWorkflowCloseExecAcceptsBareSupersedesRef(t *testing.T) {
 	fake := &prWorkflowFakeForge{
-		prBody:            "closes #6\n",
+		prBody:            "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		combinedState:     "success",
 		contextState:      "success",
 		defaultMergeStyle: "merge",
@@ -598,7 +576,7 @@ func TestPRWorkflowCloseExecAcceptsBareSupersedesRef(t *testing.T) {
 // head-pin postcondition.
 func TestPRWorkflowReopenExecRestoresAClosedPR(t *testing.T) {
 	fake := &prWorkflowFakeForge{
-		prBody:            "closes #6\n",
+		prBody:            "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		prState:           "closed",
 		combinedState:     "success",
 		contextState:      "success",
@@ -655,7 +633,7 @@ func TestPRWorkflowMergeExecBlocksOnHumanComment(t *testing.T) {
 
 func TestPRWorkflowReopenExecBlocksOnManualCloseSnapshot(t *testing.T) {
 	fake := &prWorkflowFakeForge{
-		prBody:            "closes #6\n",
+		prBody:            "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		prState:           "closed",
 		updatedAt:         time.Date(2026, 7, 10, 9, 30, 0, 0, time.UTC),
 		combinedState:     "success",
@@ -789,23 +767,7 @@ func TestPRWorkflowMergeExecUsesRepoDefaultStyle(t *testing.T) {
 
 // TestPRWorkflowMergeExecIgnoresOperatorBundleStyle keeps native merge policy baked.
 func TestPRWorkflowMergeExecIgnoresOperatorBundleStyle(t *testing.T) {
-	dir := t.TempDir()
-	defaultsBody := `defaults {
-    pr-merge-style "squash"
-}`
-	reposBody := `repos {
-    repo-authority default=forgejo {
-        trusted-owner "coilyco-flight-deck"
-        repo "coilyco-flight-deck/*" forge=forgejo
-    }
-}`
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureDefaultsPath), []byte(defaultsBody), 0o644); err != nil {
-		t.Fatalf("write defaults bundle: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, bundleFixtureReposPath), []byte(reposBody), 0o644); err != nil {
-		t.Fatalf("write repos bundle: %v", err)
-	}
-	t.Setenv(wardConfigRefEnv, "file://"+filepath.ToSlash(dir))
+	t.Setenv(wardConfigRefEnv, "ignored")
 
 	fake := &prWorkflowFakeForge{
 		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
@@ -1033,17 +995,17 @@ func TestPRWorkflowMergeExecDeniesEngineerWithoutMarker(t *testing.T) {
 	if err == nil {
 		t.Fatal("want engineer denial in the pull-request lane, got nil")
 	}
-	if !strings.Contains(err.Error(), "may not merge under workflow pull-request") {
-		t.Fatalf("denial = %v, want role x mode wording", err)
+	if !strings.Contains(err.Error(), "workflow pull-request does not permit") {
+		t.Fatalf("denial = %v, want workflow-only wording", err)
 	}
 	if fake.mergeCalls != 0 {
 		t.Fatalf("merge calls = %d, want 0 (gate must precede mutation)", fake.mergeCalls)
 	}
 }
 
-// TestPRWorkflowMergeExecDirectorMergesUnmarkedPR pins the director half of the
-// matrix: an unmarked (pull-request lane) PR is director-mergeable.
-func TestPRWorkflowMergeExecDirectorMergesUnmarkedPR(t *testing.T) {
+// TestPRWorkflowMergeExecDirectorCannotElevateUnmarkedPR proves the director
+// label cannot elevate an unmarked pull-request lane.
+func TestPRWorkflowMergeExecDirectorCannotElevateUnmarkedPR(t *testing.T) {
 	fake := &prWorkflowFakeForge{
 		prBody:                    "closes #6\n",
 		combinedState:             "success",
@@ -1058,11 +1020,11 @@ func TestPRWorkflowMergeExecDirectorMergesUnmarkedPR(t *testing.T) {
 	srv := fake.server(t)
 	defer srv.Close()
 	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	if _, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, ""); err != nil {
-		t.Fatalf("director merge in pull-request lane: %v", err)
+	if _, err := prWorkflowMergeExec(context.Background(), cl, roleDirector, "coilyco-flight-deck", "ward", 7, ""); err == nil || !strings.Contains(err.Error(), "workflow pull-request does not permit") {
+		t.Fatalf("director merge in pull-request lane = %v, want workflow refusal", err)
 	}
-	if fake.mergeCalls != 1 {
-		t.Fatalf("merge calls = %d, want 1", fake.mergeCalls)
+	if fake.mergeCalls != 0 {
+		t.Fatalf("merge calls = %d, want 0", fake.mergeCalls)
 	}
 }
 
@@ -1291,6 +1253,7 @@ func TestValidateDispatchBrokerPRWorkflowShapes(t *testing.T) {
 		{Action: dispatchActionPRRecover, Role: roleDirector, Target: "coilyco-flight-deck/ward#7"},
 		{Action: dispatchActionCIRuns, Role: roleDirector, Target: "coilyco-flight-deck/ward", Limit: 5},
 		{Action: dispatchActionCIRerun, Role: roleDirector, Target: "coilyco-flight-deck/ward", RunID: 42},
+		{Action: dispatchActionPRMerge, Role: "external-role", Target: "coilyco-flight-deck/ward#7"},
 	}
 	for _, req := range valid {
 		if err := validateDispatchBrokerPRWorkflow(req); err != nil {
@@ -1302,7 +1265,6 @@ func TestValidateDispatchBrokerPRWorkflowShapes(t *testing.T) {
 		req  dispatchBrokerRequest
 	}{
 		{"missing role", dispatchBrokerRequest{Action: dispatchActionPRMerge, Target: "coilyco-flight-deck/ward#7"}},
-		{"unknown role", dispatchBrokerRequest{Action: dispatchActionPRMerge, Role: "session", Target: "coilyco-flight-deck/ward#7"}},
 		{"launch argv", dispatchBrokerRequest{Action: dispatchActionPRMerge, Role: roleDirector, Target: "coilyco-flight-deck/ward#7", Argv: []string{"x"}}},
 		{"no target", dispatchBrokerRequest{Action: dispatchActionPRStatus, Role: roleDirector}},
 		{"non-ref target", dispatchBrokerRequest{Action: dispatchActionPRMerge, Role: roleDirector, Target: "coilyco-flight-deck/ward"}},
@@ -1320,19 +1282,13 @@ func TestValidateDispatchBrokerPRWorkflowShapes(t *testing.T) {
 	}
 }
 
-// TestExecDispatchBrokerPRWorkflowGatesRerunByRole pins the host-side re-check:
-// the broker denies a QA rerun before any forge call.
-func TestExecDispatchBrokerPRWorkflowGatesRerunByRole(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		t.Fatal("denied rerun must not reach the forge")
-	}))
-	defer srv.Close()
-	cl := &forgejoClient{baseURL: srv.URL, token: "secret"}
-	_, err := execDispatchBrokerPRWorkflowWith(context.Background(), cl, dispatchBrokerRequest{
-		Action: dispatchActionCIRerun, Role: roleQA, Target: "coilyco-flight-deck/ward", RunID: 42,
-	})
-	if err == nil || !strings.Contains(err.Error(), "rerun is withheld") {
-		t.Fatalf("qa rerun = %v, want role denial", err)
+// TestExecDispatchBrokerPRWorkflowRerunIsRoleIndependent pins the host-side
+// gate without coupling the test to Forgejo's rerun API.
+func TestExecDispatchBrokerPRWorkflowRerunIsRoleIndependent(t *testing.T) {
+	for _, role := range []string{roleDirector, roleEngineer, roleQA, "external-role"} {
+		if err := prWorkflowPermitted(role, "", prOpRerun); err != nil {
+			t.Fatalf("%s rerun = %v, want fixed operation grant", role, err)
+		}
 	}
 }
 
@@ -1371,7 +1327,7 @@ func TestExecDispatchBrokerPRWorkflowMergeRoundTrip(t *testing.T) {
 // fake forge and verifies the close reason survives the request boundary.
 func TestExecDispatchBrokerPRWorkflowCloseRoundTrip(t *testing.T) {
 	fake := &prWorkflowFakeForge{
-		prBody:            "closes #6\n",
+		prBody:            "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		combinedState:     "success",
 		contextState:      "success",
 		defaultMergeStyle: "merge",
@@ -1411,34 +1367,6 @@ func TestExecDispatchBrokerPRWorkflowRecoverRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(out, "next safe action: reopen the PR, then re-run status and merge") {
 		t.Fatalf("brokered recover output = %q, want reopen guidance", out)
-	}
-}
-
-// TestAgentRoleCatalogParsesMergeAuthority pins the embedded catalog grants and
-// the fail-closed authoring rules for the merge-authority node.
-func TestAgentRoleCatalogParsesMergeAuthority(t *testing.T) {
-	cat, err := cachedBuiltInAgentRoleCatalog()
-	if err != nil {
-		t.Fatalf("load embedded catalog: %v", err)
-	}
-	if got := cat.Definitions[roleEngineer].MergeAuthority; len(got) != 1 || got[0] != workflowPullRequestAndMerge {
-		t.Errorf("engineer merge authority = %v, want [%s]", got, workflowPullRequestAndMerge)
-	}
-	if got := cat.Definitions[roleDirector].MergeAuthority; len(got) != 2 {
-		t.Errorf("director merge authority = %v, want pull-request + pull-request-and-merge", got)
-	}
-	bad := `agent-roles {
-    role engineer {
-        tagline "t"
-        capabilities read
-        modes "m"
-        default-harness claude
-        posture code-landing
-        merge-authority "merge-remote-main"
-    }
-}`
-	if _, err := parseAgentRoleCatalog([]byte(bad)); err == nil || !strings.Contains(err.Error(), "merge-authority") {
-		t.Errorf("parse bad merge-authority = %v, want fail-closed error", err)
 	}
 }
 

@@ -29,15 +29,17 @@ func TestPrepareScratchSpaceLowBudget(t *testing.T) {
 		scratch,
 		"focused Go verification",
 		"recommended cache/temp location",
-		"backing mount:",
 		"df -h",
-		"/gitcache/config-bundle",
+		"/gitcache/git-ref-cache",
 		"/gitcache/surface-scratch",
 		diskBytes(surfaceScratchFloorBytes),
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("low-budget error %q missing %q", err, want)
 		}
+	}
+	if _, ok := surfaceScratchMount(scratch); ok && !strings.Contains(err.Error(), "backing mount:") {
+		t.Fatalf("low-budget error %q omitted the available backing mount", err)
 	}
 }
 
@@ -47,10 +49,15 @@ func TestSurfaceScratchMountUsesDeepestMountInfoEntry(t *testing.T) {
 	if err := os.MkdirAll(scratch, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatalf("resolve temp root: %v", err)
+	}
+	resolvedScratch := filepath.Join(resolvedRoot, "scratch")
 	mountInfo := filepath.Join(root, "mountinfo")
 	content := "1 0 0:1 / / rw,relatime - overlay overlay rw\n" +
-		"2 1 8:1 /docker/volumes/ward-gitcache/_data " + root + " rw,relatime - ext4 /dev/vda1 rw\n" +
-		"3 1 0:2 / " + filepath.Join(root, "scratch") + " rw,relatime - tmpfs tmpfs rw\n"
+		"2 1 8:1 /docker/volumes/ward-gitcache/_data " + resolvedRoot + " rw,relatime - ext4 /dev/vda1 rw\n" +
+		"3 1 0:2 / " + resolvedScratch + " rw,relatime - tmpfs tmpfs rw\n"
 	if err := os.WriteFile(mountInfo, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -62,8 +69,8 @@ func TestSurfaceScratchMountUsesDeepestMountInfoEntry(t *testing.T) {
 	if !ok {
 		t.Fatal("surfaceScratchMount did not resolve a mount")
 	}
-	if got.Source != "tmpfs" || got.Target != scratch || got.FSType != "tmpfs" {
-		t.Fatalf("surfaceScratchMount = %+v, want tmpfs on %s", got, scratch)
+	if got.Source != "tmpfs" || got.Target != resolvedScratch || got.FSType != "tmpfs" {
+		t.Fatalf("surfaceScratchMount = %+v, want tmpfs on %s", got, resolvedScratch)
 	}
 }
 

@@ -13,6 +13,12 @@ commands:
   test:
     run: make test
     description: Run the unit test suite.
+  test-cmd:
+    run: go test ./cmd/ward
+    description: Run Ward's main command package tests.
+  test-runtime-config:
+    run: go test ./cmd/ward -run RuntimeConfig
+    description: Run the focused typed runtime configuration and role-independence tests.
   test-policy-boundary:
     run: go test ./cmd/ward -run PolicyBoundary
     description: Run the focused native-policy and AOSguard-boundary contract tests.
@@ -37,6 +43,9 @@ commands:
   agent-flags:
     run: make agent-flags
     description: Regenerate the code-derived ward agent flag tree.
+  agent-roster:
+    run: make agent-roster
+    description: Regenerate the code-derived fixed Ward workflow roster.
   tidy:
     run: make tidy
     description: go mod tidy.

@@ -17,7 +17,11 @@ The operational backstop lives in the smaller operator docs.
 
 ## The roles
 
-The canonical flat roster lives in [agent-roster.md](agent-roster.md). It is generated from the ward-owned embedded role defaults plus the effective fleet overlays, so it stays current. This doc and the per-role docs ([agent-engineer.md](agent-engineer.md), [agent-director.md](agent-director.md), [agent-qa.md](agent-qa.md)) carry the prose detail behind each row. Run `warded roster` for the live list.
+The canonical flat roster lives in [agent-roster.md](agent-roster.md). It is
+generated from Ward's typed fixed workflow definitions, so it stays current.
+This doc and the per-role docs ([agent-engineer.md](agent-engineer.md),
+[agent-director.md](agent-director.md), [agent-qa.md](agent-qa.md)) carry the
+prose detail behind each row. Run `warded roster` for the live list.
 
 - **`engineer`** - detached only. A ref runs the agent in print mode to completion and exits into the reaper. From a terminal it first runs a pre-flight check ([agent-preflight.md](agent-preflight.md)): GO launches, NO-GO comments and launches nothing. Freeform text files an issue first, then carries it.
 - **`director`** - an attached read-only control surface. It refreshes backlog status, opens the surface by default, and dispatches queued issues under `--max-parallel` only when `--burndown` or `--drain` is set.

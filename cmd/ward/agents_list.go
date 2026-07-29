@@ -7,12 +7,11 @@ import (
 	"io"
 	"os"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 	"github.com/urfave/cli/v3"
 )
 
-// agents_list.go is `ward agents list [--json]`: the stable read surface dumping
-// the effective fleet roster from fleetconfig.Fleet. See docs/agents-list.md.
+// agents_list.go is `ward agents list [--json]`: the stable read surface for
+// Ward's fixed harness adapters. See docs/agents-list.md.
 
 // agentsRosterJSON is the stable JSON shape `ward agents list --json` emits.
 // Keys are always present so a consumer sees one deterministic schema.
@@ -22,20 +21,16 @@ type agentsRosterJSON struct {
 	Agents        []agentsAgentJSON  `json:"agents"`
 }
 
-// agentsDefaultsJSON mirrors fleetconfig.Defaults.
 type agentsDefaultsJSON struct {
 	Agent       string                `json:"agent"`
 	Attribution agentsAttributionJSON `json:"attribution"`
 }
 
-// agentsAttributionJSON mirrors fleetconfig.Attribution.
 type agentsAttributionJSON struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 }
 
-// agentsAgentJSON mirrors fleetconfig.Agent: one agent's descriptive manifest
-// fields. context_level carries the -1 unset sentinel verbatim.
 type agentsAgentJSON struct {
 	Name            string         `json:"name"`
 	Binary          string         `json:"binary"`
@@ -50,24 +45,22 @@ type agentsAgentJSON struct {
 	Argv            agentsArgvJSON `json:"argv"`
 }
 
-// agentsArgvJSON mirrors fleetconfig.Argv: each mode's full token list, or null
-// when the mode is not declared.
 type agentsArgvJSON struct {
 	Preflight   []string `json:"preflight"`
 	Headless    []string `json:"headless"`
 	Interactive []string `json:"interactive"`
 }
 
-// fleetToRosterJSON projects a parsed fleet onto the stable JSON shape. Pure over
-// its input so the schema is testable without touching the embed or the CLI.
-func fleetToRosterJSON(f fleetconfig.Fleet) agentsRosterJSON {
+// launchConfigToRosterJSON projects typed config onto the stable JSON shape.
+// It is pure so tests need no CLI.
+func launchConfigToRosterJSON(f launchConfig) agentsRosterJSON {
 	out := agentsRosterJSON{
-		SchemaVersion: f.SchemaVersion,
+		SchemaVersion: agentAdapterSchemaVersion,
 		Defaults: agentsDefaultsJSON{
-			Agent: f.Defaults.Agent,
+			Agent: f.DefaultAgent,
 			Attribution: agentsAttributionJSON{
-				Name:  f.Defaults.Attribution.Name,
-				Email: f.Defaults.Attribution.Email,
+				Name:  f.Attribution.Name,
+				Email: f.Attribution.Email,
 			},
 		},
 		Agents: make([]agentsAgentJSON, 0, len(f.Agents)),
@@ -82,7 +75,7 @@ func fleetToRosterJSON(f fleetconfig.Fleet) agentsRosterJSON {
 			Model:           a.Model,
 			Endpoint:        a.Endpoint,
 			Provider:        a.Provider,
-			ReasoningEffort: a.ReasoningEffort,
+			ReasoningEffort: a.Effort,
 			Verbosity:       a.Verbosity,
 			Argv: agentsArgvJSON{
 				Preflight:   a.Argv.Preflight,
@@ -96,10 +89,10 @@ func fleetToRosterJSON(f fleetconfig.Fleet) agentsRosterJSON {
 
 // agentsRosterTable renders the human default: one block per agent with its
 // binary, context-level floor, and model.
-func agentsRosterTable(f fleetconfig.Fleet) string {
+func agentsRosterTable(f launchConfig) string {
 	var b []byte
-	b = append(b, fmt.Sprintf("ward fleet roster (dialect %d, default agent %q, %d agents)\n",
-		f.SchemaVersion, f.Defaults.Agent, len(f.Agents))...)
+	b = append(b, fmt.Sprintf("ward harness roster (schema %d, default agent %q, %d agents)\n",
+		agentAdapterSchemaVersion, f.DefaultAgent, len(f.Agents))...)
 	for _, a := range f.Agents {
 		model := a.Model
 		if model == "" {
@@ -111,11 +104,11 @@ func agentsRosterTable(f fleetconfig.Fleet) string {
 	return string(b)
 }
 
-// agentsCommand is Ward's hand-written read-only fleet roster group.
+// agentsCommand is Ward's hand-written read-only harness roster group.
 func agentsCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "agents",
-		Usage: "the agent fleet: `list` the embedded native roster.",
+		Usage: "the fixed harness adapters: `list` the typed native roster.",
 		Commands: []*cli.Command{
 			agentsListCommand(),
 		},
@@ -123,37 +116,36 @@ func agentsCommand() *cli.Command {
 }
 
 // agentsListCommand builds `ward agents list [--json]`: a read-only dump of the
-// effective fleet roster (human table, or --json for the JSON surface).
+// typed harness roster (human table, or --json for the JSON surface).
 func agentsListCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "list",
-		Usage: "Print the embedded fleet roster (agents + manifest fields). --json emits the stable JSON read surface.",
-		Description: `list dumps the fleet roster straight from the embedded fleetconfig.Fleet - the
-same parse cmd/ward/fleet.go embeds - so the roster the binary launches and the
-roster it reports can never drift. The default is a human table; --json emits a
+		Usage: "Print the fixed harness roster. --json emits the stable JSON read surface.",
+		Description: `list dumps Ward's typed harness adapters, so the roster the binary
+launches and the roster it reports cannot drift. The default is a human table; --json emits a
 stable, deterministic JSON schema (schema_version, defaults, agents[]) that the
 scripts/agent-compat.py consumes as its read surface (ward#417).`,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "json", Usage: "emit the stable JSON roster instead of the human table"},
 		},
 		Action: func(_ context.Context, c *cli.Command) error {
-			fleet, err := currentFleetConfigWithError()
+			cfg, err := loadLaunchConfig()
 			if err != nil {
-				return fmt.Errorf("ward agents list: load fleet config: %w", err)
+				return fmt.Errorf("ward agents list: load harness config: %w", err)
 			}
 			w := c.Root().Writer
 			if w == nil {
 				w = os.Stdout
 			}
 			if c.Bool("json") {
-				buf, err := json.MarshalIndent(fleetToRosterJSON(fleet), "", "  ")
+				buf, err := json.MarshalIndent(launchConfigToRosterJSON(cfg), "", "  ")
 				if err != nil {
 					return fmt.Errorf("ward agents list: marshal roster: %w", err)
 				}
 				_, err = io.WriteString(w, string(buf)+"\n")
 				return err
 			}
-			_, err = io.WriteString(w, agentsRosterTable(fleet))
+			_, err = io.WriteString(w, agentsRosterTable(cfg))
 			return err
 		},
 	}

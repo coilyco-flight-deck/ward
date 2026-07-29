@@ -33,9 +33,9 @@ var setupDockerReadiness = func(ctx context.Context) error {
 func setupCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "setup",
-		Usage: "Bootstrap ~/.ward/config.yaml and validate native runtime policy.",
+		Usage: "Bootstrap ~/.ward/config.yaml and validate Ward launch defaults.",
 		Description: strings.Join([]string{
-			"setup validates Ward's embedded agent policy without building or",
+			"setup validates Ward's typed launch defaults without building or",
 			"replacing the ward binary, and it is not a hidden prerequisite for normal ward",
 			"commands.",
 			"",
@@ -44,7 +44,7 @@ func setupCommand() *cli.Command {
 			"",
 			"AOSguard owns operator configuration and generated API surfaces.",
 			"",
-			"Phases: embedded policy -> launch checks -> host integration checks.",
+			"Phases: YAML/default validation -> launch checks -> host integration checks.",
 		}, "\n"),
 		Action: func(ctx context.Context, _ *cli.Command) error {
 			report, err := runSetup(ctx)
@@ -60,8 +60,8 @@ func setupCommand() *cli.Command {
 func runSetup(ctx context.Context) (setupReport, error) {
 	_ = ctx
 	report := setupReport{
-		validatedSurfaces: []string{"fleet", "roles", "smart defaults", "topology"},
-		phasePlan:         "embedded policy -> launch checks -> host integration checks",
+		validatedSurfaces: []string{"harness adapters", "smart defaults", "YAML preferences"},
+		phasePlan:         "YAML/default validation -> launch checks -> host integration checks",
 		nextStep:          setupNextStep,
 	}
 
@@ -72,14 +72,13 @@ func runSetup(ctx context.Context) (setupReport, error) {
 	report.localConfigPath = cfgPath
 	report.localConfigCreated = created
 
-	src := bakedConfigSource()
-	report.sourceSummary = src.sourceDesc()
-	report.resolvedSHA = "embedded"
-	report.cachePath = "embedded native policy"
-	if _, err := loadFleetConfigFrom(src); err != nil {
-		return report, fmt.Errorf("setup surface compile: fleet: %w", err)
+	report.sourceSummary = "typed defaults + YAML overrides"
+	report.resolvedSHA = "built-in"
+	report.cachePath = "none"
+	if _, err := loadLaunchConfig(); err != nil {
+		return report, fmt.Errorf("setup surface compile: harness adapters: %w", err)
 	}
-	if _, err := loadSmartDefaultsFrom(src); err != nil {
+	if _, err := currentSmartDefaultsWithError(); err != nil {
 		return report, fmt.Errorf("setup surface compile: smart defaults: %w", err)
 	}
 	if err := setupDockerReadiness(ctx); err != nil {

@@ -1,16 +1,13 @@
 package main
 
-// agent_adapter.go projects the effective fleet roster onto the launcher's adapter
-// shape. ward#419 dropped the YAML mirror; see docs/agent-adapter-manifest.md.
+// agent_adapter.go projects typed harness mechanics onto the launcher's adapter
+// shape. See docs/agent-adapter-manifest.md.
 
 import (
 	"fmt"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
-
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/fleetconfig"
 )
 
 // The manifest reader owns the concrete harness names and the retired alias.
@@ -172,16 +169,8 @@ func mustAgentAdapter(mode containerMode) agentAdapter {
 // defaultAgentMode returns the manifest's default mode, falling back to the
 // first roster entry when the bundle omits an explicit default.
 func defaultAgentMode() containerMode {
-	fleet, err := currentFleetConfigWithError()
-	if err == nil {
-		if agent := strings.TrimSpace(fleet.Defaults.Agent); agent != "" {
-			return containerMode(agent)
-		}
-	}
-	if fleet, err := bakedProfileProvider().Fleet(); err == nil {
-		if agent := strings.TrimSpace(fleet.Defaults.Agent); agent != "" {
-			return containerMode(agent)
-		}
+	if cfg, err := loadLaunchConfig(); err == nil && cfg.DefaultAgent != "" {
+		return containerMode(cfg.DefaultAgent)
 	}
 	if names := frontierAgentNames(); len(names) > 0 {
 		return containerMode(names[0])
@@ -191,12 +180,12 @@ func defaultAgentMode() containerMode {
 
 // selectedAgentMode resolves the baked native control-plane default harness.
 func selectedAgentMode() (containerMode, error) {
-	fleet, err := currentFleetConfigWithError()
+	cfg, err := loadLaunchConfig()
 	if err != nil {
 		return "", err
 	}
-	if agent := strings.TrimSpace(fleet.Defaults.Agent); agent != "" {
-		return containerMode(agent), nil
+	if cfg.DefaultAgent != "" {
+		return containerMode(cfg.DefaultAgent), nil
 	}
 	if names := frontierAgentNames(); len(names) > 0 {
 		return containerMode(names[0]), nil
@@ -204,23 +193,22 @@ func selectedAgentMode() (containerMode, error) {
 	return modeClaude, nil
 }
 
-// loadAgentManifest builds the manifest from the effective dialect-2 fleet config
-// (fleet.go) - the sole source since ward#419 deleted the agent-adapters.yaml mirror.
+// loadAgentManifest builds the manifest from Ward's typed harness adapters.
 func loadAgentManifest() (agentManifest, error) {
-	f, err := loadFleetConfig()
+	cfg, err := loadLaunchConfig()
 	if err != nil {
-		return agentManifest{}, fmt.Errorf("agent-adapter manifest (from fleet): %w", err)
+		return agentManifest{}, fmt.Errorf("agent-adapter manifest: %w", err)
 	}
-	m := fleetToAgentManifest(f)
+	m := launchConfigToAgentManifest(cfg)
 	if err := validateAgentManifest(m); err != nil {
 		return agentManifest{}, err
 	}
 	return m, nil
 }
 
-// fleetToAgentManifest projects a parsed fleet roster onto the adapter shape the
-// launcher reads (binary/context-level/stream/auth/argv); model/endpoint go direct.
-func fleetToAgentManifest(f fleetconfig.Fleet) agentManifest {
+// launchConfigToAgentManifest projects the typed launch config onto the
+// adapter shape the launcher reads.
+func launchConfigToAgentManifest(f launchConfig) agentManifest {
 	m := agentManifest{SchemaVersion: agentAdapterSchemaVersion}
 	for _, a := range f.Agents {
 		m.Agents = append(m.Agents, agentAdapter{

@@ -649,13 +649,11 @@ func seedIssueBodyParts(body string) (action, inline string) {
 	return action, inline
 }
 
-// agentModes is the ordered set of harnesses ward can drive, derived from the
-// embedded fleet config so the roster lives in one place.
+// agentModes is the ordered set of harnesses Ward can drive.
 var agentModes = mustAgentModes()
 
 func mustAgentModes() []containerMode {
-	// Init-time, so this reads ward's built-in frontier roster directly; a bad
-	// WARD_CONFIG_REF must not affect the mode choice list (ward#653).
+	// Init-time, so this reads Ward's typed harness roster directly.
 	out := make([]containerMode, 0, len(frontierAgentOrder))
 	for _, name := range frontierAgentNames() {
 		out = append(out, containerMode(name))
@@ -873,7 +871,7 @@ func agentImageFlags() []cli.Flag {
 	flags := []cli.Flag{
 		&cli.StringFlag{Name: "image", Value: agentImageDefault(), Hidden: true, Sources: cli.EnvVars(envAgentImage), Usage: "dev-base image to run (env: WARD_AGENT_IMAGE)"},
 		&cli.StringFlag{Name: "tag", Value: agentTagDefault(), Hidden: true, Sources: cli.EnvVars(envAgentTag), Usage: "image tag; per-run pinning (env: WARD_AGENT_TAG)"},
-		&cli.StringFlag{Name: "context-bundle", Usage: "mount a role-bound generic context bundle read-only and project it into the selected harness home"},
+		&cli.StringFlag{Name: "context-bundle", Usage: "mount a role-labeled generic context bundle read-only and project it into the selected harness home"},
 		&cli.StringFlag{Name: "ward-source", Hidden: true, Usage: "development-only: mount a local ward checkout and build ward from it instead of downloading the release"},
 		&cli.StringFlag{Name: "ward-version", Hidden: true, Sources: cli.EnvVars(envAgentVersion), Usage: "ward release the container stages (default: this host's packaged Linux binary; env: WARD_AGENT_VERSION)"},
 		&cli.BoolFlag{Name: "allow-ward-downgrade", Hidden: true, Usage: "permit a --ward-version pin older than this host's ward (ships an older in-container reaper; ward#529)"},

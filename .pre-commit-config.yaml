@@ -25,13 +25,6 @@ repos:
         args: [--assume-in-merge]
   # END managed by agentic-os/scripts/apply-agentic-os-hooks.py
 
-  # kdlfmt check: gate Ward's native KDL policy on kdlfmt's format. The hook is
-  # `language: system`, so it needs kdlfmt on PATH (`brew install hougesen/tap/kdlfmt`).
-  - repo: https://github.com/hougesen/kdlfmt
-    rev: v0.1.7
-    hooks:
-      - id: kdlfmt-check
-
   # issue-ref gate (ward#446): a terse ref like `ward#123` never autolinks in a
   # rendered Markdown file on the GitHub mirror, so every ref in a public-facing
   # doc must be a full-URL link. `language: system` so it needs only python3 on

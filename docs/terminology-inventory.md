@@ -10,8 +10,7 @@ preferred.
 
 - CLI help for `ward`, `ward exec`, `ward audit`, `ward agent`, and
   `ward container`.
-- `.ward/ward.yaml`, `.ward/defaults.kdl`, `.ward/fleet.kdl`, and
-  `.ward/roles.kdl`.
+- `.ward/ward.yaml` and `~/.ward/config.yaml`.
 - README, FEATURES, architecture, agent, lifecycle, workflow, container,
   reservation, reaper, director, broker, audit, and release docs.
 - code workflow comment variants, backlog states, launch phases, list statuses,
@@ -24,7 +23,7 @@ preferred.
 
 - product: `Ward`, `ward`, `warded`, `cli-guard`, `aosguard`, `specgen`.
 - authority: tracker thread, forge, git remote, broker, harness credential,
-  container env, repo config, role policy.
+  container env, repo config, workflow label.
 - evidence: audit row, audit trail, logs, transcript, status line, issue
   comment, PR status, dispatch artifact.
 

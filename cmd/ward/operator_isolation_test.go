@@ -1,30 +1,24 @@
 package main
 
-import (
-	"reflect"
-	"testing"
-)
+import "testing"
 
 // A stale edge reference is irrelevant to every native Ward policy loader.
 // This protects `ward agent` after AOSguard moved out of the Ward binary.
 func TestPolicyBoundaryNativePolicyIgnoresStaleOperatorConfigRef(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "forgejo.example.invalid/edge/aosguard@missing//.specgen")
+	t.Setenv("WARD_CONFIG_REF", "forgejo.example.invalid/edge/aosguard@missing//.specgen")
 
 	defs, err := currentSmartDefaultsWithError()
 	if err != nil {
 		t.Fatalf("native smart defaults used stale edge ref: %v", err)
 	}
-	if !reflect.DeepEqual(defs, canonicalSmartDefaults(t)) {
-		t.Fatal("native smart defaults no longer match baked policy")
+	if defs.agentReservationTTL != bakedSmartDefaults().agentReservationTTL {
+		t.Fatal("stale config reference changed typed defaults")
 	}
-	if _, err := currentFleetConfigWithError(); err != nil {
-		t.Fatalf("native fleet used stale edge ref: %v", err)
+	if _, err := loadLaunchConfig(); err != nil {
+		t.Fatalf("typed harness adapters used stale edge ref: %v", err)
 	}
-	if _, err := currentAgentRoleCatalogWithError(); err != nil {
-		t.Fatalf("native role catalog used stale edge ref: %v", err)
-	}
-	if _, err := currentContainerTopologyWithError(); err != nil {
-		t.Fatalf("native topology used stale edge ref: %v", err)
+	if got := currentContainerTopology(); got != containerTopologyDefaults {
+		t.Fatalf("stale config reference changed typed topology: %#v", got)
 	}
 }
 
