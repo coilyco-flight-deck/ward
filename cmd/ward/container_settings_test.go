@@ -8,10 +8,7 @@ import (
 // TestContainerSettingsPolicy locks the container permission policy: valid JSON,
 // bypassPermissions, and no deny wall - isolation is the sole boundary (ward#375).
 func TestContainerSettingsPolicy(t *testing.T) {
-	data, err := containerAssets.ReadFile("containerassets/settings.container.json")
-	if err != nil {
-		t.Fatalf("read embedded settings: %v", err)
-	}
+	data := []byte(containerSettingsJSON)
 	var s struct {
 		TUI              string           `json:"tui"`
 		DeniedMCPServers []map[string]any `json:"deniedMcpServers"`

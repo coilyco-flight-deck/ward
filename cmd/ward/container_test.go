@@ -916,6 +916,28 @@ func TestWriteContainerAssetsStagesWardBinary(t *testing.T) {
 	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		t.Fatalf("staged ward binary must be executable, mode %o", info.Mode())
 	}
+	payloads := map[string]string{
+		"entrypoint.sh":           containerEntrypointScript,
+		"AGENTS.container.md":     containerDoctrine,
+		"settings.container.json": containerSettingsJSON,
+		containerSubstrateRel:     defaultSubstrateManifest,
+	}
+	for name, want := range payloads {
+		got, readErr := os.ReadFile(filepath.Join(dir, name))
+		if readErr != nil {
+			t.Fatalf("staged payload %s missing: %v", name, readErr)
+		}
+		if !bytes.Equal(got, []byte(want)) {
+			t.Errorf("staged payload %s does not match its compiled value", name)
+		}
+	}
+	entrypointInfo, err := os.Stat(filepath.Join(dir, containerEntrypointRel))
+	if err != nil {
+		t.Fatalf("staged entrypoint missing: %v", err)
+	}
+	if runtime.GOOS != "windows" && entrypointInfo.Mode()&0o111 == 0 {
+		t.Fatalf("staged entrypoint must be executable, mode %o", entrypointInfo.Mode())
+	}
 }
 
 func TestPackagedWardBootstrapCandidates(t *testing.T) {
@@ -1503,10 +1525,6 @@ func TestContainerNamespaceHiddenPlumbingOnly(t *testing.T) {
 // TestEntrypointContainerVerbsResolve is the static acceptance gate (ward#263):
 // every `ward container <verb>` the entrypoint invokes must resolve to a leaf.
 func TestEntrypointContainerVerbsResolve(t *testing.T) {
-	data, err := containerAssets.ReadFile("containerassets/entrypoint.sh")
-	if err != nil {
-		t.Fatalf("read embedded entrypoint: %v", err)
-	}
 	registered := map[string]bool{}
 	for _, sub := range containerCommand().Commands {
 		registered[sub.Name] = true
@@ -1516,7 +1534,7 @@ func TestEntrypointContainerVerbsResolve(t *testing.T) {
 	// Skip comments and string-emitting builtins (echo/printf/log/...): prose like
 	// "the ward container entrypoint" is a noun phrase, not an invocation.
 	emitter := regexp.MustCompile(`^(echo|printf|log|cat|die)\b`)
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(containerEntrypointScript, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "#") || emitter.MatchString(trimmed) {
 			continue
@@ -1612,11 +1630,7 @@ func TestImageRef(t *testing.T) {
 // registers pre-commit hooks after the clone (a fresh clone ships none).
 func TestEntrypointInstallsPreCommitHooks(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, want := range []string{
 		"install_precommit_hooks()",         // the function exists
 		"install_precommit_hooks \"$work\"", // main() invokes it on the clone
@@ -1644,11 +1658,7 @@ func TestEntrypointInstallsPreCommitHooks(t *testing.T) {
 // Ollama-reachability gate, run after the claude smoke test and before launch.
 func TestEntrypointOllamaSmokeGate(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, want := range []string{
 		"smoke_test_ollama_reachable()",      // the function exists
 		"smoke_test_ollama_reachable",        // main() invokes it
@@ -1678,11 +1688,7 @@ func TestEntrypointOllamaSmokeGate(t *testing.T) {
 // lands the per-clone pre-push hook on the work clone and each --repo extra.
 func TestEntrypointInstallsReadOnlyPushGuard(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, want := range []string{
 		"install_readonly_push_guard()",              // the function exists
 		"install_readonly_push_guard \"$work\"",      // main() invokes it on the clone
@@ -1707,11 +1713,7 @@ func TestEntrypointInstallsReadOnlyPushGuard(t *testing.T) {
 // group to join) is reached via a root socat bridge the agent uses through DOCKER_HOST.
 func TestEntrypointBridgesRootRootSocket(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, want := range []string{
 		"bridge_docker_socket()",                    // the bridge function exists
 		"bridge_docker_socket \"$sock\"",            // the root:root branch calls it
@@ -1729,11 +1731,7 @@ func TestEntrypointBridgesRootRootSocket(t *testing.T) {
 // the retired, unsatisfiable agent-only commit-msg gate.
 func TestEntrypointNoAgentCommitGate(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, banned := range []string{
 		"install_agent_precommit_hooks", // the retired function
 		"agent-precommit-config",        // the retired generator subcommand
@@ -1751,11 +1749,7 @@ func TestEntrypointNoAgentCommitGate(t *testing.T) {
 // entrypoint clones each full under /workspace, after the target, before launch.
 func TestEntrypointClonesExtraRepos(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, want := range []string{
 		"clone_extra_repos()",                          // the loop exists
 		"clone_extra_repo()",                           // the per-repo helper exists
@@ -1786,11 +1780,7 @@ func TestEntrypointClonesExtraRepos(t *testing.T) {
 // and the entrypoint mirrors doctrine into .goosehints.
 func TestEntrypointGooseHeadless(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, want := range []string{
 		`case "$WARD_MODE" in`,      // launch argv is mode-aware
 		"goose run --no-session -t", // headless goose runs the seed to completion
@@ -1814,11 +1804,7 @@ func TestEntrypointGooseHeadless(t *testing.T) {
 // canonical runtime doctrine file, then wires harness load points to it.
 func TestEntrypointComposesCanonicalAgentDoctrine(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, want := range []string{
 		`local out="$AGENT_HOME/AGENTS.md"`,
 		`link_or_copy_context "../AGENTS.md" "$out" "$AGENT_HOME/.claude/CLAUDE.md"`,
@@ -1836,11 +1822,7 @@ func TestEntrypointComposesCanonicalAgentDoctrine(t *testing.T) {
 // only links the staged ward binary and hands off to `ward container bootstrap`.
 func TestEntrypointDelegatesBootstrap(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, want := range []string{
 		"install -m 0755 /opt/ward/ward /usr/local/bin/ward",
 		"exec /usr/local/bin/ward container bootstrap \"$@\"",
@@ -1869,11 +1851,7 @@ func TestEntrypointDelegatesBootstrap(t *testing.T) {
 // per-harness config no longer lives in generic bootstrap code.
 func TestEntrypointHasNoHarnessConfigBranches(t *testing.T) {
 	t.Skip("entrypoint delegates harness-specific setup to ward container bootstrap now")
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, banned := range []string{"claude", "codex", "goose", "opencode"} {
 		if strings.Contains(script, banned) {
 			t.Errorf("entrypoint still names harness %q in generic bootstrap", banned)
@@ -1883,11 +1861,7 @@ func TestEntrypointHasNoHarnessConfigBranches(t *testing.T) {
 
 // TestEntrypointBootstrapDelegation checks the thin shell shim and staged ward handoff.
 func TestEntrypointBootstrapDelegation(t *testing.T) {
-	data, err := containerAssets.ReadFile("containerassets/" + containerEntrypointRel)
-	if err != nil {
-		t.Fatalf("read entrypoint: %v", err)
-	}
-	script := string(data)
+	script := containerEntrypointScript
 	for _, want := range []string{
 		"install -m 0755 /opt/ward/ward /usr/local/bin/ward",
 		"/usr/local/bin/warded --help >/dev/null 2>&1 || die \"warded did not install correctly\"",

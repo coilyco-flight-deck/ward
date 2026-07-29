@@ -63,7 +63,9 @@ States mean:
 
 ## On embedding
 
-ward embeds its own launch assets with `go:embed` in `cmd/ward/container.go` and the other `cmd/ward/*assets` bundles. It does not vendor docker, git, or agent CLIs.
+Ward compiles its launch defaults and container payloads as Go values in
+`cmd/ward/container_payloads.go` and the consuming command code. It does not
+ship source-side asset bundles or vendor docker, git, or agent CLIs.
 
 ## See also
 

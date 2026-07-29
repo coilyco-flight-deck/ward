@@ -1,4 +1,0 @@
-# Runtime container defaults loaded by ward at startup.
-container-image=forgejo.coilysiren.me/coilyco-flight-deck/ward
-container-image-tag=release
-container-entrypoint-path=/opt/ward-shell-entrypoint.sh

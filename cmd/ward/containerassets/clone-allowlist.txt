@@ -1,5 +1,0 @@
-# Persistent clone allowlist loaded by ward at startup.
-coilyco-flight-deck/ward
-coilyco-flight-deck/cli-guard
-coilyco-flight-deck/infrastructure
-coilysiren/coilysiren

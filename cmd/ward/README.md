@@ -1,3 +1,4 @@
-# Container doctrine
+# Container launch payloads
 
-See [AGENTS.container.txt](AGENTS.container.txt) for the embedded container instructions.
+See [container_payloads.go](container_payloads.go) for compiled payloads and
+[container_bootstrap.go](container_bootstrap.go) for runtime composition.

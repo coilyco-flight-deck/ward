@@ -14,8 +14,13 @@ import (
 )
 
 // cloneAllowlist is the baked-in set of repos (owner/name, lowercased) that may
-// be cloned into a persistent path. It comes from the embedded container data.
-var cloneAllowlist = mustLoadCloneAllowlist()
+// be cloned into a persistent path.
+var cloneAllowlist = map[string]bool{
+	"coilyco-flight-deck/ward":           true,
+	"coilyco-flight-deck/cli-guard":      true,
+	"coilyco-flight-deck/infrastructure": true,
+	"coilysiren/coilysiren":              true,
+}
 
 // cloneValueFlags are the `git clone` options that consume the next argv token,
 // so the destination scanner skips it rather than treating it as a positional.
@@ -170,15 +175,6 @@ func cloneGate(repoURL, destAbs string, getenv func(string) string) error {
 		"off-allowlist repos into /tmp, or add the repo to the allowlist in "+
 		"cmd/ward/git_clone.go if it legitimately belongs on disk (ward#285)",
 		destAbs, repoURL)
-}
-
-func mustLoadCloneAllowlist() map[string]bool {
-	lines := mustReadContainerAssetLines("clone-allowlist.txt")
-	out := make(map[string]bool, len(lines))
-	for _, line := range lines {
-		out[strings.ToLower(line)] = true
-	}
-	return out
 }
 
 // destUnderEphemeral reports whether destAbs resolves under any ephemeral root,

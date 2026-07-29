@@ -27,17 +27,23 @@ import (
 // it from the host, not the (untrusted) worker.
 const reviewClassEnv = "WARD_REVIEW_CLASS"
 
+var reviewSkillPathCandidates = [...]string{
+	"${WARD_WORKSPACE_DEST}/ward/.agents/skills/tooling-code-review/SKILL.md",
+	"/workspace/ward/.agents/skills/tooling-code-review/SKILL.md",
+	"${WARD_SUBSTRATE_DEST}/ward/.agents/skills/tooling-code-review/SKILL.md",
+	"/substrate/ward/.agents/skills/tooling-code-review/SKILL.md",
+}
+
 // reviewSkillPath resolves the hand-curated code-review skill that the prompt
 // embeds into the reviewer context.
 func reviewSkillPath() string {
-	candidates := mustReadContainerAssetLines("review-skill-paths.txt")
-	for _, candidate := range candidates {
+	for _, candidate := range reviewSkillPathCandidates {
 		path := filepath.Clean(os.ExpandEnv(candidate))
 		if st, err := os.Stat(path); err == nil && !st.IsDir() {
 			return path
 		}
 	}
-	return filepath.Clean(os.ExpandEnv(candidates[len(candidates)-1]))
+	return filepath.Clean(os.ExpandEnv(reviewSkillPathCandidates[len(reviewSkillPathCandidates)-1]))
 }
 
 // reviewSummaryPath is the handoff file the final conclusion comment reads.

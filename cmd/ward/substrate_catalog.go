@@ -128,7 +128,7 @@ func containerSubstrateCatalogCommand() *cli.Command {
 	}
 }
 
-// generateSubstrateCatalog reads the embedded manifest, optionally narrows it to one
+// generateSubstrateCatalog reads the compiled-in manifest, optionally narrows it to one
 // seed tier, builds the catalog off the host Forgejo client, and writes it to out.
 func (r *Runner) generateSubstrateCatalog(ctx context.Context, out, dest, tier string) error {
 	manifest, err := loadSubstrateManifest()

@@ -19,11 +19,11 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var (
-	// containerImageDefault and friends are loaded from the embedded container
-	// defaults bundle so the runtime surface does not hardcode them.
-	containerImageDefault    = mustContainerDefault("container-image")
-	containerImageTagDefault = mustContainerDefault("container-image-tag")
+const (
+	// containerImageDefault and friends are product mechanics compiled into the
+	// binary; supported operator overrides are applied at the command edge.
+	containerImageDefault    = "forgejo.coilysiren.me/coilyco-flight-deck/ward"
+	containerImageTagDefault = "release"
 
 	// envAgentImage / envAgentTag pin the dev-base image + tag once for every
 	// `ward agent` dispatch; an explicit --image/--tag still overrides (ward#312).
@@ -38,10 +38,10 @@ var (
 	// explicit operator pin, the host ward default, or in-container latest resolution.
 	envAgentVersionSource = "WARD_VERSION_SOURCE"
 
-	// containerWardAssets is where ward's embedded entrypoint + doctrine are
+	// containerWardAssets is where Ward's materialized entrypoint + doctrine are
 	// bind-mounted, read-only. The image bakes none of this in.
 	containerWardAssets     = "/opt/ward"
-	containerEntrypointPath = mustContainerDefault("container-entrypoint-path")
+	containerEntrypointPath = "/opt/ward-shell-entrypoint.sh"
 	containerEntrypointRel  = "entrypoint.sh"
 
 	// containerWardSrcMount is where --ward-source mounts a ward checkout, so
@@ -105,15 +105,6 @@ var (
 	// containers does one fetch per repo per window, the rest skip the gate.
 	containerSubstrateTTL = "600"
 )
-
-func mustContainerDefault(key string) string {
-	values := mustReadContainerAssetKV("container-defaults.txt")
-	v, ok := values[key]
-	if !ok || strings.TrimSpace(v) == "" {
-		panic(fmt.Errorf("container defaults: missing %s", key))
-	}
-	return v
-}
 
 // Tailnet + tower topology (ward#395): infra DATA, not baked identity. Each value takes
 // a WARD_* env override, the old literal kept as the fail-safe default. See the doc.
@@ -409,7 +400,7 @@ func (m mountSpec) arg() string {
 // mountOpts collects the optional, host-derived inputs to the mount set so the
 // default stays least-access and every addition is an explicit opt-in.
 type mountOpts struct {
-	// AssetsDir holds ward's embedded entrypoint + doctrine, written to a
+	// AssetsDir holds Ward's materialized entrypoint + doctrine, written to a
 	// per-run staging dir and mounted read-only. Always set in practice.
 	AssetsDir string
 	// WardSource, when non-empty, mounts a local ward checkout (--ward-source)

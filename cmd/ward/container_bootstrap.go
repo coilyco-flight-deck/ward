@@ -21,8 +21,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// container_bootstrap.go is the Go port of containerassets/entrypoint.sh - the
-// PID-1 bootstrap every ward agent container runs (ward#181). See docs/container.md.
+// container_bootstrap.go implements the PID-1 bootstrap behind
+// containerEntrypointScript (ward#181). See docs/container.md.
 
 // bootstrapEnv holds the entrypoint's env-var config, read once with the bash
 // defaults applied. Required vars (the bash `:?` checks) error in readBootstrapEnv.

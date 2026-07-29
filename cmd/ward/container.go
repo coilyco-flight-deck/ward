@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -29,18 +28,10 @@ import (
 
 const wardBootstrapRepo = "coilyco-flight-deck/ward"
 
-//go:embed AGENTS.container.txt
-//go:embed containerassets/*
-var containerAssets embed.FS
-
-// loadSubstrateManifest parses the embedded preclone manifest - the single
+// loadSubstrateManifest parses the compiled-in preclone manifest - the single
 // source of truth for which reference repos every container warms.
 func loadSubstrateManifest() ([]substrateRepo, error) {
-	data, err := containerAssets.ReadFile("containerassets/" + containerSubstrateRel)
-	if err != nil {
-		return nil, err
-	}
-	return parseSubstrateManifest(string(data))
+	return parseSubstrateManifest(defaultSubstrateManifest)
 }
 
 // containerCommand is the Hidden `ward container` umbrella (ward#263): only the
@@ -625,8 +616,8 @@ func (r *Runner) clearExitedContainer(ctx context.Context, name string) {
 	clearDrainMarker(agentLogsDir(), name)
 }
 
-// writeContainerAssets materializes the embedded entrypoint + doctrine and stages
-// the matching ward binary into a per-run dir under launchStagingDir.
+// writeContainerAssets materializes Ward's launch payloads and stages the
+// matching ward binary into a per-run dir under launchStagingDir.
 func writeContainerAssets(ctx context.Context, r *Runner, wardSource, wardVersion string) (dir string, cleanup func(), err error) {
 	root, err := ensureLaunchStagingDir()
 	if err != nil {
@@ -655,23 +646,16 @@ func writeContainerAssetsAt(ctx context.Context, dir, wardSource, wardVersion st
 	}
 	files := []struct {
 		name string
+		data string
 		mode os.FileMode
 	}{
-		{"entrypoint.sh", 0o755},
-		{"AGENTS.container.md", 0o644},
-		{"settings.container.json", 0o644},
-		{containerSubstrateRel, 0o644},
+		{"entrypoint.sh", containerEntrypointScript, 0o755},
+		{"AGENTS.container.md", containerDoctrine, 0o644},
+		{"settings.container.json", containerSettingsJSON, 0o644},
+		{containerSubstrateRel, defaultSubstrateManifest, 0o644},
 	}
 	for _, f := range files {
-		path := "containerassets/" + f.name
-		if f.name == "AGENTS.container.md" {
-			path = "AGENTS.container.txt"
-		}
-		data, rerr := containerAssets.ReadFile(path)
-		if rerr != nil {
-			return fmt.Errorf("ward container: read embedded %s: %w", f.name, rerr)
-		}
-		if werr := os.WriteFile(filepath.Join(dir, f.name), data, f.mode); werr != nil {
+		if werr := os.WriteFile(filepath.Join(dir, f.name), []byte(f.data), f.mode); werr != nil {
 			return fmt.Errorf("ward container: write %s: %w", f.name, werr)
 		}
 	}

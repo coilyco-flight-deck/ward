@@ -34,18 +34,18 @@ coilyco-gaming/lore                   cache
 	}
 }
 
-// TestEmbeddedSubstrateManifest guards the product-neutral default: Ward ships
+// TestDefaultSubstrateManifest guards the product-neutral default: Ward ships
 // only its public example repo, never a deployment's repository roster.
-func TestEmbeddedSubstrateManifest(t *testing.T) {
+func TestDefaultSubstrateManifest(t *testing.T) {
 	repos, err := loadSubstrateManifest()
 	if err != nil {
-		t.Fatalf("embedded preclone-repos.txt does not parse: %v", err)
+		t.Fatalf("compiled-in preclone manifest does not parse: %v", err)
 	}
 	if len(repos) != 1 {
-		t.Fatalf("embedded manifest = %+v, want only coilysiren/example", repos)
+		t.Fatalf("default manifest = %+v, want only coilysiren/example", repos)
 	}
 	if got := repos[0]; got.slug() != "coilysiren/example" || got.Tier != "image" {
-		t.Fatalf("embedded manifest entry = %+v, want coilysiren/example image", got)
+		t.Fatalf("default manifest entry = %+v, want coilysiren/example image", got)
 	}
 }
 

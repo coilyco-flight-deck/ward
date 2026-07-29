@@ -36,16 +36,15 @@ default is to assume the first:
   server harness - `~/.claude/CLAUDE.md`, host hooks, host permissions - via roles like
   `agent-compose` and `claude-hooks`. It persists on a long-lived host.
 - **ward** composes everything an **agent inside a container** reads, fresh on every
-  bring-up; nothing the host converges reaches it. The surfaces live in
-  `cmd/ward/containerassets/` - `AGENTS.container.md` (doctrine),
-  `settings.container.json` (the policy: `bypassPermissions` + the force-push deny),
-  `entrypoint.sh` (`compose_context`/`compose_permissions`) - plus
-  `cmd/ward/agent_director_surface.go` (`WARD_READONLY`).
+  bring-up; nothing the host converges reaches it. The staged entrypoint,
+  doctrine, and settings are declared in `cmd/ward/container_payloads.go`;
+  `cmd/ward/container_bootstrap.go` composes them into the runtime surface, and
+  `cmd/ward/agent_director_surface.go` owns `WARD_READONLY`.
 
-The container **does not inherit the host's converged hooks or settings**: ward writes the
-agent's `~/.claude/settings.json` and `CLAUDE.md` from those assets each bring-up. So a fix
-to *how a warded agent behaves* - its permissions, its Stop/hook behavior, its doctrine -
-lands in **ward's container assets**, not a host ansible role. The
+The container **does not inherit the host's converged hooks or settings**: Ward writes the
+agent's `~/.claude/settings.json` and `CLAUDE.md` from those payloads each bring-up. So a
+fix to *how a warded agent behaves* - its permissions, its Stop/hook behavior, its doctrine -
+lands in **Ward's payload or bootstrap code**, not a host ansible role. The
 concrete miss: a "stop asking permission" fix was first filed against the `claude-hooks`
 ansible role, when the real surface was ward's container assets (infrastructure#408 →
 ward#354). Full surface map: [`references/host-vs-container.md`](references/host-vs-container.md).
@@ -55,8 +54,8 @@ ward#354). Full surface map: [`references/host-vs-container.md`](references/host
 > **Before filing host-shaped work** (config, rollout, fleet convergence, hooks, doctrine),
 > determine whether the **warded-container path is the actual home first**. For a
 > container-exclusive fleet it usually is. Ask: *does this change what an agent reads or is
-> allowed to do **inside a ward container**?* If yes → `cmd/ward/containerassets/` (or
-> composing Go), in **ward**. If it only changes the **operator's host harness** → the
+> allowed to do **inside a ward container**?* If yes → the payload or composing Go in
+> `cmd/ward/`, in **ward**. If it only changes the **operator's host harness** → the
 > infrastructure ansible role. Infrastructure is downstream of ward, so a ward-concept fix
 > homed there inverts the dependency.
 

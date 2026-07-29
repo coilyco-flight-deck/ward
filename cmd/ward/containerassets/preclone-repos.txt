@@ -1,8 +1,0 @@
-# Ward's bundled substrate manifest contains only the public example repo.
-# Deployments own their repo roster instead of compiling one user's
-# repositories into Ward.
-#
-# Deployment-provided rows use this whitespace-delimited format:
-#   owner/name  image|cache
-
-coilysiren/example  image

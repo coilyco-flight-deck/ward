@@ -1,6 +1,5 @@
-# ward is built for and ships into Linux containers. Several assets under
-# cmd/ward/containerassets/ are embedded verbatim via //go:embed and written
-# straight into the image (entrypoint.sh, settings.container.json, ...).
+# ward is built for and ships into Linux containers. Its Go launch payloads
+# materialize Linux text such as entrypoint.sh into the per-run staging area.
 #
 # On a Windows checkout, git's core.autocrlf=true plus the absence of any
 # attributes smudged LF -> CRLF for the whole tree. That baked a
@@ -12,12 +11,10 @@
 # platform, so a Windows working copy matches what the Linux container expects.
 * text=auto eol=lf
 
-# Belt-and-suspenders for the files that MUST be LF regardless of any future
-# override to the blanket rule above: shell scripts and everything embedded
-# into the container image.
+# Belt-and-suspenders for checked-in shell scripts that MUST be LF regardless
+# of any future override to the blanket rule above.
 *.sh                          text eol=lf
 *.bash                        text eol=lf
-cmd/ward/containerassets/**   text eol=lf
 
 # Genuinely binary assets: never touch their bytes.
 *.png    binary
