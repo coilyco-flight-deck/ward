@@ -10,7 +10,8 @@ Inventory of what `ward` ships today.
 - `ward setup` - first-run local config bootstrap + policy check.
 - `ward doctor` - runtime config validation.
 - `source-doc-refs` - source-comment documentation path validation.
-- `.ward/ward.yaml` - repo config schema in [ward-yaml.md](ward-yaml.md).
+- `.ward/ward.yaml` schema in [ward-yaml.md](ward-yaml.md);
+  [Windows tests](windows-development.md).
 
 ## Agent surface
 

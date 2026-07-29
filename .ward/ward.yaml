@@ -13,6 +13,9 @@ commands:
   test:
     run: make test
     description: Run the unit test suite.
+  test-windows-compile:
+    run: make test-windows-compile
+    description: Cross-compile every test package for Windows/amd64 without running it.
   test-cmd:
     run: go test ./cmd/ward
     description: Run Ward's main command package tests.

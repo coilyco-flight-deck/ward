@@ -1,4 +1,4 @@
-.PHONY: help build test vet lint lint-refs lint-workflows tidy cover install workspace agent-roster agent-flags demo-image
+.PHONY: help build test test-windows-compile vet lint lint-refs lint-workflows tidy cover install workspace agent-roster agent-flags demo-image
 
 # Go directive for a generated go.work, kept in lockstep with go.mod's `go` line.
 GO_VERSION := $(shell awk '/^go [0-9]/ {print $$2; exit}' go.mod)
@@ -40,6 +40,9 @@ demo-image: ## Build the public demo image that runs simple workspace + substrat
 
 test: ## Run the unit test suite.
 	go test ./...
+
+test-windows-compile: ## Cross-compile every test package for Windows/amd64 without running it.
+	GOOS=windows GOARCH=amd64 go test -exec=true ./...
 
 install: ## Install the ward binary into GOBIN (the Go-CLI install verb).
 	go install ./...
