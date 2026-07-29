@@ -2416,6 +2416,12 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 			logDispatchDecision(os.Stderr, "host", "image", "pull skipped by --no-pull image=%s", plan.Image)
 		}
 	}
+	if err := r.preflightWindowsStagingMount(ctx, plan); err != nil {
+		if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "staging-mount", "failed: %s", firstLine(err.Error()))
+		}
+		return err
+	}
 	// Resolve host-side agent harness creds before the env-file.
 	if decisionLog {
 		logDispatchDecision(os.Stderr, "host", "credentials", "resolving launch credentials for mode=%s forge=%s", mode, plan.Forge)
@@ -2493,7 +2499,7 @@ func (r *Runner) prelaunchDispatch(ctx context.Context, c *cli.Command, plan upP
 	if !c.Bool("no-pull") {
 		r.pullAgentImage(ctx, plan, label)
 	}
-	return nil
+	return r.preflightWindowsStagingMount(ctx, plan)
 }
 
 // pullHeartbeatDefault is how often a silenced detached pull beats a "still

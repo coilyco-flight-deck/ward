@@ -14,6 +14,8 @@ The container subsystem is the box that makes the agent half real.
 
 - The workspace clone stays on disk only inside the container.
 - Read-only substrate checkouts can be mounted beside it.
+- Host launch assets and the short-lived credential env-file share a hidden,
+  platform-correct staging root with an operator-local override.
 - The container is the wall that carries the feature from start to merge.
 
 ## What the box does

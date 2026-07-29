@@ -145,7 +145,7 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, brokerEnvFile,
 	brokerEnv[envDispatchBrokerID] = stack.Project
 	brokerEnv[envPersistentDispatchBroker] = "1"
 	brokerEnv["COILY_INVOKE_CWD"] = containerContextMount
-	brokerEnv[envLaunchStagingDir] = filepath.ToSlash(filepath.Join("/root/.ward", "launch-staging"))
+	brokerEnv[envInternalLaunchStagingDir] = filepath.ToSlash(filepath.Join("/root/.ward", "launch-staging"))
 
 	mounts := composeMounts(plan.Mounts)
 	brokerMounts := append([]composeMount(nil), mounts...)
@@ -271,7 +271,7 @@ func (r *Runner) runDirectorStack(ctx context.Context, plan upPlan, stack direct
 	if err != nil {
 		return fmt.Errorf("ward director stack: read launch environment: %w", err)
 	}
-	if err := os.WriteFile(stack.EnvPath, envBody, 0o600); err != nil {
+	if err := writePrivateFile(stack.EnvPath, envBody); err != nil {
 		return fmt.Errorf("ward director stack: persist launch environment: %w", err)
 	}
 	defer cleanupDirectorStackEnvFiles(stack)
@@ -279,7 +279,7 @@ func (r *Runner) runDirectorStack(ctx context.Context, plan upPlan, stack direct
 	if err != nil {
 		return fmt.Errorf("ward director stack: read director environment: %w", err)
 	}
-	if err := os.WriteFile(stack.DirectorEnvPath, directorEnvBody, 0o600); err != nil {
+	if err := writePrivateFile(stack.DirectorEnvPath, directorEnvBody); err != nil {
 		return fmt.Errorf("ward director stack: persist director environment: %w", err)
 	}
 	globalDir, err := config.GlobalDir()

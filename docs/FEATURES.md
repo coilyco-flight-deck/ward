@@ -53,6 +53,7 @@ Inventory of what `ward` ships today.
 - Claude in Chrome browser computer-use is disabled for Claude Code containers.
 - Optional context bundles stay authority-free. Ward retains credentials,
   permissions, mounts, network, and launch authority.
+- [Platform-correct host staging](container-staging.md).
 - Public demo image build. See [demo-image.md](demo-image.md).
 
 ## AOS policy and AOSguard boundary

@@ -116,6 +116,17 @@ func fakeDockerLiveAssetsRunner(t *testing.T) *Runner {
 	}}
 }
 
+func fakeDockerNoLiveAssetsRunner(t *testing.T) *Runner {
+	t.Helper()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	writeTestShellCommand(t, script, "#!/bin/sh\n[ \"$1\" = ps ] && exit 0\nexit 1\n")
+	return &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
+}
+
 func TestLiveContainerAssetDirs(t *testing.T) {
 	r := fakeDockerLiveAssetsRunner(t)
 	live, ok := r.liveContainerAssetDirs(context.Background())
@@ -710,30 +721,81 @@ func sampleUpPlan() upPlan {
 	}
 }
 
-func TestLaunchStagingDirIsSnapReadable(t *testing.T) {
-	// A snap-confined docker only reaches NON-hidden files under $HOME (ward#569,
-	// ward#574), so the staging dir must be $HOME itself, never the hidden ~/.ward.
-	home := t.TempDir()
-	setTestHome(t, home)
-	if got := launchStagingDir(); got != home {
-		t.Fatalf("launchStagingDir() = %q, want the $HOME root %q (a hidden ~/.ward path is invisible to a snap docker)", got, home)
+func TestDefaultLaunchStagingDirIsPlatformCorrect(t *testing.T) {
+	home := filepath.Join(string(filepath.Separator), "users", "kai")
+	cache := filepath.Join(home, "cache")
+	temp := filepath.Join(string(filepath.Separator), "tmp")
+	for _, tc := range []struct {
+		goos string
+		want string
+	}{
+		{"windows", filepath.Join(cache, "ward", "staging")},
+		{"darwin", filepath.Join(home, ".ward", "staging")},
+		{"linux", filepath.Join(home, ".ward", "staging")},
+	} {
+		t.Run(tc.goos, func(t *testing.T) {
+			if got := defaultLaunchStagingDir(tc.goos, home, cache, temp); got != tc.want {
+				t.Fatalf("defaultLaunchStagingDir(%s) = %q, want %q", tc.goos, got, tc.want)
+			}
+		})
 	}
-	if strings.Contains(launchStagingDir(), "/.ward") {
-		t.Error("launchStagingDir() must not sit under a hidden dir a snap docker cannot read")
+	if got, want := defaultLaunchStagingDir("windows", home, "", temp), filepath.Join(temp, "ward", "staging"); got != want {
+		t.Fatalf("Windows cache fallback = %q, want %q", got, want)
+	}
+	if got, want := defaultLaunchStagingDir("linux", "", cache, temp), filepath.Join(temp, "ward", "staging"); got != want {
+		t.Fatalf("Unix home fallback = %q, want %q", got, want)
 	}
 }
 
-func TestLaunchStagingDirFallsBackToTmp(t *testing.T) {
-	// With no resolvable $HOME the launch dir degrades to $TMPDIR rather than "".
-	setTestHome(t, "")
-	if got := launchStagingDir(); got == "" {
-		t.Error("launchStagingDir() with no $HOME must fall back to a real dir, got empty")
+func TestLaunchStagingDirConfigPrecedesEnvironment(t *testing.T) {
+	const configured = `X:\.ward`
+	writeTestWardGlobalConfig(t, "container:\n  staging-dir: '"+configured+"'\n")
+	t.Setenv(envStagingDir, `Y:\ward-staging`)
+	t.Setenv(envLaunchStagingDir, `Z:\legacy-staging`)
+
+	got, err := launchStagingDir()
+	if err != nil {
+		t.Fatalf("launchStagingDir: %v", err)
+	}
+	if got != configured {
+		t.Fatalf("launchStagingDir = %q, want operator config %q", got, configured)
+	}
+}
+
+func TestLaunchStagingDirInternalBrokerPathPrecedesMountedHostConfig(t *testing.T) {
+	writeTestWardGlobalConfig(t, "container:\n  staging-dir: 'X:\\.ward'\n")
+	const brokerRoot = "/root/.ward/launch-staging"
+	t.Setenv(envPersistentDispatchBroker, "1")
+	t.Setenv(envInternalLaunchStagingDir, brokerRoot)
+
+	got, err := launchStagingDir()
+	if err != nil {
+		t.Fatalf("launchStagingDir: %v", err)
+	}
+	if got != brokerRoot {
+		t.Fatalf("launchStagingDir = %q, want broker-local root %q", got, brokerRoot)
+	}
+}
+
+func TestLaunchStagingDirEnvironmentPrecedesDefault(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	root := filepath.Join(t.TempDir(), "ward-staging")
+	t.Setenv(envStagingDir, root)
+	t.Setenv(envLaunchStagingDir, filepath.Join(t.TempDir(), "legacy"))
+
+	got, err := launchStagingDir()
+	if err != nil {
+		t.Fatalf("launchStagingDir: %v", err)
+	}
+	if got != root {
+		t.Fatalf("launchStagingDir = %q, want WARD_STAGING_DIR %q", got, root)
 	}
 }
 
 func TestWriteContainerAssetsCreatesMissingLaunchStagingDir(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "missing", "launch-staging")
-	t.Setenv(envLaunchStagingDir, root)
+	t.Setenv(envStagingDir, root)
 	stubContainerBootstrapStage(t)
 
 	dir, cleanup, err := writeContainerAssets(context.Background(), nil, "", "")
@@ -756,7 +818,7 @@ func TestWriteContainerAssetsReportsLaunchStagingCreationFailure(t *testing.T) {
 	if err := os.WriteFile(root, []byte("blocked"), 0o600); err != nil {
 		t.Fatalf("seed blocked staging path: %v", err)
 	}
-	t.Setenv(envLaunchStagingDir, root)
+	t.Setenv(envStagingDir, root)
 
 	_, _, err := writeContainerAssets(context.Background(), nil, "", "")
 	if err == nil {
@@ -767,9 +829,7 @@ func TestWriteContainerAssetsReportsLaunchStagingCreationFailure(t *testing.T) {
 	}
 }
 
-func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
-	// The assets bind-mount source is daemon-resolved, so it must land under $HOME
-	// (never /tmp) for a snap docker daemon to see it at `docker run` (ward#574).
+func TestWriteContainerAssetsStagesUnderPlatformDefault(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
 	stubContainerBootstrapStage(t)
@@ -778,11 +838,54 @@ func TestWriteContainerAssetsStagesUnderHome(t *testing.T) {
 		t.Fatalf("writeContainerAssets: %v", err)
 	}
 	defer cleanup()
-	if filepath.Dir(dir) != home {
-		t.Errorf("assets dir %q must sit directly under $HOME %q, not /tmp", dir, home)
+	cache, _ := os.UserCacheDir()
+	wantRoot := defaultLaunchStagingDir(runtime.GOOS, home, cache, os.TempDir())
+	if filepath.Dir(dir) != wantRoot {
+		t.Errorf("assets dir parent = %q, want platform staging root %q", filepath.Dir(dir), wantRoot)
 	}
 	if !strings.HasPrefix(filepath.Base(dir), containerAssetsPrefix) {
 		t.Errorf("assets dir %q must carry the sweep-recognizable prefix %q", dir, containerAssetsPrefix)
+	}
+}
+
+func TestLegacyProfileRootSweepsTokenAndAssetOrphans(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	root := filepath.Join(t.TempDir(), "new-staging")
+	t.Setenv(envStagingDir, root)
+
+	staleEnv := filepath.Join(home, launchEnvFilePrefix+"stale")
+	staleAssets := filepath.Join(home, containerAssetsPrefix+"stale")
+	freshEnv := filepath.Join(home, launchEnvFilePrefix+"fresh")
+	if err := os.WriteFile(staleEnv, []byte("token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(staleAssets, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(freshEnv, []byte("active"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * containerAssetsTTL())
+	for _, path := range []string{staleEnv, staleAssets} {
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := ensureLaunchStagingDir(); err != nil {
+		t.Fatalf("ensureLaunchStagingDir: %v", err)
+	}
+	r := fakeDockerNoLiveAssetsRunner(t)
+	r.sweepStaleContainerAssets(context.Background(), root)
+
+	for _, path := range []string{staleEnv, staleAssets} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("legacy orphan %q was not removed", path)
+		}
+	}
+	if _, err := os.Stat(freshEnv); err != nil {
+		t.Fatalf("fresh legacy env-file must survive migration sweep: %v", err)
 	}
 }
 
@@ -1061,6 +1164,41 @@ func TestSweepStaleLaunchEnvFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(other); err != nil {
 		t.Error("a non-env-file must never be swept")
+	}
+}
+
+func TestStagingMountProbeUsesExactAssetsBind(t *testing.T) {
+	plan := sampleUpPlan()
+	argv, source, ok := stagingMountProbeArgv(plan)
+	if !ok {
+		t.Fatal("stagingMountProbeArgv did not find the assets mount")
+	}
+	if source != "/a" {
+		t.Fatalf("probe source = %q, want /a", source)
+	}
+	joined := strings.Join(argv, " ")
+	for _, want := range []string{
+		"run --rm --network=none",
+		"--entrypoint /bin/sh",
+		"-v /a:" + stagingMountProbeTarget + ":ro",
+		"test -r " + stagingMountProbeTarget + "/" + containerEntrypointRel,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("staging probe missing %q\n%s", want, joined)
+		}
+	}
+}
+
+func TestStagingMountErrorNamesDockerDesktopDriveSharing(t *testing.T) {
+	err := stagingMountError(`X:\.ward`, fmt.Errorf("mount denied"))
+	for _, want := range []string{
+		`X:\.ward`,
+		"drive X:",
+		"Docker Desktop Settings > Resources > File sharing",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("staging mount error missing %q:\n%s", want, err)
+		}
 	}
 }
 

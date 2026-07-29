@@ -58,6 +58,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 
 - [container.md](container.md) - ephemeral run box.
 - [container-contract.md](container-contract.md) - mounts, env, permissions.
+- [container-staging.md](container-staging.md).
 - [container-lifecycle.md](container-lifecycle.md) - launch, debug, teardown.
 - [container-substrate.md](container-substrate.md) - `/substrate` and multi-repo.
 - [demo-image.md](demo-image.md) - public demo image build.

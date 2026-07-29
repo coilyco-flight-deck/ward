@@ -410,7 +410,7 @@ func (m mountSpec) arg() string {
 // default stays least-access and every addition is an explicit opt-in.
 type mountOpts struct {
 	// AssetsDir holds ward's embedded entrypoint + doctrine, written to a
-	// per-run tmp dir and mounted read-only. Always set in practice.
+	// per-run staging dir and mounted read-only. Always set in practice.
 	AssetsDir string
 	// WardSource, when non-empty, mounts a local ward checkout (--ward-source)
 	// so the container builds ward from source instead of downloading.

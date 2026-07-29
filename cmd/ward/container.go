@@ -341,11 +341,14 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg
 	if err != nil {
 		return "", func() {}, err
 	}
-	// Land the env-file where the docker CLI can read it at `docker run`: a snap
-	// docker's private /tmp hides a /tmp path (ward#569; docs/container-env.md).
+	// Keep the credential env-file beside the run assets under the resolved,
+	// platform-correct host staging root (docs/container-staging.md).
 	dir, err := ensureLaunchStagingDir()
 	if err != nil {
 		return "", func() {}, err
+	}
+	if r != nil {
+		r.sweepStaleContainerAssets(ctx, dir)
 	}
 	sweepStaleLaunchEnvFiles(dir)
 	f, err := os.CreateTemp(dir, launchEnvFilePrefix+"*")
@@ -354,7 +357,7 @@ func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg
 	}
 	path = f.Name()
 	cleanup = func() { _ = os.Remove(path) }
-	if cherr := f.Chmod(0o600); cherr != nil {
+	if cherr := securePrivateFile(f); cherr != nil {
 		_ = f.Close()
 		cleanup()
 		return "", func() {}, fmt.Errorf("ward container: secure env-file: %w", cherr)
@@ -427,7 +430,7 @@ func writeAgentEnvFile(creds []agentsapi.EnvLine) (path string, cleanup func(), 
 	}
 	path = f.Name()
 	cleanup = func() { _ = os.Remove(path) }
-	if cherr := f.Chmod(0o600); cherr != nil {
+	if cherr := securePrivateFile(f); cherr != nil {
 		_ = f.Close()
 		cleanup()
 		return "", func() {}, fmt.Errorf("ward container: secure director env-file: %w", cherr)
@@ -440,51 +443,6 @@ func writeAgentEnvFile(creds []agentsapi.EnvLine) (path string, cleanup func(), 
 		return "", func() {}, fmt.Errorf("ward container: close director env-file: %w", cerr)
 	}
 	return path, cleanup, nil
-}
-
-// launchEnvFilePrefix is the temp-name prefix for the docker --env-file; a shared
-// const so the stale-orphan sweep can recognize leftovers written by launchStagingDir.
-const launchEnvFilePrefix = "ward-forgejo-env-"
-const envLaunchStagingDir = "WARD_LAUNCH_STAGING_DIR"
-
-// launchStagingDir is the $HOME-else-$TMPDIR dir a snap docker can reach for both
-// the --env-file and the assets bind-mount (ward#569, ward#574; docs/container-env.md).
-func launchStagingDir() string {
-	if dir := strings.TrimSpace(os.Getenv(envLaunchStagingDir)); dir != "" {
-		return dir
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return os.TempDir()
-	}
-	return home
-}
-
-func ensureLaunchStagingDir() (string, error) {
-	dir := launchStagingDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("ward container: create launch staging dir: %w", err)
-	}
-	return dir, nil
-}
-
-// sweepStaleLaunchEnvFiles best-effort removes past-TTL env-file orphans in dir;
-// $HOME is never OS-reaped and each orphan holds a live 0600 token (ward#569).
-func sweepStaleLaunchEnvFiles(dir string) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasPrefix(e.Name(), launchEnvFilePrefix) {
-			continue
-		}
-		info, ierr := e.Info()
-		if ierr != nil || time.Since(info.ModTime()) < containerAssetsTTL() {
-			continue
-		}
-		_ = os.Remove(filepath.Join(dir, e.Name()))
-	}
 }
 
 // preflightTailnet readies the ward-tailnet network for a --ts-sidecar run: a missing
@@ -729,6 +687,9 @@ func (r *Runner) sweepStaleContainerAssets(ctx context.Context, dir string) {
 		return
 	}
 	sweepStaleContainerAssets(dir, live)
+	if legacy, ok := legacyLaunchStagingDir(dir); ok {
+		sweepStaleContainerAssets(legacy, live)
+	}
 }
 
 func realStageWardBootstrapBinary(ctx context.Context, dir, wardSource, wardVersion string) error {

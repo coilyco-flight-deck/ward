@@ -811,6 +811,7 @@ type wardGlobalConfig struct {
 	} `yaml:"agent"`
 	Container struct {
 		MemoryLimit string `yaml:"memory-limit"`
+		StagingDir  string `yaml:"staging-dir"`
 	} `yaml:"container"`
 }
 

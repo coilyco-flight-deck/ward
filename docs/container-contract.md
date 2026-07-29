@@ -31,6 +31,13 @@ The contract is the boundary between the host and the run. If a value needs to
 change the container's behavior, it belongs here or in the launch docs, not in
 the repo's `.ward/ward.yaml`.
 
+## Host staging
+
+Per-run assets and the credential-bearing Docker env-file share one
+platform-correct host root. Operator overrides, Windows ACL verification,
+drive-sharing validation, and old profile-root migration are specified in
+[container-staging.md](container-staging.md).
+
 ## Context bundle
 
 `--context-bundle <path>` adds one explicit, read-only context input. Ward

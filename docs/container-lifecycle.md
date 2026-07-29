@@ -42,6 +42,10 @@ After a consumed artifact has passed the retention window, remove it only with
   Linux hosts copy the running executable. macOS and Windows packages carry a
   same-version Linux sidecar. Explicit version pins still use release assets,
   and older packages without a sidecar fall back to that download path.
+- per-run launch assets and credential env-files share the platform staging
+  root described in [container-staging.md](container-staging.md). On Windows,
+  Ward verifies both the env-file DACL and Docker Desktop's ability to read the
+  assets bind before handing credentials to the run.
 - the target repo is cloned into the workspace inside the box.
 - the selected workflow decides whether the run ends at a patch, a PR, or a
   merge.
