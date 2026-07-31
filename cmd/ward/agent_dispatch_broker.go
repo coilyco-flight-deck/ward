@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -28,8 +30,13 @@ import (
 const (
 	// envDispatchBrokerAddr carries the broker endpoint the surface dials.
 	// envDispatchBrokerToken is the per-stack nonce it echoes back.
-	envDispatchBrokerAddr  = "WARD_DISPATCH_BROKER_ADDR"
-	envDispatchBrokerToken = "WARD_DISPATCH_BROKER_TOKEN"
+	envDispatchBrokerAddr    = "WARD_DISPATCH_BROKER_ADDR"
+	envDispatchBrokerToken   = "WARD_DISPATCH_BROKER_TOKEN"
+	envAgentID               = "WARD_AGENT_ID"
+	envChildBrokerAddr       = "WARD_CHILD_DISPATCH_BROKER_ADDR"
+	envChildBrokerCapability = "WARD_CHILD_DISPATCH_BROKER_TOKEN"
+	envChildBrokerNetwork    = "WARD_CHILD_DISPATCH_BROKER_NETWORK"
+	envChildAgentID          = "WARD_CHILD_AGENT_ID"
 )
 
 var errDispatchBrokerUnavailable = errors.New("dispatch broker unavailable")
@@ -94,7 +101,7 @@ var dispatchBrokerLaunch = func(ctx context.Context, req dispatchBrokerRequest) 
 	case "qa":
 		return agentQACommand().Run(ctx, req.Argv)
 	default:
-		return fmt.Errorf("role %q is not dispatchable", req.Role)
+		return agentRunCommand().Run(ctx, req.Argv)
 	}
 }
 
@@ -140,6 +147,11 @@ const (
 	// dispatchActionForgejo carries one Ward-native Forgejo request from a
 	// credential-free director to the privileged broker (ward#1612).
 	dispatchActionForgejo = "forgejo"
+	// dispatchActionMessageSend appends one authenticated peer message.
+	dispatchActionMessageSend = "message-send"
+	// dispatchActionMessageReceive returns messages addressed to the authenticated
+	// caller, or broadcast to every agent in the broker group.
+	dispatchActionMessageReceive = "message-receive"
 )
 
 const staleLaunchCleanupResultPrefix = "stale-launch-cleared:"
@@ -171,9 +183,10 @@ type dispatchBrokerRequest struct {
 	RequestID string `json:"request_id,omitempty"`
 	// Action discriminates a launch (default/empty) from a stop control action
 	// (ward#627); an empty value is treated as launch for back-compat.
-	Action string   `json:"action,omitempty"`
-	Role   string   `json:"role"`
-	Argv   []string `json:"argv"`
+	Action  string   `json:"action,omitempty"`
+	Role    string   `json:"role"`
+	Argv    []string `json:"argv"`
+	AgentID string   `json:"agent_id,omitempty"`
 	// Target names the stop action's container: owner/repo#N (resolved by labels) or
 	// a container name. Empty on a launch request (ward#627).
 	Target    string `json:"target,omitempty"`
@@ -207,6 +220,11 @@ type dispatchBrokerRequest struct {
 	// BrokerID is stamped by the accepting service so only that Compose project
 	// reconciles the request after a restart.
 	BrokerID string `json:"broker_id,omitempty"`
+	// Message fields are used only by the two peer-message actions.
+	To           string `json:"to,omitempty"`
+	Message      string `json:"message,omitempty"`
+	Conversation string `json:"conversation,omitempty"`
+	After        string `json:"after,omitempty"`
 	// JournalPath, ResumeContainer, and Recovery are broker-local recovery state.
 	// They never cross the protocol or enter the token-stripped request journal.
 	JournalPath     string `json:"-"`
@@ -239,7 +257,8 @@ type dispatchBrokerResponse struct {
 	Body        []byte `json:"body,omitempty"`
 	ContentType string `json:"content_type,omitempty"`
 	// ErrorKind distinguishes broker authentication, network, and policy errors.
-	ErrorKind string `json:"error_kind,omitempty"`
+	ErrorKind string                  `json:"error_kind,omitempty"`
+	Messages  []dispatchBrokerMessage `json:"messages,omitempty"`
 }
 
 // dispatchStdioMu serializes the process-global os.Stdout/os.Stderr swap that keeps
@@ -300,7 +319,7 @@ func (r *Runner) serveHostDispatchBroker(ctx context.Context, ln net.Listener, r
 	}
 }
 
-func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn, requester, token string) {
+func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn, requester, token string) { //nolint:gocyclo,cyclop
 	defer func() {
 		if p := recover(); p != nil {
 			err := dispatchBrokerPanicError("request handler", p)
@@ -314,14 +333,18 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		writeDispatchBrokerResponse(conn, "", "", "", fmt.Errorf("decode request: %w", err))
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(req.Token), []byte(token)) != 1 {
+	masterCaller := subtle.ConstantTimeCompare([]byte(req.Token), []byte(token)) == 1
+	identity, ok := authenticateDispatchBrokerCaller(req.Token, token, requester)
+	if !ok {
 		writeDispatchBrokerAuthFailure(conn)
 		return
 	}
-	if req.Requester == "" {
-		req.Requester = requester
-	}
+	req.Requester = identity
 	req.BrokerID = strings.TrimSpace(os.Getenv(envDispatchBrokerID))
+	if !masterCaller && !dispatchBrokerChildActionAllowed(req) {
+		writeDispatchBrokerAuthFailure(conn)
+		return
+	}
 	if dispatchAction(req.Action) == dispatchActionPing {
 		writeDispatchBrokerResponse(conn, "", "", "", nil)
 		return
@@ -332,6 +355,14 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	}
 	if dispatchAction(req.Action) == dispatchActionList {
 		r.runDispatchBrokerList(ctx, conn, req)
+		return
+	}
+	if dispatchAction(req.Action) == dispatchActionMessageSend {
+		r.runDispatchBrokerMessageSend(conn, req)
+		return
+	}
+	if dispatchAction(req.Action) == dispatchActionMessageReceive {
+		r.runDispatchBrokerMessageReceive(conn, req)
 		return
 	}
 	if dispatchAction(req.Action) == dispatchActionForgejo {
@@ -351,6 +382,38 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(ctx, req)
 	writeDispatchBrokerResponse(conn, logPath, req.RequestID, dispatchPhaseAccepted, err)
+}
+
+func dispatchBrokerChildActionAllowed(req dispatchBrokerRequest) bool {
+	switch dispatchAction(req.Action) {
+	case dispatchActionMessageSend, dispatchActionMessageReceive:
+		return true
+	case dispatchActionLaunch:
+		return req.Role != roleEngineer && req.Role != roleQA && len(req.Argv) > 0 && req.Argv[0] == "run"
+	default:
+		return false
+	}
+}
+
+func authenticateDispatchBrokerCaller(capability, master, masterIdentity string) (string, bool) {
+	if subtle.ConstantTimeCompare([]byte(capability), []byte(master)) == 1 {
+		return emptyDefault(strings.TrimSpace(masterIdentity), "director"), true
+	}
+	agentID, _, ok := strings.Cut(capability, ":")
+	if !ok || !validDispatchAgentID(agentID) {
+		return "", false
+	}
+	expected := dispatchBrokerAgentCapability(master, agentID)
+	if subtle.ConstantTimeCompare([]byte(capability), []byte(expected)) != 1 {
+		return "", false
+	}
+	return agentID, true
+}
+
+func dispatchBrokerAgentCapability(master, agentID string) string {
+	mac := hmac.New(sha256.New, []byte(master))
+	_, _ = mac.Write([]byte(agentID))
+	return agentID + ":" + hex.EncodeToString(mac.Sum(nil))
 }
 
 func writeDispatchBrokerResponse(conn net.Conn, logPath, requestID, phase string, err error) {
@@ -417,12 +480,7 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 	if v := dispatchBrokerWardVersion(req.Argv); v != "" {
 		_, _ = fmt.Fprintf(logf, "ward dispatch broker: effective ward version for this launch: %s\n", v)
 	}
-	ref := ""
-	if len(req.Argv) >= 2 {
-		ref = req.Argv[1]
-	}
-	_, _ = fmt.Fprintf(logf, "ward dispatch broker: this log captures the broker wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`\n",
-		ref)
+	_, _ = fmt.Fprintln(logf, dispatchBrokerLaunchLogHint(req))
 	_, _ = fmt.Fprintf(logf, "ward dispatch broker: broker accepted launch request (request id %s; artifact %s)\n", paths.RequestID, paths.Dir)
 	restore := func() {}
 	if !dispatchBrokerServiceMode() {
@@ -434,6 +492,19 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 	started := make(chan struct{})
 	go r.handleHostDispatchBrokerLaunch(ctx, req, paths, logf, restore, lock, started)
 	return waitForDispatchBrokerLaunchStart(ctx, paths.ConsolePath, started)
+}
+
+func dispatchBrokerLaunchLogHint(req dispatchBrokerRequest) string {
+	if (req.Role == roleEngineer || req.Role == roleQA) && len(req.Argv) >= 2 {
+		return fmt.Sprintf(
+			"ward dispatch broker: this log captures the broker wrapper only; in-container engineer console/reap logs drain separately and are readable with `ward agent logs %s`",
+			req.Argv[1],
+		)
+	}
+	return fmt.Sprintf(
+		"ward dispatch broker: this log captures the broker wrapper only; generic peer id=%s",
+		dispatchBrokerLaunchAgentID(req),
+	)
 }
 
 //nolint:funlen,gocognit,gocyclo,cyclop // lifecycle branches
@@ -527,7 +598,11 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 		resultErr = err
 		return
 	}
-	fmt.Fprintln(os.Stderr, "ward dispatch broker: broker launch completed; container visibility was confirmed, but engineer harness startup remains in-container")
+	if req.Role == roleEngineer || req.Role == roleQA {
+		fmt.Fprintln(os.Stderr, "ward dispatch broker: broker launch completed; container visibility was confirmed, but engineer harness startup remains in-container")
+	} else {
+		fmt.Fprintln(os.Stderr, "ward dispatch broker: broker launch command completed; harness startup remains in-container")
+	}
 	if err := updateDispatchJournal(req.JournalPath, dispatchPhaseVisible, "", dispatchOutcomeInProgress, nil); err != nil {
 		resultErr = fmt.Errorf("dispatch broker: persist visible phase: %w", err)
 		return
@@ -566,11 +641,31 @@ func runDispatchBrokerChild(ctx context.Context, req dispatchBrokerRequest, logf
 		envDispatchRequestID+"="+req.RequestID,
 		envDispatchJournalPath+"="+req.JournalPath,
 	)
+	agentID := dispatchBrokerLaunchAgentID(req)
+	if master := strings.TrimSpace(os.Getenv(envDispatchBrokerToken)); master != "" {
+		env = append(env,
+			envChildBrokerAddr+"="+dispatchBrokerServiceAddress,
+			envChildBrokerCapability+"="+dispatchBrokerAgentCapability(master, agentID),
+			envChildBrokerNetwork+"="+strings.TrimSpace(req.BrokerID)+"_default",
+			envChildAgentID+"="+agentID,
+		)
+	}
 	if req.ResumeContainer != "" {
 		env = append(env, envDispatchResumeContainer+"="+req.ResumeContainer)
 	}
 	cmd.Env = env
 	return cmd.Run()
+}
+
+func dispatchBrokerLaunchAgentID(req dispatchBrokerRequest) string {
+	if id := strings.TrimSpace(req.AgentID); id != "" {
+		return id
+	}
+	id := strings.TrimSpace(req.RequestID)
+	if len(id) > 12 {
+		id = id[:12]
+	}
+	return strings.Trim(strings.TrimSpace(req.Role)+"-"+id, "-")
 }
 
 func stringSliceContains(values []string, want string) bool {
@@ -618,7 +713,7 @@ func (r *Runner) finishDispatchBrokerLaunchFailure(ctx context.Context, req disp
 	// summary cannot say in-progress during recovery.
 	finalizeDispatchArtifact(paths, req, paths.ConsolePath, err)
 	*finalized = true
-	if notify {
+	if notify && (req.Role == roleEngineer || req.Role == roleQA) {
 		dispatchFailedDispatchLaunchStartHook()
 		r.commentDispatchLaunchError(ctx, req, paths.ConsolePath, err)
 	}
@@ -1260,10 +1355,14 @@ func validateDispatchBrokerRequest(req dispatchBrokerRequest) error {
 		return validateDispatchBrokerLogs(req)
 	case dispatchActionForgejo:
 		return validateDispatchBrokerForgejo(req)
+	case dispatchActionMessageSend:
+		return validateDispatchBrokerMessageSend(req)
+	case dispatchActionMessageReceive:
+		return validateDispatchBrokerMessageReceive(req)
 	case dispatchActionLaunch:
 		return validateDispatchBrokerLaunch(req)
 	default:
-		return fmt.Errorf("dispatch broker: action %q refused (allowed: launch, stop, list, logs, ping, forgejo)", req.Action)
+		return fmt.Errorf("dispatch broker: action %q refused", req.Action)
 	}
 }
 
@@ -1356,28 +1455,104 @@ func validateDispatchBrokerList(req dispatchBrokerRequest) error {
 
 // validateDispatchBrokerLaunch is the launch-request shape (the original narrow API):
 // an engineer/QA role, an argv led by that role, and an issue ref (ward#378).
-func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
+func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error { //nolint:gocyclo,cyclop
 	if req.Target != "" {
 		return fmt.Errorf("dispatch broker: launch takes no stop target, got %q", req.Target)
 	}
+	if !validComposedRole(req.Role) {
+		return fmt.Errorf("dispatch broker: invalid role %q", req.Role)
+	}
+	if req.AgentID != "" && !validDispatchAgentID(req.AgentID) {
+		return fmt.Errorf("dispatch broker: invalid agent id %q", req.AgentID)
+	}
+	expectedVerb := req.Role
 	if req.Role != "engineer" && req.Role != "qa" {
-		return fmt.Errorf("dispatch broker: role %q refused (allowed: engineer, qa)", req.Role)
+		expectedVerb = "run"
 	}
-	if len(req.Argv) == 0 || req.Argv[0] != req.Role {
-		return fmt.Errorf("dispatch broker: argv must begin with role %q", req.Role)
-	}
-	if len(req.Argv) < 2 {
-		return fmt.Errorf("dispatch broker: missing issue ref")
+	if len(req.Argv) == 0 || req.Argv[0] != expectedVerb {
+		return fmt.Errorf("dispatch broker: argv refused: must begin with %q", expectedVerb)
 	}
 	for _, arg := range req.Argv {
 		if strings.ContainsRune(arg, '\x00') {
 			return fmt.Errorf("dispatch broker: argv contains NUL")
 		}
 	}
+	if req.Role != "engineer" && req.Role != "qa" {
+		return validateDispatchBrokerRunArgv(req)
+	}
+	if len(req.Argv) < 2 {
+		return fmt.Errorf("dispatch broker: missing issue ref")
+	}
 	if _, err := parseAgentIssueRef(req.Argv[1]); err != nil {
 		return fmt.Errorf("dispatch broker: %s dispatch requires an issue ref, got %q", req.Role, req.Argv[1])
 	}
 	return validateDispatchBrokerArgv(req.Role, req.Argv[2:])
+}
+
+var composedRolePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+var dispatchAgentIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+
+func validComposedRole(role string) bool {
+	return role == strings.TrimSpace(role) && composedRolePattern.MatchString(role)
+}
+
+func validDispatchAgentID(agentID string) bool {
+	return agentID == strings.TrimSpace(agentID) && dispatchAgentIDPattern.MatchString(agentID)
+}
+
+func validateDispatchBrokerRunArgv(req dispatchBrokerRequest) error { //nolint:gocognit,gocyclo,cyclop
+	if len(req.Argv) < 2 {
+		return fmt.Errorf("dispatch broker: generic run requires work text")
+	}
+	valueFlags := map[string]bool{
+		"--role": true, "--agent-id": true, "--repo": true, "--harness": true,
+		"--agent": true, "--config": true, "--image": true, "--tag": true,
+		"--ward-version": true, "--context-bundle": true,
+	}
+	boolFlags := map[string]bool{"--print": true, "--no-pull": true}
+	sawWork := false
+	roleValue := ""
+	agentIDValue := ""
+	for i := 1; i < len(req.Argv); i++ {
+		arg := req.Argv[i]
+		if !strings.HasPrefix(arg, "-") {
+			sawWork = true
+			continue
+		}
+		if valueFlags[arg] {
+			i++
+			if i >= len(req.Argv) || req.Argv[i] == "" {
+				return fmt.Errorf("dispatch broker: run flag %s needs a value", arg)
+			}
+			switch arg {
+			case "--role":
+				if roleValue != "" {
+					return fmt.Errorf("dispatch broker: run repeats --role")
+				}
+				roleValue = req.Argv[i]
+			case "--agent-id":
+				if agentIDValue != "" {
+					return fmt.Errorf("dispatch broker: run repeats --agent-id")
+				}
+				agentIDValue = req.Argv[i]
+			}
+			continue
+		}
+		if boolFlags[arg] {
+			continue
+		}
+		return fmt.Errorf("dispatch broker: run flag %s is not approved", arg)
+	}
+	if !sawWork {
+		return fmt.Errorf("dispatch broker: generic run requires work text")
+	}
+	if roleValue != req.Role {
+		return fmt.Errorf("dispatch broker: run --role %q does not match request role %q", roleValue, req.Role)
+	}
+	if agentIDValue != req.AgentID {
+		return fmt.Errorf("dispatch broker: run --agent-id %q does not match request agent id %q", agentIDValue, req.AgentID)
+	}
+	return nil
 }
 
 // runDispatchBrokerLogs resolves one explicit run, or the current Compose group
@@ -1570,9 +1745,13 @@ func dispatchBrokerForwardedLine(argv []string, logPath string) string {
 	if v := dispatchBrokerWardVersion(argv); v != "" {
 		base += fmt.Sprintf(" (effective ward %s)", v)
 	}
-	base += " (container visibility and engineer harness startup are pending)"
+	if len(argv) > 0 && argv[0] == "run" {
+		base += " (generic peer startup is pending)"
+	} else {
+		base += " (container visibility and engineer harness startup are pending)"
+	}
 	ref := ""
-	if len(argv) >= 2 {
+	if len(argv) >= 2 && argv[0] != "run" {
 		ref = strings.TrimSpace(argv[1])
 	}
 	if path := strings.TrimSpace(logPath); path != "" {

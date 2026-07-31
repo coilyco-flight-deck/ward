@@ -54,6 +54,7 @@ in-container entrypoint, not by hand. See docs/agent.md for the contributor surf
 			containerBrokerCommand(),
 			containerDispatchBrokerCommand(),
 			containerDispatchBrokerProbeCommand(),
+			containerDispatchBrokerCapabilityCommand(),
 			containerForwardCommand(),
 			containerDrainExitCommand(),
 		},
@@ -177,7 +178,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// The per-container machine id rides the ward.machine label. Director surface
 	// containers use a short dictatable id suffix instead of the machine id.
 	machine := randHex()
-	return upPlan{
+	plan := upPlan{
 		Image:       imageRef(c.String("image"), c.String("tag")),
 		Name:        containerRoleName(role, mode, repo, 0, containerNameSuffix(role, machine)),
 		Role:        role,
@@ -211,7 +212,14 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		ConfigEnv:           configEnv,
 		ContextBundle:       contextBundle.Root,
 		ContextTools:        contextBundle.HasTools,
-	}, nil
+	}
+	if addr := strings.TrimSpace(os.Getenv(envChildBrokerAddr)); addr != "" {
+		plan.DispatchBrokerAddr = addr
+		plan.DispatchBrokerToken = strings.TrimSpace(os.Getenv(envChildBrokerCapability))
+		plan.DispatchBrokerNetwork = strings.TrimSpace(os.Getenv(envChildBrokerNetwork))
+		plan.AgentID = strings.TrimSpace(os.Getenv(envChildAgentID))
+	}
+	return plan, nil
 }
 
 func resolveLaunchWardVersion(c *cli.Command) (string, string, error) {

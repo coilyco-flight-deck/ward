@@ -2733,7 +2733,7 @@ func TestStartHostDispatchBrokerRequestDecisionArtifactShape(t *testing.T) {
 
 	req := dispatchBrokerRequest{
 		Role:      "engineer",
-		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1469", "--harness", "codex"},
+		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1469", "--harness", "codex", "--branch", "ward-1469-existing"},
 		Requester: "director-codex-host",
 		Token:     "nonce-shape",
 	}

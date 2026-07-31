@@ -508,6 +508,11 @@ type upPlan struct {
 	// DispatchBrokerToken exports WARD_DISPATCH_BROKER_TOKEN, the per-launch secret
 	// the surface echoes back so the broker service authenticates the dial.
 	DispatchBrokerToken string
+	// DispatchBrokerNetwork joins a broker-launched sibling to the broker's
+	// Compose network so the broker DNS name remains reachable.
+	DispatchBrokerNetwork string
+	// AgentID is the broker-authenticated peer identity exposed to the harness.
+	AgentID string
 	// DispatchRequestID is the broker-minted idempotency key carried as an env
 	// value and Docker label on the sibling container.
 	DispatchRequestID string
@@ -883,7 +888,7 @@ func (p upPlan) correlationEnv() map[string]string {
 
 // wardEnv is the non-secret WARD_* config the entrypoint reads. Everything
 // here is safe to print and to record; the token never appears.
-func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
+func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop,gocognit,funlen
 	topo := currentContainerTopology()
 	rec := lookupAgent(p.Mode).Record() // registry data reads (Phase 3, ward#418)
 	env := map[string]string{
@@ -949,6 +954,9 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop
 	if p.DispatchBrokerAddr != "" {
 		env[envDispatchBrokerAddr] = p.DispatchBrokerAddr
 		env[envDispatchBrokerToken] = p.DispatchBrokerToken
+	}
+	if p.AgentID != "" {
+		env[envAgentID] = p.AgentID
 	}
 	if p.DispatchRequestID != "" {
 		env[envDispatchRequestID] = p.DispatchRequestID
@@ -1053,6 +1061,8 @@ func dockerArgvHead(verb string, p upPlan) []string {
 	// Tailnet route (mutually exclusive, off by default): --host-net shares the host's
 	// namespace (ward#330), --ts-sidecar joins the shared ward-tailnet net (ward#349).
 	switch {
+	case p.DispatchBrokerNetwork != "":
+		argv = append(argv, "--network="+p.DispatchBrokerNetwork)
 	case p.TSSidecar:
 		argv = append(argv, "--network="+tailnetNetwork())
 	case p.HostNet:

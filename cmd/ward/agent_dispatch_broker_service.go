@@ -77,6 +77,30 @@ func containerDispatchBrokerProbeCommand() *cli.Command {
 	}
 }
 
+func containerDispatchBrokerCapabilityCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "dispatch-broker-capability",
+		Hidden:    true,
+		Usage:     "Mint a peer capability from inside the supervised broker service.",
+		ArgsUsage: "<agent-id>",
+		Action: func(_ context.Context, c *cli.Command) error {
+			if strings.TrimSpace(os.Getenv(envContainerService)) != dispatchBrokerService {
+				return fmt.Errorf("ward dispatch broker capability: available only inside the broker service")
+			}
+			agentID := strings.TrimSpace(c.Args().First())
+			if !validDispatchAgentID(agentID) {
+				return fmt.Errorf("ward dispatch broker capability: invalid agent id %q", agentID)
+			}
+			master := strings.TrimSpace(os.Getenv(envDispatchBrokerToken))
+			if master == "" {
+				return fmt.Errorf("ward dispatch broker capability: %s is not set", envDispatchBrokerToken)
+			}
+			writef(agentCommandWriter(c), "%s\n", dispatchBrokerAgentCapability(master, agentID))
+			return nil
+		},
+	}
+}
+
 func runContainerDispatchBroker(ctx context.Context, c *cli.Command) error {
 	r := newRunner()
 	token := strings.TrimSpace(os.Getenv(envDispatchBrokerToken))

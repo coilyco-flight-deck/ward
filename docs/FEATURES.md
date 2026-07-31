@@ -23,10 +23,9 @@ Inventory of what `ward` ships today.
 - Read-only Forgejo issue-comment guard.
 - Reservation and dispatch comments clean up after release.
 - Harness install hooks for claude, codex, goose, and opencode.
-- Provider-neutral, read-only context-bundle handoff with strict role and agent
-  binding, selected home projection, optional appended tools, and no authority
-  fields. See [context-bundle.md](context-bundle.md).
-- Core tracker and forge adapters do not depend on AOSguard or generated operator leaves.
+- Read-only context bundles with role and agent binding, home projection, and
+  no authority fields. See [context-bundle.md](context-bundle.md).
+- Tracker and forge adapters do not depend on AOSguard.
 - Launch-intent vs running-engineer split in list, dispatch-health, reap, and director.
 - Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
 - Open-PR backpressure gate.
@@ -36,9 +35,10 @@ Inventory of what `ward` ships today.
 - Compose dispatch broker with durable IDs, restart recovery, sibling launch
   isolation, and credential-free director Forgejo RPC. See
   [agent-dispatch-broker.md](agent-dispatch-broker.md).
+- Generic read-only peers and authenticated broker messages. See
+  [agent-peer-collaboration.md](agent-peer-collaboration.md).
 - PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
-- PR lifecycle close/reopen/recovery tools.
-- PR repair classification.
+- PR lifecycle close/reopen/recovery tools and repair classification.
 - Claude tool-failure buffer and secret-free drained skill-use summaries. See [agent-observability.md](agent-observability.md).
 - Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
 - `ward agent issue create` files a Forgejo issue through the read-only

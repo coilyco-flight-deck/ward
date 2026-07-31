@@ -19,6 +19,9 @@ commands:
   test-cmd:
     run: go test ./cmd/ward
     description: Run Ward's main command package tests.
+  test-agent-framework:
+    run: go test ./cmd/ward -run AgentFramework
+    description: Run the focused generic-agent and direct-message framework tests.
   test-runtime-config:
     run: go test ./cmd/ward -run RuntimeConfig
     description: Run the focused typed runtime configuration and role-independence tests.

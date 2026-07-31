@@ -1,7 +1,7 @@
 [tool.agentic-os.documentation-layout]
 readme_max_lines = 200
 readme_max_chars = 14000
-excludes = []
+excludes = ["docs/agent-flags.md"]
 
 [tool.agentic-os.code-comments]
 excludes = [

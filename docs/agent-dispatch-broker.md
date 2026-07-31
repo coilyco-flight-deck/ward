@@ -15,8 +15,7 @@ same Compose application.
 - The brokered request carries the caller's resolved ward version.
 - A released caller binary forwards its own version when no explicit
   `--ward-version` pin is set.
-- The brokered launch output reports the effective ward version it will use.
-- The reservation seed context records that same effective version.
+- Brokered output and reservation seed context record the effective Ward version.
 - Docker supervises the broker with `restart: unless-stopped`. Closing the
   director or its terminal removes only the director service. Ward does not run
   `compose down`, so the broker remains supervised.
@@ -43,10 +42,10 @@ more from a successful forward than it promises:
 2. **Broker Ward launch started**: the broker-owned `ward agent` child process
    has begun. This is the detach point and the successful response
    boundary for a forwarded engineer launch.
-3. **Container visible**: later broker launch work created an engineer container
-   that `ward agent list` can observe. It is recorded in the dispatch artifact;
-   it is not awaited by the forwarding director command.
-4. **Engineer harness started**: the harness starts inside that container. It
+3. **Container visible**: later broker launch work created a sibling container.
+   Engineer visibility remains recorded in the dispatch artifact and exposed by
+   `ward agent list`. Generic runs keep their normal container identity.
+4. **Harness started**: the harness starts inside that container. It
    is a still-later in-container milestone, visible through `ward agent logs`,
    and is never implied by broker acceptance or container visibility.
 
@@ -69,6 +68,7 @@ command in the foreground.
 ## See also
 
 - [agent-director.md](agent-director.md) - the read-only director lane.
+- [agent-peer-collaboration.md](agent-peer-collaboration.md) - generic peers and messages.
 - [agent-dispatch-recovery.md](agent-dispatch-recovery.md) - request journals
   and restart decisions.
 - [agent-ops.md](agent-ops.md) - the brokered operational surfaces.

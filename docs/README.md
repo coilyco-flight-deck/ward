@@ -39,13 +39,14 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [agent-roster.md](agent-roster.md) - generated roster.
 - [agent-flags.md](agent-flags.md) - generated flag tree.
 - [agent-roles.md](agent-roles.md) - engineer, director, qa.
-- [agent-harnesses.md](agent-harnesses.md) - claude, codex, goose, opencode.
+- [agent-harnesses.md](agent-harnesses.md).
+- [agent-peer-collaboration.md](agent-peer-collaboration.md).
 - [context-bundle.md](context-bundle.md) - context and tool handoff.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch, preflight, reservation.
 - [agent-check-placement.md](agent-check-placement.md) - guard matrix.
 - [agent-director.md](agent-director.md) - read-only director lane.
 - [agent-ops.md](agent-ops.md) - logs, stop, list, reap.
-- [agent-reservation-cache.md](agent-reservation-cache.md) - cache-only reservation cleanup.
+- [agent-reservation-cache.md](agent-reservation-cache.md) - reservation cache.
 - [agent-dispatch-health.md](agent-dispatch-health.md) - status and alert lines.
 - [agent-dispatch-broker.md](agent-dispatch-broker.md) - brokered launch contract.
 - [agent-pr-workflow.md](agent-pr-workflow.md) - merge, status, wait, logs, runs, rerun.
