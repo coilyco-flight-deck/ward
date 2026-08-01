@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +12,9 @@ import (
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/gittree"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
 	"github.com/urfave/cli/v3"
 )
 
@@ -112,12 +118,15 @@ func TestRunExecGateIntegration(t *testing.T) {
 
 	t.Run("clean synced tree passes", func(t *testing.T) {
 		repo := newSyncedRepo(t)
-		state, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		state, ci, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
 		if err != nil {
 			t.Fatalf("clean tree refused: %v", err)
 		}
 		if used {
 			t.Fatalf("override should be false on a clean pass")
+		}
+		if ci != nil {
+			t.Fatalf("named branch unexpectedly captured CI context: %+v", ci)
 		}
 		if !state.Clean {
 			t.Fatalf("expected clean state, got %+v", state)
@@ -127,12 +136,15 @@ func TestRunExecGateIntegration(t *testing.T) {
 	t.Run("dirt outside ward.yaml passes and captures status", func(t *testing.T) {
 		repo := newSyncedRepo(t)
 		writeFile(t, filepath.Join(repo, "scratch.txt"), "dirty\n")
-		state, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		state, ci, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
 		if err != nil {
 			t.Fatalf("dirt outside config refused: %v", err)
 		}
 		if used {
 			t.Fatalf("override should be false when dirt is outside config")
+		}
+		if ci != nil {
+			t.Fatalf("named dirty branch unexpectedly captured CI context: %+v", ci)
 		}
 		if state.Status == "" {
 			t.Fatalf("expected captured working-tree status for the audit row")
@@ -142,7 +154,7 @@ func TestRunExecGateIntegration(t *testing.T) {
 	t.Run("dirty ward.yaml refuses without override", func(t *testing.T) {
 		repo := newSyncedRepo(t)
 		writeFile(t, filepath.Join(repo, ".ward", "ward.yaml"), "commands: {}\n# dirty\n")
-		_, _, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		_, _, _, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
 		if err == nil {
 			t.Fatalf("expected refusal when ward.yaml is dirty")
 		}
@@ -151,12 +163,15 @@ func TestRunExecGateIntegration(t *testing.T) {
 	t.Run("override bypasses a dirty ward.yaml", func(t *testing.T) {
 		repo := newSyncedRepo(t)
 		writeFile(t, filepath.Join(repo, ".ward", "ward.yaml"), "commands: {}\n# dirty\n")
-		state, used, err := runExecGate(rootCmd(true), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		state, ci, used, err := runExecGate(rootCmd(true), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
 		if err != nil {
 			t.Fatalf("override should bypass the gate: %v", err)
 		}
 		if !used {
 			t.Fatalf("expected overrideUsed=true when the gate was bypassed")
+		}
+		if ci != nil {
+			t.Fatalf("override unexpectedly captured CI context: %+v", ci)
 		}
 		if state.Status == "" {
 			t.Fatalf("expected captured working-tree status under override")
@@ -175,15 +190,132 @@ func TestRunExecGateIntegration(t *testing.T) {
 		git(t, repo, "add", ".")
 		git(t, repo, "commit", "-m", "seed")
 
-		state, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.surface-check", true)
+		state, ci, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.surface-check", true)
 		if err != nil {
 			t.Fatalf("read-only surface-check refused: %v", err)
 		}
 		if used {
 			t.Fatalf("override should be false on the read-only pass")
 		}
+		if ci != nil {
+			t.Fatalf("read-only named branch unexpectedly captured CI context: %+v", ci)
+		}
 		if !state.Clean {
 			t.Fatalf("expected clean read-only state, got %+v", state)
+		}
+	})
+
+	t.Run("detached Forgejo pull-request merge passes with audited attribution", func(t *testing.T) {
+		repo, mergeSHA := newDetachedForgejoPRRepo(t)
+		state, ci, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err != nil {
+			t.Fatalf("validated Forgejo checkout refused: %v", err)
+		}
+		if used {
+			t.Fatal("detached CI pass must not use the dirty-tree override")
+		}
+		if !state.Clean || state.Branch != "HEAD" {
+			t.Fatalf("detached CI state = %+v, want clean detached pass", state)
+		}
+		if ci == nil || ci.Provider != "forgejo-actions" || ci.PullRequest != "42" || ci.HeadSHA != mergeSHA || ci.RunID != "1234" {
+			t.Fatalf("CI context = %+v, want immutable PR and run attribution", ci)
+		}
+		rec := &audit.Record{}
+		applyExecGateAudit(rec, state, ci, used)
+		if rec.CI != ci {
+			t.Fatalf("audit CI context = %+v, want validated context", rec.CI)
+		}
+	})
+
+	t.Run("exec leaf runs and serializes detached CI attribution", func(t *testing.T) {
+		repo, mergeSHA := newDetachedForgejoPRRepo(t)
+		auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
+		runner := &Runner{
+			Runner: &shell.Runner{Stdout: io.Discard, Stderr: io.Discard, Stdin: strings.NewReader("")},
+			Audit:  audit.NewWriter(auditPath),
+		}
+		cfg := &repocfg.Config{Path: filepath.Join(repo, ".ward", "ward.yaml")}
+		command := repocfg.Command{Name: "test", Argv: []string{"true"}}
+		if err := runner.runExecLeaf(context.Background(), rootCmd(false), cfg, command); err != nil {
+			t.Fatalf("runExecLeaf: %v", err)
+		}
+		body, err := os.ReadFile(auditPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err := audit.ReadAll(bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 || rows[0].Decision != audit.DecisionAccept || rows[0].CI == nil || rows[0].CI.HeadSHA != mergeSHA {
+			t.Fatalf("audit rows = %+v, want one accepted row with detached HEAD attribution", rows)
+		}
+	})
+
+	t.Run("local detached checkout refuses even with override", func(t *testing.T) {
+		repo := newSyncedRepo(t)
+		git(t, repo, "checkout", "--detach", "HEAD")
+		clearForgejoCIEnv(t)
+		_, _, _, err := runExecGate(rootCmd(true), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err == nil || !strings.Contains(err.Error(), `CI must equal "true"`) {
+			t.Fatalf("local detached checkout error = %v, want missing CI evidence", err)
+		}
+	})
+
+	t.Run("detached Forgejo checkout refuses missing metadata", func(t *testing.T) {
+		repo, _ := newDetachedForgejoPRRepo(t)
+		t.Setenv("GITHUB_RUN_ID", "")
+		_, _, _, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err == nil || !strings.Contains(err.Error(), "GITHUB_RUN_ID is missing") {
+			t.Fatalf("missing metadata error = %v", err)
+		}
+	})
+
+	t.Run("detached Forgejo checkout refuses inconsistent metadata", func(t *testing.T) {
+		repo, _ := newDetachedForgejoPRRepo(t)
+		t.Setenv("GITHUB_HEAD_REF", "different-head")
+		_, _, _, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err == nil || !strings.Contains(err.Error(), "event base/head refs") {
+			t.Fatalf("inconsistent metadata error = %v", err)
+		}
+	})
+
+	t.Run("detached Forgejo checkout refuses inconsistent merge parents", func(t *testing.T) {
+		repo, _ := newDetachedForgejoPRRepo(t)
+		eventPath := os.Getenv("GITHUB_EVENT_PATH")
+		event, err := readForgejoPREvent(eventPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		event.PullRequest.Head.SHA = strings.Repeat("a", 40)
+		body, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, eventPath, string(body))
+		_, _, _, err = runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err == nil || !strings.Contains(err.Error(), "parents do not match") {
+			t.Fatalf("inconsistent parent error = %v", err)
+		}
+	})
+
+	t.Run("detached Forgejo checkout must stay clean", func(t *testing.T) {
+		repo, _ := newDetachedForgejoPRRepo(t)
+		writeFile(t, filepath.Join(repo, "scratch.txt"), "dirty\n")
+		_, _, _, err := runExecGate(rootCmd(true), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err == nil || !strings.Contains(err.Error(), "dirty working tree") {
+			t.Fatalf("dirty detached checkout error = %v", err)
+		}
+	})
+
+	t.Run("ordinary branch push ignores detached CI metadata", func(t *testing.T) {
+		repo := newSyncedRepo(t)
+		clearForgejoCIEnv(t)
+		t.Setenv("FORGEJO_ACTIONS", "true")
+		t.Setenv("GITHUB_SHA", "inconsistent-on-purpose")
+		state, ci, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err != nil || used || ci != nil || !state.Clean {
+			t.Fatalf("named branch result state=%+v ci=%+v override=%v err=%v", state, ci, used, err)
 		}
 	})
 }
@@ -209,6 +341,74 @@ func newSyncedRepo(t *testing.T) string {
 	git(t, work, "commit", "-m", "seed")
 	git(t, work, "push", "-u", "origin", "HEAD")
 	return work
+}
+
+func newDetachedForgejoPRRepo(t *testing.T) (string, string) {
+	t.Helper()
+	repo := newSyncedRepo(t)
+	baseRef := gitText(t, repo, "branch", "--show-current")
+	baseSHA := gitText(t, repo, "rev-parse", "HEAD")
+	git(t, repo, "checkout", "-b", "feature/ci")
+	writeFile(t, filepath.Join(repo, "feature.txt"), "feature\n")
+	git(t, repo, "add", "feature.txt")
+	git(t, repo, "commit", "-m", "feature")
+	headSHA := gitText(t, repo, "rev-parse", "HEAD")
+	git(t, repo, "checkout", baseRef)
+	git(t, repo, "merge", "--no-ff", "feature/ci", "-m", "synthetic pull-request merge")
+	mergeSHA := gitText(t, repo, "rev-parse", "HEAD")
+	git(t, repo, "remote", "set-url", "origin", "https://forgejo.example/owner/repo.git")
+	git(t, repo, "checkout", "--detach", mergeSHA)
+
+	event := map[string]any{
+		"repository": map[string]any{"full_name": "owner/repo"},
+		"sender":     map[string]any{"login": "automation"},
+		"pull_request": map[string]any{
+			"base": map[string]any{"ref": baseRef, "sha": baseSHA},
+			"head": map[string]any{"ref": "feature/ci", "sha": headSHA},
+		},
+	}
+	body, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventPath := filepath.Join(t.TempDir(), "event.json")
+	writeFile(t, eventPath, string(body))
+
+	for key, value := range map[string]string{
+		"CI":                 "true",
+		"FORGEJO_ACTIONS":    "true",
+		"GITHUB_ACTIONS":     "true",
+		"GITHUB_ACTOR":       "automation",
+		"GITHUB_BASE_REF":    baseRef,
+		"GITHUB_EVENT_NAME":  "pull_request",
+		"GITHUB_EVENT_PATH":  eventPath,
+		"GITHUB_HEAD_REF":    "feature/ci",
+		"GITHUB_JOB":         "unit",
+		"GITHUB_REF":         "refs/pull/42/merge",
+		"GITHUB_REPOSITORY":  "owner/repo",
+		"GITHUB_RUN_ATTEMPT": "2",
+		"GITHUB_RUN_ID":      "1234",
+		"GITHUB_RUN_NUMBER":  "56",
+		"GITHUB_SERVER_URL":  "https://forgejo.example",
+		"GITHUB_SHA":         mergeSHA,
+		"GITHUB_WORKFLOW":    "test",
+		"GITHUB_WORKSPACE":   repo,
+	} {
+		t.Setenv(key, value)
+	}
+	return repo, mergeSHA
+}
+
+func clearForgejoCIEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"CI", "FORGEJO_ACTIONS", "GITHUB_ACTIONS", "GITHUB_ACTOR", "GITHUB_BASE_REF",
+		"GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH", "GITHUB_HEAD_REF", "GITHUB_JOB", "GITHUB_REF",
+		"GITHUB_REPOSITORY", "GITHUB_RUN_ATTEMPT", "GITHUB_RUN_ID", "GITHUB_RUN_NUMBER",
+		"GITHUB_SERVER_URL", "GITHUB_SHA", "GITHUB_WORKFLOW", "GITHUB_WORKSPACE",
+	} {
+		t.Setenv(key, "")
+	}
 }
 
 // rootCmd returns a parsed root *cli.Command carrying audit-override-dirty

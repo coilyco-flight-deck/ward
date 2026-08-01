@@ -22,6 +22,8 @@ The trail is per-repo and records one row per guarded invocation.
 - the verb or command.
 - the timestamp.
 - the final result.
+- for an accepted detached Forgejo Actions checkout, the typed `ci` object with
+  repository, pull-request, commit, workflow, actor, and run attribution.
 
 ## See also
 

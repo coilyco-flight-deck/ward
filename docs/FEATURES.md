@@ -4,14 +4,13 @@ Inventory of what `ward` ships today.
 
 ## Core gate
 
-- `ward exec` - gated repo dev verbs.
-- `ward audit` - append-only audit trail.
+- `ward exec` - gated repo verbs, including validated detached Forgejo CI merges.
+- `ward audit` - append-only trail.
 - `ward git` - audited git.
-- `ward setup` - first-run local config bootstrap + policy check.
-- `ward doctor` - runtime config validation.
-- `source-doc-refs` - source-comment documentation path validation.
-- `.ward/ward.yaml` schema in [ward-yaml.md](ward-yaml.md);
-  [Windows tests](windows-development.md).
+- `ward setup` - local bootstrap + policy check.
+- `ward doctor` - config validation.
+- `source-doc-refs` - source-comment doc-path validation.
+- [`.ward/ward.yaml` schema](ward-yaml.md) and [Windows tests](windows-development.md).
 
 ## Agent surface
 

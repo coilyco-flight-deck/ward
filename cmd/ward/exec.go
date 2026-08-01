@@ -44,9 +44,10 @@ func execCommand() *cli.Command {
 			"Per-repo command declared in %s. Expands to a pre-validated argv "+
 				"and runs with cwd set to %s. Every argv token is checked against "+
 				"cli-guard's shell-metacharacter policy before execve. Repo verbs "+
-				"require a clean+synced tree with the declaring ward.yaml committed "+
-				"so the audit row's argv can be reconstructed from git history; "+
-				"--audit-override-dirty bypasses the gate with an audit tag.",
+				"require a clean+synced named branch, or a clean detached Forgejo "+
+				"Actions pull-request merge whose CI and Git evidence agree. The "+
+				"declaring ward.yaml stays committed so the audit row is reconstructable; "+
+				"--audit-override-dirty bypasses named-branch refusals with an audit tag.",
 			cfg.Path, repoRoot,
 		),
 	}
@@ -68,9 +69,10 @@ func buildExecLeaf(cfg *repocfg.Config, rc repocfg.Command) *cli.Command {
 			"Per-repo command declared in %s.\nExpands to: %s\nRuns in: %s\n\n"+
 				"Runs through cli-guard's verb pipeline: every argv token is "+
 				"validated against the shell-metacharacter policy, one audit row "+
-				"is appended, and the clean+synced tree gate refuses if the "+
-				"declaring ward.yaml is uncommitted or the branch is out of sync "+
-				"(--audit-override-dirty bypasses with audit_override=true).",
+				"is appended, and the repo gate requires either a clean+synced "+
+				"named branch or a clean, validated Forgejo Actions pull-request "+
+				"merge checkout. It refuses an uncommitted ward.yaml or stale branch "+
+				"(--audit-override-dirty bypasses named-branch refusals with audit_override=true).",
 			cfg.Path, strings.Join(rc.Argv, " "), repoRoot,
 		),
 		Action: func(ctx context.Context, c *cli.Command) error {
@@ -86,6 +88,7 @@ func (r *Runner) runExecLeaf(ctx context.Context, c *cli.Command, cfg *repocfg.C
 	verbName := "repo." + rc.Name
 	var (
 		capturedState *gittree.State
+		capturedCI    *audit.CIContext
 		overrideUsed  bool
 	)
 	spec := verb.Spec{
@@ -100,21 +103,16 @@ func (r *Runner) runExecLeaf(ctx context.Context, c *cli.Command, cfg *repocfg.C
 			if rc.AllowMetacharacters {
 				rec.PolicySkipped = true
 			}
-			if capturedState == nil {
-				return
-			}
-			rec.WorkingTreeStatus = capturedState.Status
-			rec.AuditOverride = overrideUsed
+			applyExecGateAudit(rec, capturedState, capturedCI, overrideUsed)
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			state, used, err := runExecGate(cmd, repoRoot, cfg.Path, verbName, os.Getenv("WARD_READONLY") == "1" && rc.Name == "surface-check")
+			state, ci, used, err := runExecGate(cmd, repoRoot, cfg.Path, verbName, os.Getenv("WARD_READONLY") == "1" && rc.Name == "surface-check")
 			if err != nil {
 				return err
 			}
-			if state.Status != "" {
-				capturedState = state
-				overrideUsed = used
-			}
+			capturedState = state
+			capturedCI = ci
+			overrideUsed = used
 			fmt.Fprintf(os.Stderr, "ward: exec %s in %s\n", rc.Name, repoRoot)
 			argv := append([]string{}, rc.Argv[1:]...)
 			argv = append(argv, cmd.Args().Slice()...)
@@ -122,4 +120,12 @@ func (r *Runner) runExecLeaf(ctx context.Context, c *cli.Command, cfg *repocfg.C
 		},
 	}
 	return r.WrapVerb(spec, r.Audit)(ctx, c)
+}
+
+func applyExecGateAudit(rec *audit.Record, state *gittree.State, ci *audit.CIContext, overrideUsed bool) {
+	if state != nil {
+		rec.WorkingTreeStatus = state.Status
+		rec.AuditOverride = overrideUsed
+	}
+	rec.CI = ci
 }

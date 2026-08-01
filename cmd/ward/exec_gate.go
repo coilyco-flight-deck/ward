@@ -9,13 +9,14 @@ import (
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/gittree"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 	"github.com/urfave/cli/v3"
 )
 
 // runExecGate runs the clean-tree gate for a `ward exec` repo verb,
-// returning (state, overrideUsed, err). See docs/exec-verb.md.
-func runExecGate(c *cli.Command, repoRoot, cfgPath, verbName string, readOnly bool) (*gittree.State, bool, error) {
+// returning (state, CI context, overrideUsed, err). See docs/exec-verb.md.
+func runExecGate(c *cli.Command, repoRoot, cfgPath, verbName string, readOnly bool) (*gittree.State, *audit.CIContext, bool, error) {
 	override := false
 	if root := c.Root(); root != nil {
 		override = root.Bool("audit-override-dirty")
@@ -30,20 +31,23 @@ func runExecGate(c *cli.Command, repoRoot, cfgPath, verbName string, readOnly bo
 		state, err = gittree.CheckClean(repoRoot)
 	}
 	if err != nil {
-		return nil, false, exitcode.New(exitcode.Internal, "gittree_error", err,
+		return nil, nil, false, exitcode.New(exitcode.Internal, "gittree_error", err,
 			"ward could not evaluate the repo verb gate; run `git status` "+
 				"in the repo to confirm it is in a sane state, then retry")
 	}
+	if state.Branch == "HEAD" {
+		return runDetachedExecGate(state, repoRoot, verbName)
+	}
 	if state.Clean {
-		return state, false, nil
+		return state, nil, false, nil
 	}
 	if dirtIsOutsideWardConfig(state, repoRoot, cfgPath) {
-		return state, false, nil
+		return state, nil, false, nil
 	}
 	if override {
-		return state, true, nil
+		return state, nil, true, nil
 	}
-	return nil, false, exitcode.New(exitcode.PolicyDenied, "repo_verb_dirty",
+	return nil, nil, false, exitcode.New(exitcode.PolicyDenied, "repo_verb_dirty",
 		errors.New(formatExecGateRefusal(state, verbName)),
 		"commit/push the outstanding ward.yaml change and retry, or pass "+
 			"--audit-override-dirty for a genuine emergency").
@@ -56,7 +60,7 @@ func formatExecGateRefusal(state *gittree.State, verbName string) string {
 		return state.FormatRefusal(verbName)
 	case strings.HasPrefix(state.Reason, "branch ") && strings.HasSuffix(state.Reason, " has no upstream"):
 		return refusalNoUpstream(state, verbName)
-	case state.Reason == "HEAD is detached (no branch)":
+	case strings.HasPrefix(state.Reason, "HEAD is detached"):
 		return refusalDetachedHead(state, verbName)
 	case strings.Contains(state.Reason, " commits behind "):
 		return refusalBehindUpstream(state, verbName)
@@ -80,8 +84,15 @@ func refusalNoUpstream(state *gittree.State, verbName string) string {
 func refusalDetachedHead(state *gittree.State, verbName string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "refusing repo verb %q - %s\n", verbName, state.Reason)
-	b.WriteString("\nRepo verbs require a checked-out branch so the audit log can be reconstructed\n")
-	b.WriteString("from git history. Recover with:\n\n")
+	if state.Status != "" {
+		b.WriteString(state.Status)
+		if !strings.HasSuffix(state.Status, "\n") {
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("\nDetached repo verbs require a clean Forgejo Actions pull-request merge checkout\n")
+	b.WriteString("whose environment, event payload, origin, workspace, HEAD, and merge parents agree.\n")
+	b.WriteString("Otherwise, recover with:\n\n")
 	b.WriteString("  git checkout <branch>\n")
 	fmt.Fprintf(&b, "  %s %s   # retry\n", filepath.Base(os.Args[0]), verbName)
 	return b.String()
