@@ -271,7 +271,7 @@ func (r *Runner) runClusterLogs(ctx context.Context, c *cli.Command) error {
 	return nil
 }
 
-func (r *Runner) runClusterStop(ctx context.Context, c *cli.Command) error {
+func (r *Runner) runClusterStop(ctx context.Context, c *cli.Command) error { //nolint:gocyclo,cyclop // exact-scope cleanup reports each independently recoverable failure
 	clusterID, err := requiredClusterArg("stop", c.Args().First())
 	if err != nil {
 		return err
