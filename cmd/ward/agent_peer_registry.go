@@ -36,7 +36,7 @@ type dispatchPeerAdmission struct {
 var dispatchPeerAdmissionsMu sync.Mutex
 var dispatchPeerIDSuffix = dictatableID
 
-func admitDispatchPeer(req *dispatchBrokerRequest) (bool, error) {
+func admitDispatchPeer(req *dispatchBrokerRequest) (bool, error) { //nolint:gocyclo,cyclop // durable retry, compatibility id, and bounded minting share one locked transaction
 	if req == nil || dispatchAction(req.Action) != dispatchActionLaunch ||
 		req.Role == roleEngineer || req.Role == roleQA {
 		return false, nil
@@ -227,7 +227,7 @@ func retireDispatchPeer(clusterID, peerID string) error {
 	return fmt.Errorf("dispatch broker: active peer admission %s/%s is missing", clusterID, peerID)
 }
 
-func reconcileDispatchPeerAdmissions(clusterID string) error {
+func reconcileDispatchPeerAdmissions(clusterID string) error { //nolint:gocyclo,cyclop // every durable journal outcome maps explicitly to a peer state
 	dispatchPeerAdmissionsMu.Lock()
 	defer dispatchPeerAdmissionsMu.Unlock()
 	admissions, path, err := readDispatchPeerAdmissions(clusterID)

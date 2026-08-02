@@ -16,10 +16,10 @@ import (
 func (r *Runner) runDispatchBrokerPRWorkflow(ctx context.Context, conn net.Conn, req dispatchBrokerRequest) {
 	body, err := r.execDispatchBrokerPRWorkflow(ctx, req)
 	if err != nil {
-		writeDispatchBrokerResponse(conn, "", "", "", err)
+		writeDispatchBrokerResponse(conn, err)
 		return
 	}
-	writeDispatchBrokerResponse(conn, "", "", "", nil)
+	writeDispatchBrokerResponse(conn, nil)
 	_, _ = io.WriteString(conn, body)
 }
 

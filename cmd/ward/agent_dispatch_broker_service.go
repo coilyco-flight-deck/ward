@@ -131,7 +131,7 @@ func containerDispatchBrokerPeerAdmitCommand() *cli.Command {
 	}
 }
 
-func admitHostMountedDispatchPeer(role, requestID, explicitID string) (dispatchBrokerPeerAdmissionResponse, error) {
+func admitHostMountedDispatchPeer(role, requestID, explicitID string) (dispatchBrokerPeerAdmissionResponse, error) { //nolint:gocyclo,cyclop // admission validates each authority input before journaling
 	if strings.TrimSpace(os.Getenv(envContainerService)) != dispatchBrokerService {
 		return dispatchBrokerPeerAdmissionResponse{}, fmt.Errorf("ward dispatch broker peer admission: available only inside the broker service")
 	}

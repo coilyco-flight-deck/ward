@@ -321,18 +321,18 @@ func (r *Runner) serveHostDispatchBroker(ctx context.Context, ln net.Listener, r
 	}
 }
 
-func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn, requester, token string) { //nolint:gocyclo,cyclop
+func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn, requester, token string) { //nolint:funlen,gocyclo,cyclop,gocognit
 	defer func() {
 		if p := recover(); p != nil {
 			err := dispatchBrokerPanicError("request handler", p)
 			fmt.Fprintf(os.Stderr, "ward dispatch broker: %v\n", err)
-			writeDispatchBrokerResponse(conn, "", "", "", err)
+			writeDispatchBrokerResponse(conn, err)
 		}
 		_ = conn.Close()
 	}()
 	var req dispatchBrokerRequest
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {
-		writeDispatchBrokerResponse(conn, "", "", "", fmt.Errorf("decode request: %w", err))
+		writeDispatchBrokerResponse(conn, fmt.Errorf("decode request: %w", err))
 		return
 	}
 	masterCaller := subtle.ConstantTimeCompare([]byte(req.Token), []byte(token)) == 1
@@ -348,7 +348,7 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		return
 	}
 	if dispatchAction(req.Action) == dispatchActionPing {
-		writeDispatchBrokerResponse(conn, "", "", "", nil)
+		writeDispatchBrokerResponse(conn, nil)
 		return
 	}
 	if dispatchAction(req.Action) == dispatchActionLogs {
@@ -385,13 +385,13 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	newPeerAdmission := false
 	if dispatchAction(req.Action) == dispatchActionLaunch && req.Role != roleEngineer && req.Role != roleQA {
 		if err := validateDispatchBrokerRequest(req); err != nil {
-			writeDispatchBrokerLaunchResponse(conn, req, "", dispatchPhaseAccepted, err)
+			writeDispatchBrokerLaunchResponse(conn, req, "", err)
 			return
 		}
 		var err error
 		newPeerAdmission, err = admitDispatchPeer(&req)
 		if err != nil {
-			writeDispatchBrokerLaunchResponse(conn, req, "", dispatchPhaseAccepted, err)
+			writeDispatchBrokerLaunchResponse(conn, req, "", err)
 			return
 		}
 	}
@@ -399,7 +399,7 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	if err != nil && newPeerAdmission {
 		_ = updateDispatchPeerStatus(req, dispatchPeerStatusFailed)
 	}
-	writeDispatchBrokerLaunchResponse(conn, req, logPath, dispatchPhaseAccepted, err)
+	writeDispatchBrokerLaunchResponse(conn, req, logPath, err)
 }
 
 func dispatchBrokerChildActionAllowed(req dispatchBrokerRequest) bool {
@@ -434,8 +434,8 @@ func dispatchBrokerAgentCapability(master, agentID string) string {
 	return agentID + ":" + hex.EncodeToString(mac.Sum(nil))
 }
 
-func writeDispatchBrokerResponse(conn net.Conn, logPath, requestID, phase string, err error) {
-	resp := dispatchBrokerResponse{OK: err == nil, LogPath: logPath, RequestID: requestID, Phase: phase}
+func writeDispatchBrokerResponse(conn net.Conn, err error) {
+	resp := dispatchBrokerResponse{OK: err == nil}
 	if err != nil {
 		resp.Error = err.Error()
 	}
@@ -444,12 +444,12 @@ func writeDispatchBrokerResponse(conn net.Conn, logPath, requestID, phase string
 	}
 }
 
-func writeDispatchBrokerLaunchResponse(conn net.Conn, req dispatchBrokerRequest, logPath, phase string, err error) {
+func writeDispatchBrokerLaunchResponse(conn net.Conn, req dispatchBrokerRequest, logPath string, err error) {
 	resp := dispatchBrokerResponse{
 		OK:        err == nil,
 		LogPath:   logPath,
 		RequestID: req.RequestID,
-		Phase:     phase,
+		Phase:     dispatchPhaseAccepted,
 		ClusterID: req.BrokerID,
 		AgentID:   req.AgentID,
 	}
@@ -1676,10 +1676,10 @@ func (r *Runner) runDispatchBrokerLogs(ctx context.Context, conn net.Conn, req d
 func (r *Runner) runDispatchBrokerList(ctx context.Context, conn net.Conn, req dispatchBrokerRequest) {
 	body, err := r.renderAgentList(ctx, strings.TrimSpace(req.Format) == "json")
 	if err != nil {
-		writeDispatchBrokerResponse(conn, "", "", "", err)
+		writeDispatchBrokerResponse(conn, err)
 		return
 	}
-	writeDispatchBrokerResponse(conn, "", "", "", nil)
+	writeDispatchBrokerResponse(conn, nil)
 	_, _ = io.WriteString(conn, body)
 }
 

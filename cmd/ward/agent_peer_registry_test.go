@@ -106,7 +106,7 @@ func TestLaunchResponseExposesClusterAndPeerIDs(t *testing.T) {
 		_ = client.Close()
 	})
 	req := dispatchBrokerRequest{RequestID: newDispatchBrokerRequestID(), BrokerID: "codex-ab45", AgentID: "critic-ab45"}
-	go writeDispatchBrokerLaunchResponse(server, req, "/tmp/dispatch", dispatchPhaseAccepted, nil)
+	go writeDispatchBrokerLaunchResponse(server, req, "/tmp/dispatch", nil)
 	var resp dispatchBrokerResponse
 	if err := json.NewDecoder(client).Decode(&resp); err != nil {
 		t.Fatal(err)
