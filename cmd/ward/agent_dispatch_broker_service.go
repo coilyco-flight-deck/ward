@@ -18,6 +18,7 @@ const (
 	envDispatchBrokerListen      = "WARD_DISPATCH_BROKER_LISTEN"
 	envDispatchBrokerRequester   = "WARD_DISPATCH_BROKER_REQUESTER"
 	envDispatchBrokerID          = "WARD_DISPATCH_BROKER_ID"
+	envClusterID                 = "WARD_CLUSTER_ID"
 	envPersistentDispatchBroker  = "WARD_PERSISTENT_DISPATCH_BROKER"
 	dispatchBrokerService        = "dispatch-broker"
 	dispatchBrokerServicePort    = "7420"

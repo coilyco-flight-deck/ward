@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -13,13 +14,15 @@ import (
 )
 
 const (
-	directorStacksSubdir = "director-stacks"
+	directorStacksSubdir = "clusters"
 	directorStackFile    = "compose.yaml"
 	directorStackEnvFile = "launch.env"
 	directorAgentEnvFile = "director.env"
 	directorStackAssets  = "assets"
-	directorStackMaxName = 55
 )
+
+var clusterIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*-[abcdefghjkmpqrstuvwxyz]{2}[456789]{2}$`)
+var clusterIDSuffix = dictatableID
 
 type directorStack struct {
 	Project         string
@@ -75,39 +78,42 @@ type composeHealth struct {
 	StartPeriod string   `yaml:"start_period"`
 }
 
-func resolveDirectorStack(repo targetRepo, mode containerMode) (directorStack, error) {
+func resolveDirectorStack(clusterID string) (directorStack, error) {
+	clusterID = strings.TrimSpace(clusterID)
+	if !validClusterID(clusterID) {
+		return directorStack{}, fmt.Errorf("ward collaboration cluster: invalid cluster id %q", clusterID)
+	}
 	global, err := config.GlobalDir()
 	if err != nil {
 		return directorStack{}, err
 	}
-	project := directorStackProjectName(repo, mode)
-	dir := filepath.Join(global, directorStacksSubdir, project)
+	dir := filepath.Join(global, directorStacksSubdir, clusterID)
 	return directorStack{
-		Project:         project,
+		Project:         clusterID,
 		Dir:             dir,
 		ComposePath:     filepath.Join(dir, directorStackFile),
 		EnvPath:         filepath.Join(dir, directorStackEnvFile),
 		DirectorEnvPath: filepath.Join(dir, directorAgentEnvFile),
 		AssetsDir:       filepath.Join(dir, directorStackAssets),
-		BrokerName:      project + "-broker",
+		BrokerName:      clusterID + "-broker",
 	}, nil
 }
 
-func directorStackProjectName(repo targetRepo, mode containerMode) string {
-	parts := []string{"ward", repo.Owner}
-	if !strings.EqualFold(repo.Name, "ward") {
-		parts = append(parts, repo.Name)
+func validClusterID(clusterID string) bool {
+	if !clusterIDPattern.MatchString(clusterID) || len(clusterID) < 6 {
+		return false
 	}
-	parts = append(parts, string(mode))
-	project := config.SanitizeSlug(strings.Join(parts, "-"))
-	if len(project) > directorStackMaxName {
-		project = strings.TrimRight(project[:directorStackMaxName], "-")
-	}
-	return project
+	prefix := strings.TrimSuffix(clusterID, clusterID[len(clusterID)-5:])
+	_, err := parseMode(prefix)
+	return err == nil
 }
 
-func prepareDirectorStackAssets(ctx context.Context, repo targetRepo, mode containerMode, wardSource, wardVersion string) (directorStack, error) {
-	stack, err := resolveDirectorStack(repo, mode)
+func mintClusterID(mode containerMode) string {
+	return string(mode) + "-" + clusterIDSuffix()
+}
+
+func prepareDirectorStackAssets(ctx context.Context, clusterID, wardSource, wardVersion string) (directorStack, error) {
+	stack, err := resolveDirectorStack(clusterID)
 	if err != nil {
 		return directorStack{}, fmt.Errorf("ward director stack: resolve state dir: %w", err)
 	}
@@ -133,6 +139,7 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, brokerEnvFile,
 	directorEnv := plan.wardEnv()
 	delete(directorEnv, envDispatchBrokerToken)
 	directorEnv[envDispatchBrokerAddr] = dispatchBrokerServiceAddress
+	directorEnv[envClusterID] = stack.Project
 
 	brokerEnv := plan.wardEnv()
 	delete(brokerEnv, "WARD_READONLY")
@@ -143,6 +150,7 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, brokerEnvFile,
 	brokerEnv[envDispatchBrokerAddr] = dispatchBrokerProbeAddress
 	brokerEnv[envDispatchBrokerRequester] = plan.Name
 	brokerEnv[envDispatchBrokerID] = stack.Project
+	brokerEnv[envClusterID] = stack.Project
 	brokerEnv[envPersistentDispatchBroker] = "1"
 	brokerEnv["COILY_INVOKE_CWD"] = containerContextMount
 	brokerEnv[envInternalLaunchStagingDir] = filepath.ToSlash(filepath.Join("/root/.ward", "launch-staging"))
@@ -179,10 +187,11 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, brokerEnvFile,
 				Volumes:       brokerMounts,
 				Networks:      networks,
 				Labels: map[string]string{
-					"ward":      "true",
-					labelRole:   "broker",
-					labelRepo:   plan.Repo.slug(),
-					labelDriver: string(plan.Mode),
+					"ward":       "true",
+					labelRole:    "broker",
+					labelCluster: stack.Project,
+					labelRepo:    plan.Repo.slug(),
+					labelDriver:  string(plan.Mode),
 				},
 				MemLimit:     plan.MemoryLimit,
 				MemswapLimit: plan.MemorySwap,

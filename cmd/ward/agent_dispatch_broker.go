@@ -640,6 +640,7 @@ func runDispatchBrokerChild(ctx context.Context, req dispatchBrokerRequest, logf
 	env = append(env,
 		envDispatchRequestID+"="+req.RequestID,
 		envDispatchJournalPath+"="+req.JournalPath,
+		envClusterID+"="+strings.TrimSpace(req.BrokerID),
 	)
 	agentID := dispatchBrokerLaunchAgentID(req)
 	if master := strings.TrimSpace(os.Getenv(envDispatchBrokerToken)); master != "" {
@@ -1505,7 +1506,7 @@ func validateDispatchBrokerRunArgv(req dispatchBrokerRequest) error { //nolint:g
 		return fmt.Errorf("dispatch broker: generic run requires work text")
 	}
 	valueFlags := map[string]bool{
-		"--role": true, "--agent-id": true, "--repo": true, "--harness": true,
+		"--role": true, "--agent-id": true, "--cluster": true, "--repo": true, "--harness": true,
 		"--agent": true, "--config": true, "--image": true, "--tag": true,
 		"--ward-version": true, "--context-bundle": true,
 	}

@@ -10,12 +10,20 @@ director as a regular Compose service on the same project network and attaches
 the terminal to it. Docker Desktop therefore groups both services under the
 same Compose application.
 
+Every new collaboration cluster receives one stable id in the form
+`<harness>-<ab12>`, such as `codex-ab45`. That id is the Compose project name,
+the `ward.cluster` label, and the lifecycle key shared by the broker, optional
+director, directly attached peers, and nested peers. Repository, issue, role,
+workflow, harness, and dispatch-request fields remain separate metadata. A
+repository is never required to resolve a cluster.
+
 ## Contract
 
 - The brokered request carries the caller's resolved ward version.
 - A released caller binary forwards its own version when no explicit
   `--ward-version` pin is set.
 - Brokered output and reservation seed context record the effective Ward version.
+- Nested launches inherit `WARD_CLUSTER_ID` and the parent Compose network.
 - Docker supervises the broker with `restart: unless-stopped`. Closing the
   director or its terminal removes only the director service. Ward does not run
   `compose down`, so the broker remains supervised.

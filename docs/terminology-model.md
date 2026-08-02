@@ -9,6 +9,7 @@ One Ward agent lane can be read as:
 work item
   -> resolved ref or filed issue
   -> role + harness + workflow selection
+  -> collaboration cluster
   -> dispatch request
   -> broker acceptance or direct host launch
   -> reservation + launch intent
@@ -25,6 +26,8 @@ work item
   machine-readable workflow comments.
 - the dispatch broker owns durable request acceptance and idempotent forwarded
   launch artifacts.
+- the collaboration cluster id owns broker, director, and peer correlation. It
+  is independent of repository and issue metadata.
 - the host launch path owns pre-flight, credential resolution, Docker plan, and
   container creation.
 - the container owns the live workspace, harness process, smoke test,

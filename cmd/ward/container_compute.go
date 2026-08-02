@@ -82,6 +82,7 @@ const (
 	// and driver always, repo always, issue on an engineer run, machine the id.
 	labelRole                = "ward.role"
 	labelDriver              = "ward.driver"
+	labelCluster             = "ward.cluster"
 	labelRepo                = "ward.repo"
 	labelIssue               = "ward.issue"
 	labelMachine             = "ward.machine"
@@ -505,6 +506,9 @@ type upPlan struct {
 	ReadOnly bool
 	// DispatchBrokerAddr, when set, exports WARD_DISPATCH_BROKER_ADDR.
 	DispatchBrokerAddr string
+	// ClusterID is the stable harness-scoped collaboration identity shared by
+	// the broker, optional director, and every attached peer.
+	ClusterID string
 	// DispatchBrokerToken exports WARD_DISPATCH_BROKER_TOKEN, the per-launch secret
 	// the surface echoes back so the broker service authenticates the dial.
 	DispatchBrokerToken string
@@ -955,6 +959,9 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop,gocognit,f
 		env[envDispatchBrokerAddr] = p.DispatchBrokerAddr
 		env[envDispatchBrokerToken] = p.DispatchBrokerToken
 	}
+	if p.ClusterID != "" {
+		env[envClusterID] = p.ClusterID
+	}
 	if p.AgentID != "" {
 		env[envAgentID] = p.AgentID
 	}
@@ -1029,6 +1036,9 @@ func (p upPlan) labels() []string {
 		labelRole + "=" + role,
 		labelDriver + "=" + string(p.Mode),
 		labelRepo + "=" + p.Repo.slug(),
+	}
+	if p.ClusterID != "" {
+		out = append(out, labelCluster+"="+p.ClusterID)
 	}
 	if p.Machine != "" {
 		out = append(out, labelMachine+"="+p.Machine)

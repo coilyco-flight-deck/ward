@@ -29,8 +29,8 @@ func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
 		},
 	}
 	stack := directorStack{
-		Project:    "ward-coilyco-flight-deck-codex",
-		BrokerName: "ward-coilyco-flight-deck-codex-broker",
+		Project:    "codex-ab45",
+		BrokerName: "codex-ab45-broker",
 	}
 	body, err := renderDirectorStackCompose(plan, stack, `X:\tmp\broker.env`, `X:\tmp\director.env`, `X:\home\.ward`)
 	if err != nil {
@@ -45,6 +45,8 @@ func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
 		"WARD_CONTAINER_SERVICE: dispatch-broker",
 		"WARD_DISPATCH_BROKER_LISTEN: 0.0.0.0:7420",
 		"WARD_DISPATCH_BROKER_ADDR: broker:7420",
+		"WARD_CLUSTER_ID: codex-ab45",
+		"ward.cluster: codex-ab45",
 		"WARD_HOST_GOOS: windows",
 		"source: X:\\projects\\coilyco-flight-deck\\ward",
 		"target: /root/.ward",
@@ -109,19 +111,19 @@ func TestDirectorStackCredsCarryEveryHarnessIntoBroker(t *testing.T) {
 }
 
 func TestDirectorExitCommandLeavesBrokerSupervised(t *testing.T) {
-	stack := directorStack{Project: "ward-director-ward-codex", ComposePath: "/state/compose.yaml"}
+	stack := directorStack{Project: "codex-ab45", ComposePath: "/state/compose.yaml"}
 	commands := directorStackComposeArgs(stack)
-	if got := strings.Join(commands.BrokerUp, " "); got != "compose -p ward-director-ward-codex -f /state/compose.yaml up -d --wait broker" {
+	if got := strings.Join(commands.BrokerUp, " "); got != "compose -p codex-ab45 -f /state/compose.yaml up -d --wait broker" {
 		t.Fatalf("broker up args = %v", commands.BrokerUp)
 	}
-	if got := strings.Join(commands.DirectorUp, " "); got != "compose -p ward-director-ward-codex -f /state/compose.yaml up -d --no-deps director" {
+	if got := strings.Join(commands.DirectorUp, " "); got != "compose -p codex-ab45 -f /state/compose.yaml up -d --no-deps director" {
 		t.Fatalf("director up args = %v", commands.DirectorUp)
 	}
-	if got := strings.Join(commands.DirectorAttach, " "); got != "compose -p ward-director-ward-codex -f /state/compose.yaml attach director" {
+	if got := strings.Join(commands.DirectorAttach, " "); got != "compose -p codex-ab45 -f /state/compose.yaml attach director" {
 		t.Fatalf("director attach args = %v", commands.DirectorAttach)
 	}
 	remove := strings.Join(commands.DirectorRemove, " ")
-	if remove != "compose -p ward-director-ward-codex -f /state/compose.yaml rm -f -s director" ||
+	if remove != "compose -p codex-ab45 -f /state/compose.yaml rm -f -s director" ||
 		strings.Contains(remove, "down") || strings.Contains(remove, "broker") {
 		t.Fatalf("director removal couples broker cleanup: %v", commands.DirectorRemove)
 	}
@@ -132,22 +134,21 @@ func TestDirectorExitCommandLeavesBrokerSupervised(t *testing.T) {
 	}
 }
 
-func TestResolveDirectorStackIsStable(t *testing.T) {
+func TestResolveDirectorStackUsesStableClusterKey(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
-	repo := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
-	first, err := resolveDirectorStack(repo, modeCodex)
+	first, err := resolveDirectorStack("codex-ab45")
 	if err != nil {
 		t.Fatalf("resolveDirectorStack first: %v", err)
 	}
-	second, err := resolveDirectorStack(repo, modeCodex)
+	second, err := resolveDirectorStack("codex-ab45")
 	if err != nil {
 		t.Fatalf("resolveDirectorStack second: %v", err)
 	}
 	if first != second {
 		t.Fatalf("director stack changed: %#v != %#v", first, second)
 	}
-	if first.Project != "ward-coilyco-flight-deck-codex" {
+	if first.Project != "codex-ab45" {
 		t.Fatalf("director stack project = %q", first.Project)
 	}
 	if filepath.Base(first.ComposePath) != directorStackFile ||
@@ -176,45 +177,31 @@ func TestPolicyBoundaryDirectorStackTeardownRemovesCredentialState(t *testing.T)
 	}
 }
 
-func TestDirectorStackProjectName(t *testing.T) {
-	tests := []struct {
-		name string
-		repo targetRepo
-		mode containerMode
-		want string
-	}{
-		{
-			name: "ward repo omits redundant product name",
-			repo: targetRepo{Owner: "coilyco-flight-deck", Name: "ward"},
-			mode: modeCodex,
-			want: "ward-coilyco-flight-deck-codex",
-		},
-		{
-			name: "other repo keeps repository name",
-			repo: targetRepo{Owner: "coilyco-flight-deck", Name: "agentic-os"},
-			mode: modeClaude,
-			want: "ward-coilyco-flight-deck-agentic-os-claude",
-		},
+func TestMintClusterIDIsHarnessScopedAndDistinct(t *testing.T) {
+	original := clusterIDSuffix
+	t.Cleanup(func() { clusterIDSuffix = original })
+	suffixes := []string{"ab45", "cd67"}
+	clusterIDSuffix = func() string {
+		value := suffixes[0]
+		suffixes = suffixes[1:]
+		return value
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := directorStackProjectName(tt.repo, tt.mode); got != tt.want {
-				t.Fatalf("directorStackProjectName() = %q, want %q", got, tt.want)
-			}
-		})
+	first := mintClusterID(modeCodex)
+	second := mintClusterID(modeCodex)
+	if first != "codex-ab45" || second != "codex-cd67" || first == second {
+		t.Fatalf("cluster ids = %q, %q", first, second)
+	}
+	if strings.Contains(first, "ward-") || strings.Contains(first, "coilyco-flight-deck") {
+		t.Fatalf("cluster id encodes product or repository: %q", first)
 	}
 }
 
-func TestDirectorStackProjectNameCapsLength(t *testing.T) {
-	project := directorStackProjectName(targetRepo{
-		Owner: strings.Repeat("owner", 10),
-		Name:  strings.Repeat("repo", 10),
-	}, modeCodex)
-	if len(project) > directorStackMaxName {
-		t.Fatalf("project length = %d, want <= %d", len(project), directorStackMaxName)
-	}
-	if strings.HasSuffix(project, "-") {
-		t.Fatalf("project has trailing separator: %q", project)
+func TestResolveDirectorStackRejectsNonCanonicalClusterID(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	for _, id := range []string{"ward-ab45", "codex-ward-ab45", "codex-ab12", "codex-AB45"} {
+		if _, err := resolveDirectorStack(id); err == nil {
+			t.Fatalf("resolveDirectorStack(%q) accepted a non-canonical id", id)
+		}
 	}
 }
 

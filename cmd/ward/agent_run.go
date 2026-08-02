@@ -18,6 +18,7 @@ func agentRunCommand() *cli.Command {
 	flags = append(flags,
 		&cli.StringFlag{Name: "role", Required: true, Usage: "safe composed-role slug used to select context"},
 		&cli.StringFlag{Name: "agent-id", Usage: "stable peer id inside the broker group"},
+		&cli.StringFlag{Name: "cluster", Usage: "existing collaboration cluster id to attach to"},
 		&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for read-only context (default: infer from cwd)"},
 		configFlag(),
 	)
@@ -87,6 +88,13 @@ func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode conta
 	plan.Interactive = false
 	plan.TTY = false
 	plan.DispatchRequestID = strings.TrimSpace(os.Getenv(envDispatchRequestID))
+	clusterID := strings.TrimSpace(c.String("cluster"))
+	if clusterID != "" && !validClusterID(clusterID) {
+		return fmt.Errorf("ward agent run: invalid --cluster %q", clusterID)
+	}
+	if plan.ClusterID == "" {
+		plan.ClusterID = clusterID
+	}
 	if plan.AgentID == "" {
 		plan.AgentID = agentID
 	}
@@ -130,7 +138,10 @@ func (r *Runner) maybeAttachRunningDispatchBroker(ctx context.Context, plan *upP
 	if plan == nil || plan.DispatchBrokerAddr != "" || inContainer() {
 		return nil
 	}
-	stack, err := resolveDirectorStack(plan.Repo, plan.Mode)
+	if strings.TrimSpace(plan.ClusterID) == "" {
+		return nil
+	}
+	stack, err := resolveDirectorStack(plan.ClusterID)
 	if err != nil {
 		return err
 	}
@@ -156,6 +167,7 @@ func (r *Runner) maybeAttachRunningDispatchBroker(ctx context.Context, plan *upP
 }
 
 func applyDispatchBrokerAttachment(plan *upPlan, stack directorStack, capability string) {
+	plan.ClusterID = stack.Project
 	plan.DispatchBrokerAddr = dispatchBrokerServiceAddress
 	plan.DispatchBrokerToken = capability
 	plan.DispatchBrokerNetwork = stack.Project + "_default"
@@ -185,6 +197,9 @@ func (r *Runner) maybeForwardGenericAgent(ctx context.Context, c *cli.Command, m
 	}
 	if repo := strings.TrimSpace(c.String("repo")); repo != "" {
 		argv = append(argv, "--repo", repo)
+	}
+	if cluster := strings.TrimSpace(c.String("cluster")); cluster != "" {
+		argv = append(argv, "--cluster", cluster)
 	}
 	argv = append(argv, "--harness", string(brokerDispatchHarness(c, mode)))
 	argv = appendBrokerConfigFlags(argv, c)

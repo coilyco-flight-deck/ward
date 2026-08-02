@@ -118,7 +118,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 	}
 	fmt.Fprintf(os.Stderr, "%s: opening an interactive %s %s session on %s in a fresh container...\n\n", label, access, lookupAgent(mode).Record().Binary, plan.Repo.slug())
 	if readOnly {
-		stack, serr := resolveDirectorStack(plan.Repo, plan.Mode)
+		stack, serr := resolveDirectorStack(plan.ClusterID)
 		if serr != nil {
 			return fmt.Errorf("%s: resolve director stack: %w", label, serr)
 		}
@@ -141,8 +141,10 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	}
 	var assetsDir string
 	var cleanupAssets func()
+	clusterID := ""
 	if readOnly {
-		stack, serr := prepareDirectorStackAssets(ctx, repo, mode, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+		clusterID = mintClusterID(mode)
+		stack, serr := prepareDirectorStackAssets(ctx, clusterID, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 		if serr != nil {
 			return upPlan{}, func() {}, serr
 		}
@@ -165,6 +167,7 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	if readOnly {
 		normalizeDirectorStackNetwork(&plan)
 		plan.DispatchBrokerAddr = dispatchBrokerServiceAddress
+		plan.ClusterID = clusterID
 	}
 
 	return plan, cleanupAssets, nil
@@ -193,7 +196,8 @@ func printScratchPlan(c *cli.Command, p upPlan, readOnly bool) error {
 		fmt.Fprintf(&b, "docker pull %s\n", p.Image)
 	}
 	if readOnly {
-		stack, err := resolveDirectorStack(p.Repo, p.Mode)
+		fmt.Fprintf(&b, "cluster: %s\n", p.ClusterID)
+		stack, err := resolveDirectorStack(p.ClusterID)
 		if err != nil {
 			return err
 		}

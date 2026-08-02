@@ -24,6 +24,9 @@ behavior.
 - `role`: `engineer`, `director`, or `qa`.
 - `harness`: the agent CLI/runtime family, such as `claude`, `codex`, `goose`,
   or `opencode`.
+- `cluster`: one supervised collaboration group, identified for its full
+  lifetime by `<harness>-<ab12>` and shared by its broker, optional director,
+  and peers.
 - `workflow`: the selected landing policy, not the whole run.
 - `run`: one execution attempt for a role, harness, ref, workflow, and
   container identity.
@@ -47,6 +50,8 @@ behavior.
 - `backpressure` is not a terminal failure.
 - `stop` is not `reap`.
 - `harness` is not `role`.
+- `cluster` is not `repository`: repository metadata is optional context and
+  never identifies or resolves a collaboration cluster.
 - `read-only` is not powerless: the director can supervise and broker work
   without pushing its clone.
 - `release branch` is not `Forgejo release`.

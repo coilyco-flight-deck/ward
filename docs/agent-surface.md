@@ -17,7 +17,8 @@ This page is the durable anchor for the read-only agent surface.
   that predate that mount need a restart to pick it up. Until then, use the
   brokered `ward agent stop <owner/repo#N>` cleanup path from the surface.
 - It stores the stack assets and Compose definition under
-  `~/.ward/director-stacks/<project>/`. Ward writes separate broker and
+  `~/.ward/clusters/<cluster-id>/`. The cluster id is the harness-scoped
+  Compose project name, not a repository-derived name. Ward writes separate broker and
   director launch env files for Compose startup, then removes them when the
   attached run ends. Broker request journals, reservation sentinels, and
   dispatch artifacts stay in the existing `~/.ward` trees.

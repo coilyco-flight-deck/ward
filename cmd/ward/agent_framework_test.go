@@ -87,6 +87,7 @@ func TestAgentFrameworkBrokerChildPlanInheritsPeerCapability(t *testing.T) {
 	t.Setenv(envChildBrokerCapability, "critic.signature")
 	t.Setenv(envChildBrokerNetwork, "ward-director_default")
 	t.Setenv(envChildAgentID, "critic")
+	t.Setenv(envClusterID, "codex-ab45")
 	command := parseCommandForTest(t, agentRunCommand().Flags, []string{
 		"work", "--role", "critic", "--repo", "coilyco-flight-deck/ward",
 	})
@@ -95,18 +96,21 @@ func TestAgentFrameworkBrokerChildPlanInheritsPeerCapability(t *testing.T) {
 		t.Fatal(err)
 	}
 	if plan.AgentID != "critic" || plan.DispatchBrokerAddr != "broker:7420" ||
-		plan.DispatchBrokerNetwork != "ward-director_default" {
+		plan.DispatchBrokerNetwork != "ward-director_default" || plan.ClusterID != "codex-ab45" {
 		t.Fatalf("broker child plan = %#v", plan)
+	}
+	if !strings.Contains(strings.Join(plan.labels(), " "), labelCluster+"=codex-ab45") {
+		t.Fatalf("broker child labels = %v", plan.labels())
 	}
 }
 
 func TestAgentFrameworkHostComposedRunJoinsMatchingBroker(t *testing.T) {
 	plan := upPlan{AgentID: "architect"}
-	stack := directorStack{Project: "ward-coilyco-flight-deck-codex"}
+	stack := directorStack{Project: "codex-ab45"}
 	applyDispatchBrokerAttachment(&plan, stack, "architect.signature")
 	if plan.DispatchBrokerAddr != dispatchBrokerServiceAddress ||
 		plan.DispatchBrokerToken != "architect.signature" ||
-		plan.DispatchBrokerNetwork != "ward-coilyco-flight-deck-codex_default" {
+		plan.DispatchBrokerNetwork != "codex-ab45_default" || plan.ClusterID != "codex-ab45" {
 		t.Fatalf("attached plan = %#v", plan)
 	}
 }

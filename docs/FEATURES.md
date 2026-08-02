@@ -31,8 +31,9 @@ Inventory of what `ward` ships today.
 - Issue-scoped director dispatch.
 - Bounded director, engineer, and QA live-verification fixtures. See
   [verification-fixtures.md](verification-fixtures.md).
-- Compose dispatch broker with durable IDs, restart recovery, sibling launch
-  isolation, and credential-free director Forgejo RPC. See
+- Compose dispatch broker with stable harness-scoped collaboration cluster IDs,
+  durable request IDs, restart recovery, sibling launch isolation, and
+  credential-free director Forgejo RPC. See
   [agent-dispatch-broker.md](agent-dispatch-broker.md).
 - Generic read-only peers and authenticated broker messages. See
   [agent-peer-collaboration.md](agent-peer-collaboration.md).

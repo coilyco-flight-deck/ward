@@ -218,6 +218,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		plan.DispatchBrokerToken = strings.TrimSpace(os.Getenv(envChildBrokerCapability))
 		plan.DispatchBrokerNetwork = strings.TrimSpace(os.Getenv(envChildBrokerNetwork))
 		plan.AgentID = strings.TrimSpace(os.Getenv(envChildAgentID))
+		plan.ClusterID = strings.TrimSpace(os.Getenv(envClusterID))
 	}
 	return plan, nil
 }
