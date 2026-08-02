@@ -9,12 +9,10 @@ Ward can launch an agent surface with one materialized generic context bundle:
 warded engineer owner/repo#123 --context-bundle /path/to/bundle
 ```
 
-The same contract supplies role context to a repository-free collaboration
-peer attached to an existing broker cluster:
+The same contract supplies role context to a repository-free peer:
 
 ```bash
-ward agent run --cluster codex-ab45 --harness codex --role critic \
-  --context-bundle /path/to/bundle "Review the proposal."
+ward agent run --cluster codex-ab45 --harness codex --role critic --context-bundle /path/to/bundle "Review it."
 ```
 
 The bundle is a directory with this shape:
@@ -35,10 +33,8 @@ The strict manifest binds the context to the selected Ward role and agent:
 }
 ```
 
-Ward rejects unknown manifest fields. In particular, a bundle cannot declare
-permissions, credentials, network access, mounts, or other capabilities. A
-matching role selects context only. Ward's fixed launch and broker paths own
-authority.
+Ward rejects unknown fields. A bundle cannot declare permissions, credentials,
+network, mounts, or capabilities. Role selects context only. Ward owns authority.
 
 ## Accepted home projection
 
@@ -50,20 +46,15 @@ Ward accepts only the selected agent's instruction file and skill root:
 * `opencode` - `.config/opencode/AGENTS.md` and `.agents/skills/`
 
 Every bundle must provide the selected instruction file. Ward rejects other
-home paths, symlinks, special files, nested tool directories, and non-executable
-tools before Docker starts. Ward revalidates the read-only mount during
-container bootstrap before copying the accepted home files into the private
-agent home.
+paths, symlinks, special files, nested tools, and non-executable tools. Bootstrap
+revalidates the read-only mount before copying accepted files to the agent home.
 
-Ward keeps its authority document outside the immutable bundle. After the
-bundle projection, Ward appends that authority document to the selected
-instruction load point. The launched agent sees both its selected context and
-the run's mechanically enforced authority boundary.
+Ward keeps its authority document outside the immutable bundle. After bundle
+projection, Ward appends it to the selected instruction load point. The agent
+sees both selected context and the enforced authority boundary.
 
-For a repository-free collaboration peer, Ward also keeps repository targeting
-outside the bundle and leaves it absent. The bundle and substrate are mounted
-read-only. Writable work is confined to scratch, private harness homes, and
-runtime state.
+For a repository-free peer, repository targeting stays absent. Bundle and
+substrate are read-only. Scratch, private homes, and runtime state are writable.
 
 If `bin/` contains tools, Ward exposes the read-only directory after the image's
 existing `PATH`. A bundled tool cannot shadow an image or harness binary.
@@ -75,8 +66,7 @@ preserve the parent container's host source as a read-only bind.
 
 ## Ownership boundary
 
-* A producer owns context selection, skill generation, home materialization,
-  and tool materialization.
+* A producer owns context selection, skill generation, and materialization.
 * Ward owns its manifest schema, host validation, read-only Docker mount,
   selected role and agent checks, private home projection, launch failure
   policy, credentials, permissions, network, filesystem authority, and

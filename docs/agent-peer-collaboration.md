@@ -6,11 +6,9 @@ doc_goal: Explain generic composed-agent launches and authenticated broker messa
 Ward can host composed agents without adding each role to its fixed workflow
 roster. The broker treats role slugs as opaque context selectors.
 
-Generic peers have two distinct launch plans. An explicit `--repo owner/name`
-uses the existing repository-backed plan and its repository workflow. An
-existing `--cluster` without `--repo` selects the repository-free
-collaboration plan. In both cases, the peer's AOS-generated context bundle is
-the source of role context.
+`--repo owner/name` selects the repository-backed plan. An existing `--cluster`
+without `--repo` selects repository-free collaboration. Both take role context
+from the peer's AOS-generated bundle.
 
 ## Launch a peer
 
@@ -26,16 +24,13 @@ ward agent run \
 ```
 
 `ward agent run` accepts any safe lowercase role slug. It requires no issue.
-The repository-free plan requires an existing cluster and a context bundle
-whose manifest matches the selected role and harness. It does not infer a Git
-checkout, resolve an owner or repository, clone a target, choose a repository
-workflow, or inject Forgejo credentials. The role does not select credentials,
-mounts, network access, or a landing workflow.
+The repository-free plan requires an existing cluster and a bundle matching
+the selected role and harness. It does not infer or clone a Git target, choose
+a repository workflow, or inject Forgejo credentials. The role grants no
+credentials, mounts, network access, or landing workflow.
 
-The context bundle and warmed substrate are read-only inputs. The peer gets
-writable `/scratch`, private harness homes, and runtime state. Explicit
-`--repo owner/name` remains the opt-in to Ward's unchanged repository-backed
-launch plan.
+Bundle and substrate inputs are read-only. `/scratch`, private harness homes,
+and runtime state are writable. `--repo` opts into the unchanged repo plan.
 
 The operator normally omits a peer id. Broker admission mints
 `<role>-<ab12>`, records it in the durable request journal before launch, and

@@ -31,16 +31,13 @@ Inventory of what `ward` ships today.
 - Issue-scoped director dispatch.
 - Bounded director, engineer, and QA live-verification fixtures. See
   [verification-fixtures.md](verification-fixtures.md).
-- Compose dispatch broker with stable harness-scoped collaboration cluster IDs,
-  durable request IDs, restart recovery, sibling launch isolation, and
-  credential-free director Forgejo RPC. See
+- Compose broker with stable cluster and request IDs, restart recovery,
+  isolated sibling launch, and director Forgejo RPC. See
   [agent-dispatch-broker.md](agent-dispatch-broker.md).
-- Broker-only collaboration clusters can start outside a Git checkout and use
-  cluster-scoped list, status, logs, stop, and cleanup. See
+- Broker-only clusters start outside Git and provide scoped lifecycle verbs. See
   [agent-clusters.md](agent-clusters.md).
-- Generic peers with broker-minted durable identities, active roster labels,
-  authenticated broker messages, and a repository-free context-bundle plan
-  with read-only inputs and writable scratch. See
+- Generic peers provide broker-minted IDs, messages, roster labels, and a
+  repository-free context-bundle plan. See
   [agent-peer-collaboration.md](agent-peer-collaboration.md).
 - PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR lifecycle close/reopen/recovery tools and repair classification.
@@ -68,13 +65,11 @@ Inventory of what `ward` ships today.
 
 ## Release and docs
 
-- Two-stage release ([ward#1117](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1117)): promote.yml gates every main push and
-  fast-forwards `release` when green; release.yml runs on `release` pushes
-  under a no-cancel concurrency queue. See [release.md](release.md).
+- Two-stage gated promotion and release. See [release.md](release.md).
 - [compat-surface.md](compat-surface.md) - the release-facing provider matrix.
 - [release.md](release.md) and [release-binaries.md](release-binaries.md).
-- [homebrew-build.md](homebrew-build.md), [golangci.md](golangci.md), and [troubleshooting.md](troubleshooting.md).
-- [docs/README.md](README.md) - docs index.
+- [homebrew-build.md](homebrew-build.md), [golangci.md](golangci.md), and
+  [troubleshooting.md](troubleshooting.md).
 
 ## See also
 

@@ -1,11 +1,11 @@
 # ward docs index
 
-Start here if you open `docs/` directly. The tree holds the release-era operating surface.
+Start here for Ward's operating surface.
 
 ## Core
 
 - [architecture.md](architecture.md) - three layers.
-- [terminology.md](terminology.md) - vocabulary, conceptual model, non-equivalences, and analogy bank.
+- [terminology.md](terminology.md) - canonical vocabulary and distinctions.
 - [FEATURES.md](FEATURES.md) - shipped surface.
 - [compat-surface.md](compat-surface.md) - shipped providers and non-providers.
 - [exec-verb.md](exec-verb.md) - guarded dev verbs.
@@ -41,7 +41,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [agent-roles.md](agent-roles.md) - engineer, director, qa.
 - [agent-harnesses.md](agent-harnesses.md).
 - [agent-peer-collaboration.md](agent-peer-collaboration.md).
-- [agent-clusters.md](agent-clusters.md) - repository-independent broker lifecycle.
+- [agent-clusters.md](agent-clusters.md) - independent broker lifecycle.
 - [context-bundle.md](context-bundle.md) - context and tool handoff.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch, preflight, reservation.
 - [agent-check-placement.md](agent-check-placement.md) - guard matrix.

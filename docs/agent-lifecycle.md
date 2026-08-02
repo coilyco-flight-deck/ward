@@ -3,9 +3,8 @@ doc_goal: Compress the launch path into one release-era guide so a reader can te
 ---
 # ward agent lifecycle
 
-The repository workflow launch path is short and explicit.
-Terminology for dispatch, launch, reservation, run, and terminal outcomes lives
-in [terminology.md](terminology.md).
+The repository workflow launch path is short and explicit. Vocabulary lives in
+[terminology.md](terminology.md).
 
 1. Resolve the issue or ref.
 2. Run the harness install step and verify the selected binary is available.
@@ -14,17 +13,10 @@ in [terminology.md](terminology.md).
 5. Launch the ephemeral container.
 6. Hand off to the selected workflow.
 
-A repository-free collaboration peer follows a separate plan:
-
-1. Validate the existing harness-scoped cluster id.
-2. Validate the context bundle against the selected role and harness.
-3. Confirm the exact cluster broker is running.
-4. Launch with read-only context and substrate plus writable scratch and runtime homes.
-
-That plan performs no repository inference, target resolution, clone,
-allowlisting, reservation, repository workflow selection, or Forgejo credential
-projection. Supplying `--repo owner/name` selects the repository workflow plan
-above and preserves its existing checks.
+A repository-free peer validates its cluster and role-bound bundle, confirms
+the broker, then launches with read-only inputs and writable runtime paths. It
+performs no repo inference, clone, allowlisting, reservation, workflow, or
+Forgejo projection. `--repo owner/name` selects the workflow above.
 
 ## What the launch path enforces
 
@@ -51,14 +43,12 @@ Host-side credentials are resolved before the container starts. Engineer and
 QA runs receive the existing Git and harness channels. A Compose director gets
 only its selected harness channel and broker capability. Its sibling broker
 alone receives the Forgejo credential. A repository-free collaboration peer
-receives only its selected harness channel and broker capability, with no Git
-or Forgejo credential. Each run then inherits its selected harness context
-level and mount set.
+receives its harness channel and broker capability, with no Git or Forgejo
+credential. Each run inherits its selected context level and mount set.
 
 ## Split-stack repositories
 
-Tracker, checkout, and landing are independent authorities. See
-[agent-split-stack.md](agent-split-stack.md) for configuration and precedence.
+Tracker, checkout, and landing are separate. See [agent-split-stack.md](agent-split-stack.md).
 
 ## Common launch checks
 
@@ -79,8 +69,7 @@ real work.
 - the container identity.
 - the final outcome.
 
-That record is what the troubleshooting docs and the issue thread use when a
-run needs to be explained after the fact.
+Troubleshooting and the issue thread use that record to explain a run.
 
 ## See also
 

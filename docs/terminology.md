@@ -19,22 +19,17 @@ behavior.
 - `warded`: the public symlinked face for `ward agent`.
 - `cli-guard`: the policy and routing engine Ward consumes.
 - `aosguard`: the separate AOS operator CLI, not Ward runtime policy.
-- `work`: the requested change or inspection, usually an issue/ref or filed
-  freeform issue.
+- `work`: the requested change or inspection, usually an issue/ref.
 - `role`: `engineer`, `director`, or `qa`.
-- `harness`: the agent CLI/runtime family, such as `claude`, `codex`, `goose`,
-  or `opencode`.
-- `cluster`: one supervised collaboration group, identified for its full
-  lifetime by `<harness>-<ab12>` and shared by its broker, optional director,
-  and peers.
+- `harness`: the CLI/runtime family: `claude`, `codex`, `goose`, or `opencode`.
+- `cluster`: one supervised `<harness>-<ab12>` collaboration group shared by
+  its broker, optional director, and peers.
 - `workflow`: the selected landing policy, not the whole run.
-- `run`: one execution attempt for a role, harness, ref, workflow, and
-  container identity.
+- `run`: one execution attempt with one container identity.
 - `reservation`: the issue-thread hold that prevents duplicate work.
 - `launch intent`: the prelaunch lease before a running engineer is visible.
 - `running engineer`: a visible engineer container carrying Ward labels.
-- `terminal outcome`: a machine-readable `WARD-WORKFLOW:` status that ends or
-  parks the run's hold.
+- `terminal outcome`: a `WARD-WORKFLOW:` status that ends or parks a hold.
 
 ## Load-Bearing Distinctions
 

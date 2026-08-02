@@ -10,12 +10,9 @@ director as a regular Compose service on the same project network and attaches
 the terminal to it. Docker Desktop therefore groups both services under the
 same Compose application.
 
-Every new collaboration cluster receives one stable id in the form
-`<harness>-<ab12>`, such as `codex-ab45`. That id is the Compose project name,
-the `ward.cluster` label, and the lifecycle key shared by the broker, optional
-director, directly attached peers, and nested peers. Repository, issue, role,
-workflow, harness, and dispatch-request fields remain separate metadata. A
-repository is never required to resolve a cluster.
+Each cluster gets a stable `<harness>-<ab12>` id, such as `codex-ab45`. It is
+the Compose project, `ward.cluster` label, and lifecycle key for the broker,
+optional director, and peers. Repository metadata never resolves a cluster.
 
 ## Contract
 
@@ -64,22 +61,12 @@ artifact and uses the normal issue failure reporting. Recover with `ward agent
 logs <owner/repo#N>` or `ward agent list` rather than keeping the director
 command in the foreground.
 
-## What this is for
-
-- keeping a newer caller from silently falling back to a stale host default.
-- making the launch version visible before the engineer container starts.
-- keeping brokered dispatch separate from the director and terminal lifecycles.
-- keeping Forgejo credentials outside the director container and home.
-- carrying the request-shape checks that happen before a launch is forwarded,
-  and feeding the driftable rows in
-  [agent-check-placement.md](agent-check-placement.md) back through the broker
-  launch path.
-
 ## See also
 
 - [agent-director.md](agent-director.md) - the read-only director lane.
 - [agent-peer-collaboration.md](agent-peer-collaboration.md) - generic peers and messages.
 - [agent-dispatch-recovery.md](agent-dispatch-recovery.md) - request journals
   and restart decisions.
+- [agent-check-placement.md](agent-check-placement.md) - broker-time checks.
 - [agent-ops.md](agent-ops.md) - the brokered operational surfaces.
 - [agent-pr-workflow.md](agent-pr-workflow.md) - the native PR-workflow actions the broker serves.
