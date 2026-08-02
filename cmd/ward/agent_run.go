@@ -17,7 +17,7 @@ func agentRunCommand() *cli.Command {
 	flags := agentHarnessFlags()
 	flags = append(flags,
 		&cli.StringFlag{Name: "role", Required: true, Usage: "safe composed-role slug used to select context"},
-		&cli.StringFlag{Name: "agent-id", Usage: "stable peer id inside the broker group"},
+		&cli.StringFlag{Name: "agent-id", Hidden: true, Usage: "compatibility override for the broker-minted peer id"},
 		&cli.StringFlag{Name: "cluster", Usage: "existing collaboration cluster id to attach to"},
 		&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for read-only context (default: infer from cwd)"},
 		configFlag(),
@@ -131,7 +131,11 @@ func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode conta
 	}
 	defer cleanupEnv()
 	fmt.Fprintf(os.Stderr, "ward agent run: launching %s as role %s on %s (container %s)\n", plan.AgentID, role, repo.slug(), plan.Name)
-	return r.createAgentContainer(ctx, plan, envFile)
+	if err := r.createAgentContainer(ctx, plan, envFile); err != nil {
+		return err
+	}
+	writef(agentCommandWriter(c), "%s\n", plan.AgentID)
+	return nil
 }
 
 func (r *Runner) maybeAttachRunningDispatchBroker(ctx context.Context, plan *upPlan) error {
@@ -178,7 +182,7 @@ func genericPeerMessagingPrompt(agentID string) string {
 		"Peer collaboration is available through Ward. Your authenticated agent id is %s. "+
 			"Use `ward agent message send --to <agent-id> <message>` to send and "+
 			"`ward agent message receive --json` to read messages. You may launch a read-only peer with "+
-			"`ward agent run --role <role> --agent-id <agent-id> <work>`. Composed roles select context only.",
+			"`ward agent run --role <role> <work>`. The broker returns the new peer id. Composed roles select context only.",
 		agentID,
 	)
 }
@@ -232,10 +236,13 @@ func (r *Runner) maybeForwardGenericAgent(ctx context.Context, c *cli.Command, m
 		Argv:      argv,
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
-	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
+	resp, err := sendDispatchBrokerLaunchAdmission(ctx, addr, req)
 	if err != nil {
 		return true, err
 	}
-	fmt.Fprintln(os.Stderr, dispatchBrokerForwardedLine(argv, logPath))
+	fmt.Fprintln(os.Stderr, dispatchBrokerForwardedLine(argv, resp.LogPath))
+	if resp.AgentID != "" {
+		writef(agentCommandWriter(c), "%s\n", resp.AgentID)
+	}
 	return true, nil
 }

@@ -121,6 +121,9 @@ func runContainerDispatchBroker(ctx context.Context, c *cli.Command) error {
 	if err := r.reconcileDispatchJournals(ctx, brokerID); err != nil {
 		return fmt.Errorf("ward dispatch broker service: reconcile accepted work: %w", err)
 	}
+	if err := reconcileDispatchPeerAdmissions(brokerID); err != nil {
+		return fmt.Errorf("ward dispatch broker service: reconcile peer identities: %w", err)
+	}
 	requester := strings.TrimSpace(c.String("requester"))
 	fmt.Fprintf(os.Stderr, "ward dispatch broker service: ready on %s for %s\n",
 		listen, emptyDefault(requester, "any-director"))

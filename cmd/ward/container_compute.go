@@ -83,6 +83,7 @@ const (
 	labelRole                = "ward.role"
 	labelDriver              = "ward.driver"
 	labelCluster             = "ward.cluster"
+	labelPeer                = "ward.peer"
 	labelRepo                = "ward.repo"
 	labelIssue               = "ward.issue"
 	labelMachine             = "ward.machine"
@@ -1043,6 +1044,9 @@ func (p upPlan) labels() []string {
 	}
 	if p.ClusterID != "" {
 		out = append(out, labelCluster+"="+p.ClusterID)
+	}
+	if p.AgentID != "" {
+		out = append(out, labelPeer+"="+p.AgentID)
 	}
 	if p.Machine != "" {
 		out = append(out, labelMachine+"="+p.Machine)

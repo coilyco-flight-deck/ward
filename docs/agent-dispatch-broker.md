@@ -24,6 +24,8 @@ repository is never required to resolve a cluster.
   `--ward-version` pin is set.
 - Brokered output and reservation seed context record the effective Ward version.
 - Nested launches inherit `WARD_CLUSTER_ID` and the parent Compose network.
+- Generic-peer admission mints and journals the peer id before launch. Launch
+  responses carry `cluster_id`, `agent_id`, and `request_id` independently.
 - Docker supervises the broker with `restart: unless-stopped`. Closing the
   director or its terminal removes only the director service. Ward does not run
   `compose down`, so the broker remains supervised.

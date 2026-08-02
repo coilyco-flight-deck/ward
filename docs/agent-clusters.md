@@ -26,6 +26,9 @@ ward agent cluster stop codex-ab45 --print
 ward agent cluster stop codex-ab45
 ```
 
+`cluster status` is also the live peer roster. It shows the broker-minted peer
+id, role, harness, status, and container without consulting a repository.
+
 Status, logs, and stop filter on the exact `ward.cluster` label. Stop removes
 only containers carrying that id, then removes that Compose project and its
 Ward-owned state directory. Repository metadata may still appear on an

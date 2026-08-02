@@ -246,6 +246,8 @@ type dispatchBrokerResponse struct {
 	Error     string `json:"error,omitempty"`
 	RequestID string `json:"request_id,omitempty"`
 	Phase     string `json:"phase,omitempty"`
+	ClusterID string `json:"cluster_id,omitempty"`
+	AgentID   string `json:"agent_id,omitempty"`
 	// Source names the log source the host used for a logs request.
 	Source string `json:"source,omitempty"`
 	// LogPath is the host path the served run's stdout/stderr were redirected to,
@@ -380,8 +382,24 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	if dispatchAction(req.Action) == dispatchActionLaunch && strings.TrimSpace(req.RequestID) == "" {
 		req.RequestID = newDispatchBrokerRequestID()
 	}
+	newPeerAdmission := false
+	if dispatchAction(req.Action) == dispatchActionLaunch && req.Role != roleEngineer && req.Role != roleQA {
+		if err := validateDispatchBrokerRequest(req); err != nil {
+			writeDispatchBrokerLaunchResponse(conn, req, "", dispatchPhaseAccepted, err)
+			return
+		}
+		var err error
+		newPeerAdmission, err = admitDispatchPeer(&req)
+		if err != nil {
+			writeDispatchBrokerLaunchResponse(conn, req, "", dispatchPhaseAccepted, err)
+			return
+		}
+	}
 	logPath, err := r.startHostDispatchBrokerRequest(ctx, req)
-	writeDispatchBrokerResponse(conn, logPath, req.RequestID, dispatchPhaseAccepted, err)
+	if err != nil && newPeerAdmission {
+		_ = updateDispatchPeerStatus(req, dispatchPeerStatusFailed)
+	}
+	writeDispatchBrokerLaunchResponse(conn, req, logPath, dispatchPhaseAccepted, err)
 }
 
 func dispatchBrokerChildActionAllowed(req dispatchBrokerRequest) bool {
@@ -422,6 +440,23 @@ func writeDispatchBrokerResponse(conn net.Conn, logPath, requestID, phase string
 		resp.Error = err.Error()
 	}
 	if data, merr := json.Marshal(resp); merr == nil {
+		_, _ = conn.Write(data)
+	}
+}
+
+func writeDispatchBrokerLaunchResponse(conn net.Conn, req dispatchBrokerRequest, logPath, phase string, err error) {
+	resp := dispatchBrokerResponse{
+		OK:        err == nil,
+		LogPath:   logPath,
+		RequestID: req.RequestID,
+		Phase:     phase,
+		ClusterID: req.BrokerID,
+		AgentID:   req.AgentID,
+	}
+	if err != nil {
+		resp.Error = err.Error()
+	}
+	if data, marshalErr := json.Marshal(resp); marshalErr == nil {
 		_, _ = conn.Write(data)
 	}
 }
@@ -535,8 +570,13 @@ func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatc
 			finalizeDispatchArtifact(paths, req, paths.ConsolePath, resultErr)
 		}
 		outcome := dispatchOutcomeLaunched
+		peerStatus := dispatchPeerStatusActive
 		if resultErr != nil {
 			outcome = dispatchOutcomeFailed
+			peerStatus = dispatchPeerStatusFailed
+		}
+		if err := updateDispatchPeerStatus(req, peerStatus); err != nil {
+			_, _ = fmt.Fprintf(logf, "ward dispatch broker: persist peer status: %v\n", err)
 		}
 		if err := updateDispatchJournal(req.JournalPath, dispatchPhaseTerminal, "", outcome, resultErr); err != nil {
 			_, _ = fmt.Fprintf(logf, "ward dispatch broker: persist terminal request state: %v\n", err)
@@ -1976,28 +2016,33 @@ func sendDispatchBrokerRequest(ctx context.Context, addr string, req dispatchBro
 }
 
 func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispatchBrokerRequest) (string, error) {
+	resp, err := sendDispatchBrokerLaunchAdmission(ctx, addr, req)
+	return resp.LogPath, err
+}
+
+func sendDispatchBrokerLaunchAdmission(ctx context.Context, addr string, req dispatchBrokerRequest) (dispatchBrokerResponse, error) {
 	if strings.TrimSpace(req.RequestID) == "" {
 		req.RequestID = newDispatchBrokerRequestID()
 	}
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
-		logPath, retry, err := sendDispatchBrokerLaunchAttempt(ctx, addr, req)
+		resp, retry, err := sendDispatchBrokerLaunchAttempt(ctx, addr, req)
 		if err == nil || !retry || ctx.Err() != nil {
-			return logPath, err
+			return resp, err
 		}
 		lastErr = err
 	}
-	return "", lastErr
+	return dispatchBrokerResponse{}, lastErr
 }
 
-func sendDispatchBrokerLaunchAttempt(ctx context.Context, addr string, req dispatchBrokerRequest) (string, bool, error) {
+func sendDispatchBrokerLaunchAttempt(ctx context.Context, addr string, req dispatchBrokerRequest) (dispatchBrokerResponse, bool, error) {
 	conn, err := dialDispatchBroker(ctx, addr)
 	if err != nil {
-		return "", false, dispatchBrokerDialDiagnostic(addr, err)
+		return dispatchBrokerResponse{}, false, dispatchBrokerDialDiagnostic(addr, err)
 	}
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		_ = conn.Close()
-		return "", false, fmt.Errorf("dispatch broker: send request: %w", err)
+		return dispatchBrokerResponse{}, false, fmt.Errorf("dispatch broker: send request: %w", err)
 	}
 	type responseResult struct {
 		resp dispatchBrokerResponse
@@ -2016,20 +2061,20 @@ func sendDispatchBrokerLaunchAttempt(ctx context.Context, addr string, req dispa
 	select {
 	case <-ctx.Done():
 		_ = conn.Close()
-		return "", false, ctx.Err()
+		return dispatchBrokerResponse{}, false, ctx.Err()
 	case result := <-ch:
 		if result.err != nil {
-			return "", true, launchDispatchBrokerResponseErr(addr, result.err)
+			return dispatchBrokerResponse{}, true, launchDispatchBrokerResponseErr(addr, result.err)
 		}
 		if !result.resp.OK {
 			if isCredentialBrokerReply(result.resp.Error) {
-				return "", false, fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
+				return result.resp, false, fmt.Errorf("%w: %s answered as the credential broker, not the dispatch broker "+
 					"(WARD_DISPATCH_BROKER_ADDR points at the wrong broker - see ward#382)",
 					errDispatchBrokerUnavailable, addr)
 			}
-			return result.resp.LogPath, false, fmt.Errorf("dispatch broker: %s", result.resp.Error)
+			return result.resp, false, fmt.Errorf("dispatch broker: %s", result.resp.Error)
 		}
-		return result.resp.LogPath, false, nil
+		return result.resp, false, nil
 	}
 }
 

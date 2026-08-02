@@ -17,13 +17,18 @@ From a brokered agent:
 ```bash
 ward agent run \
   --role story-architect \
-  --agent-id architect \
   "Shape the premise, then ask critic for pressure tests."
 ```
 
 `ward agent run` accepts any safe lowercase role slug. It requires no issue.
 The generic command supplies a read-only one-shot lifecycle. The role does not
 select credentials, mounts, network access, or a landing workflow.
+
+The operator normally omits a peer id. Broker admission mints
+`<role>-<ab12>`, records it in the durable request journal before launch, and
+returns both the cluster id and peer id. The peer id stays stable for that
+admission and is immediately usable with `message send`. An explicit
+`--agent-id` remains a compatibility override, not a normal-flow input.
 
 A peer capability may launch another generic peer. It cannot select the fixed
 engineer or QA workflows or call privileged broker actions.
@@ -47,6 +52,10 @@ The launch prompt names the current agent ID and these commands when the
 message surface is available. Ward defines the transport and capability
 boundary only. The application remains free to choose roles, topology, work,
 and conversation patterns.
+
+Cluster status exposes each active `ward.peer` id beside its role and harness.
+Failed launches move their admission out of the active roster, and broker
+restart reconciliation restores the accepted identity from durable state.
 
 ## Context bundles
 

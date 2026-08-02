@@ -21,6 +21,7 @@ type collaborationClusterContainer struct {
 	Cluster string `json:"cluster"`
 	Role    string `json:"role"`
 	Harness string `json:"harness"`
+	PeerID  string `json:"peer_id,omitempty"`
 }
 
 func agentClusterCommand() *cli.Command {
@@ -309,6 +310,13 @@ func (r *Runner) runClusterStop(ctx context.Context, c *cli.Command) error {
 	if err := removeClusterStatePath(stack.Dir); err != nil {
 		return fmt.Errorf("ward agent cluster stop: remove state for %s: %w", clusterID, err)
 	}
+	peerRegistry, err := dispatchPeerAdmissionsPath(clusterID)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(peerRegistry); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("ward agent cluster stop: remove peer registry for %s: %w", clusterID, err)
+	}
 	writef(agentCommandWriter(c), "%s\n", clusterID)
 	return nil
 }
@@ -329,7 +337,7 @@ func clusterDockerListArgs(clusterID string, brokersOnly bool) []string {
 	if brokersOnly {
 		args = append(args, "--filter", "label="+labelRole+"=broker")
 	}
-	return append(args, "--format", `{{.Names}}\t{{.Status}}\t{{.Label "ward.cluster"}}\t{{.Label "ward.role"}}\t{{.Label "ward.driver"}}`)
+	return append(args, "--format", `{{.Names}}\t{{.Status}}\t{{.Label "ward.cluster"}}\t{{.Label "ward.role"}}\t{{.Label "ward.driver"}}\t{{.Label "ward.peer"}}`)
 }
 
 func (r *Runner) clusterContainers(ctx context.Context, clusterID string, brokersOnly bool) ([]collaborationClusterContainer, error) {
@@ -342,14 +350,14 @@ func (r *Runner) clusterContainers(ctx context.Context, clusterID string, broker
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "\t", 5)
-		if len(parts) != 5 || !validClusterID(strings.TrimSpace(parts[2])) {
+		parts := strings.SplitN(line, "\t", 6)
+		if len(parts) != 6 || !validClusterID(strings.TrimSpace(parts[2])) {
 			return nil, fmt.Errorf("unexpected Docker cluster row %q", line)
 		}
 		containers = append(containers, collaborationClusterContainer{
 			Name: strings.TrimSpace(parts[0]), Status: strings.TrimSpace(parts[1]),
 			Cluster: strings.TrimSpace(parts[2]), Role: strings.TrimSpace(parts[3]),
-			Harness: strings.TrimSpace(parts[4]),
+			Harness: strings.TrimSpace(parts[4]), PeerID: strings.TrimSpace(parts[5]),
 		})
 	}
 	sort.Slice(containers, func(i, j int) bool {
@@ -367,7 +375,7 @@ func writeClusterContainers(c *cli.Command, containers []collaborationClusterCon
 		return json.NewEncoder(w).Encode(containers)
 	}
 	for _, container := range containers {
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", container.Cluster, container.Role, container.Harness, container.Status, container.Name); err != nil {
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", container.Cluster, container.Role, container.Harness, container.PeerID, container.Status, container.Name); err != nil {
 			return err
 		}
 	}
