@@ -127,7 +127,7 @@ func firstNonEmpty(a, b string) string {
 
 // readBootstrapEnv reads + defaults the entrypoint env, erroring on a missing
 // required var (the bash `: "${X:?...}"` checks). Pure given the environment.
-func readBootstrapEnv() (bootstrapEnv, error) {
+func readBootstrapEnv() (bootstrapEnv, error) { //nolint:gocyclo,cyclop // repository-backed and collaboration plans have distinct required inputs
 	// Harness mechanics are typed product defaults. Model, reasoning, identity,
 	// and endpoint values come only from explicit environment or --config inputs.
 	launch, ferr := loadLaunchConfig()
@@ -383,7 +383,7 @@ func containerBootstrapCommand() *cli.Command {
 }
 
 // runContainerBootstrap is the Go port of the bash entrypoint main loop.
-func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) error { //nolint:funlen,gocyclo,cyclop
+func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) error { //nolint:funlen,gocyclo,cyclop,gocognit
 	e, err := readBootstrapEnv()
 	if err != nil {
 		blog("fatal: %v", err)

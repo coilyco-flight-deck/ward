@@ -50,7 +50,7 @@ func agentRunCommand() *cli.Command {
 	}
 }
 
-func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode containerMode) error { //nolint:gocyclo,cyclop
+func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode containerMode) error { //nolint:funlen,gocyclo,cyclop,gocognit
 	role := strings.TrimSpace(c.String("role"))
 	if !validComposedRole(role) {
 		return fmt.Errorf("ward agent run: invalid --role %q: want a lowercase slug", role)
@@ -183,7 +183,7 @@ func (r *Runner) runCollaborationAgent(ctx context.Context, c *cli.Command, mode
 	plan.AgentArgs = []string{work + "\n\n" + genericPeerMessagingPrompt(plan.AgentID)}
 	failAdmission := func(cause error) error {
 		if statusErr := r.finishRunningDispatchBrokerPeer(ctx, plan, dispatchPeerStatusFailed); statusErr != nil {
-			return fmt.Errorf("%w (also failed to retire broker peer admission: %v)", cause, statusErr)
+			return fmt.Errorf("%w (also failed to retire broker peer admission: %w)", cause, statusErr)
 		}
 		return cause
 	}
