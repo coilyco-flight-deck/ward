@@ -88,6 +88,7 @@ warded engineer #98      # ...spelled out; the engineer role runs detached
 warded director --repo coilyco-flight-deck/ward # read-only director
 warded director --burndown --org coilyco-flight-deck # autonomous drain
 ward agent cluster start --harness codex # repository-independent broker rendezvous
+ward agent run --cluster codex-ab45 --harness codex --role critic --context-bundle /path/to/bundle "Review the proposal."
 ```
 
 Engineer runs are **detached**: the attach-and-watch `--watch` retired, so interactive work now lives on the [director](docs/agent-director.md) surface. New to the agent driver? [`docs/first-run.md`](docs/first-run.md) is the ordered path from zero to a verifiable `warded ... --print` dry run.

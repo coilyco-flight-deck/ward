@@ -510,6 +510,9 @@ type upPlan struct {
 	// ClusterID is the stable harness-scoped collaboration identity shared by
 	// the broker, optional director, and every attached peer.
 	ClusterID string
+	// Collaboration selects the repository-free peer bootstrap plan. It mounts
+	// composed context and substrate without resolving or cloning a target repo.
+	Collaboration bool
 	// DispatchBrokerToken exports WARD_DISPATCH_BROKER_TOKEN, the per-launch secret
 	// the surface echoes back so the broker service authenticates the dial.
 	DispatchBrokerToken string
@@ -869,11 +872,13 @@ func (p upPlan) correlationEnv() map[string]string {
 		"WARD_RUN_ID":         p.Name,
 		"WARD_CONTAINER_NAME": p.Name,
 		"WARD_HARNESS":        string(p.Mode),
-		"WARD_TARGET_REPO":    p.Repo.slug(),
-		"WARD_TARGET_OWNER":   p.Repo.Owner,
-		"WARD_TARGET_NAME":    p.Repo.Name,
 		"WARD_CONTEXT_LEVEL":  fmt.Sprintf("%d", lookupAgent(p.Mode).Record().ContextLevel),
 		"WARD_VERSION":        p.WardVersion,
+	}
+	if p.Repo.Owner != "" && p.Repo.Name != "" {
+		env["WARD_TARGET_REPO"] = p.Repo.slug()
+		env["WARD_TARGET_OWNER"] = p.Repo.Owner
+		env["WARD_TARGET_NAME"] = p.Repo.Name
 	}
 	if p.ConfigRole != "" {
 		env["WARD_ROLE"] = p.ConfigRole
@@ -964,6 +969,9 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop,gocognit,f
 	}
 	if p.ClusterID != "" {
 		env[envClusterID] = p.ClusterID
+	}
+	if p.Collaboration {
+		env[envCollaborationPlan] = "1"
 	}
 	if p.AgentID != "" {
 		env[envAgentID] = p.AgentID

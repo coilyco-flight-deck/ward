@@ -91,6 +91,8 @@ type bootstrapEnv struct {
 	TailnetSocks5     string
 	ContextBundle     string
 	ContextTools      string
+	Collaboration     bool
+	ClusterID         string
 }
 
 const runProvenanceFile = ".ward-run-provenance.json"
@@ -181,15 +183,20 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 		TailnetSocks5:     os.Getenv("WARD_TS_SOCKS5"),
 		ContextBundle:     os.Getenv("WARD_CONTEXT_BUNDLE"),
 		ContextTools:      os.Getenv("WARD_CONTEXT_TOOLS"),
+		Collaboration:     os.Getenv(envCollaborationPlan) == "1",
+		ClusterID:         os.Getenv(envClusterID),
 	}
-	if e.TargetOwner == "" {
+	if !e.Collaboration && e.TargetOwner == "" {
 		return e, fmt.Errorf("missing WARD_TARGET_OWNER")
 	}
-	if e.TargetName == "" {
+	if !e.Collaboration && e.TargetName == "" {
 		return e, fmt.Errorf("missing WARD_TARGET_NAME")
 	}
-	if e.ForgejoBase == "" {
+	if !e.Collaboration && e.ForgejoBase == "" {
 		return e, fmt.Errorf("missing WARD_FORGEJO_BASE")
+	}
+	if e.Collaboration && !validClusterID(e.ClusterID) {
+		return e, fmt.Errorf("invalid repository-free collaboration cluster id %q", e.ClusterID)
 	}
 	if mode, err := parseMode(e.Mode); err == nil {
 		model := e.OpencodeModel
@@ -206,7 +213,9 @@ func readBootstrapEnv() (bootstrapEnv, error) {
 	e.Forge = parseForge(os.Getenv("WARD_FORGE"))
 	e.CloneBase = envOr("WARD_CLONE_BASE", e.ForgejoBase)
 	e.CloneHost = forgejoHostFromBase(e.CloneBase)
-	e.ExtraRepos = parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), e.TargetOwner, e.TargetName)
+	if !e.Collaboration {
+		e.ExtraRepos = parseExtraReposEnv(os.Getenv("WARD_EXTRA_REPOS"), e.TargetOwner, e.TargetName)
+	}
 	// e.ContextRepos is NOT read from the env: the host cwd may not be the target repo,
 	// so it is resolved from the fresh clone after cloneTarget (ward#580).
 	e.Issue, _ = strconv.Atoi(os.Getenv("WARD_TARGET_ISSUE"))
@@ -265,6 +274,11 @@ func blog(format string, a ...any) {
 // gate (ward#609), mirroring the bash echo_run_context; the seed rides in agentArgs.
 func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 	ref := e.TargetOwner + "/" + e.TargetName
+	scope := "repo:     " + ref
+	if e.Collaboration {
+		ref = e.ClusterID
+		scope = "cluster:  " + e.ClusterID + "\nrepo:     (none)"
+	}
 	if e.Issue != 0 {
 		ref = fmt.Sprintf("%s#%d", ref, e.Issue)
 	}
@@ -276,10 +290,10 @@ func echoRunContextGo(e bootstrapEnv, agentArgs []string) {
 		}
 	}
 	writef(os.Stderr, "===== ward run context (ward#609) =====\n"+
-		"repo:     %s/%s\nref:      %s\nbranch:   %s\ndriver:   %s (agent %s)\nrun:      %s\n"+
+		"%s\nref:      %s\nbranch:   %s\ndriver:   %s (agent %s)\nrun:      %s\n"+
 		"workflow: %s\nward:     %s\nup:       %s\n----- seed / task text -----\n%s\n"+
 		"===== end ward run context =====\n",
-		e.TargetOwner, e.TargetName, ref, orDefaultLabel(e.Branch, "(default)"),
+		scope, ref, orDefaultLabel(e.Branch, "(default)"),
 		e.Mode, e.Agent, orDefaultLabel(e.Container, "(unnamed)"),
 		orDefaultLabel(os.Getenv("WARD_WORKFLOW"), "merge-remote-main"),
 		orDefaultLabel(e.WardVersionSource, wardVersionLaunchLabel(e.WardVersion, "")),
@@ -388,6 +402,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	if os.Getenv("WARD_CONTAINER_UP") == "" {
 		_ = os.Setenv("WARD_CONTAINER_UP", time.Now().UTC().Format("2006-01-02T15:04:05Z"))
 	}
+	if e.Collaboration {
+		_ = os.Unsetenv("WARD_REAP_WORK")
+	}
 
 	// Dispatch every per-agent seam through the registry + the agentsapi capability
 	// interfaces, feature-tested per mode; the mode/argv switches stay live for Phase 4.
@@ -402,7 +419,9 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// so its model/effort/endpoint/context-level are visible in the log, not silent.
 	echoAgentConfigGo(e, rc, mode)
 
-	r.configureGitAuth(ctx, e)
+	if !e.Collaboration {
+		r.configureGitAuth(ctx, e)
+	}
 	blog("bootstrap installer start: %s", mode)
 	if err := installHarness(agent, rc); err != nil {
 		blog("fatal: %v", err)
@@ -410,32 +429,44 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		return err
 	}
 	blog("bootstrap installer done: %s", mode)
-	work, cerr := r.cloneTarget(ctx, e)
-	if cerr != nil {
-		return cerr
+	work := surfaceScratchMnt
+	if e.Collaboration {
+		if err := r.prepareScratchSpace(work); err != nil {
+			return err
+		}
+		blog("bootstrap collaboration plan: repository resolution and clone skipped for cluster %s", e.ClusterID)
+	} else {
+		var cerr error
+		work, cerr = r.cloneTarget(ctx, e)
+		if cerr != nil {
+			return cerr
+		}
+		blog("bootstrap clone done: %s/%s -> %s", e.TargetOwner, e.TargetName, work)
+		// Resolve the read-only context set from the FRESH CLONE, not the host cwd, which
+		// may not be the target repo (ward#580). Only place e.ContextRepos is set here.
+		e.ContextRepos = r.resolveCatalogContext(work, e)
+		if perr := r.writeRunProvenance(ctx, work, e); perr != nil {
+			blog("fatal: %v", perr)
+			return perr
+		}
+		blog("bootstrap provenance ready: %s", work)
+		blog("bootstrap hook install start: %s", work)
+		r.installPreCommitHooks(ctx, e, work)
+		r.installReadOnlyPushGuard(ctx, e, work)
+		blog("bootstrap hook install done: %s", work)
+		blog("bootstrap extra-repo clone start: %d grant(s)", len(e.ExtraRepos))
+		r.cloneExtraRepos(ctx, e)
+		blog("bootstrap extra-repo clone done")
+		blog("bootstrap context-repo clone start: %d read-only grant(s)", len(e.ContextRepos))
+		r.cloneContextRepos(ctx, e)
+		blog("bootstrap context-repo clone done")
 	}
-	blog("bootstrap clone done: %s/%s -> %s", e.TargetOwner, e.TargetName, work)
-	// Resolve the read-only context set from the FRESH CLONE, not the host cwd, which
-	// may not be the target repo (ward#580). Only place e.ContextRepos is set here.
-	e.ContextRepos = r.resolveCatalogContext(work, e)
-	if perr := r.writeRunProvenance(ctx, work, e); perr != nil {
-		blog("fatal: %v", perr)
-		return perr
-	}
-	blog("bootstrap provenance ready: %s", work)
-	blog("bootstrap hook install start: %s", work)
-	r.installPreCommitHooks(ctx, e, work)
-	r.installReadOnlyPushGuard(ctx, e, work)
-	blog("bootstrap hook install done: %s", work)
-	blog("bootstrap extra-repo clone start: %d grant(s)", len(e.ExtraRepos))
-	r.cloneExtraRepos(ctx, e)
-	blog("bootstrap extra-repo clone done")
-	blog("bootstrap context-repo clone start: %d read-only grant(s)", len(e.ContextRepos))
-	r.cloneContextRepos(ctx, e)
-	blog("bootstrap context-repo clone done")
 	blog("bootstrap substrate warm start")
 	r.warmSubstrate(ctx, e)
 	blog("bootstrap substrate warm done")
+	if e.Collaboration {
+		r.makeReadOnlyTree(e.SubstrateDest)
+	}
 	blog("bootstrap context compose start")
 	r.composeContext(e)
 	if err := r.projectContextBundleHome(e); err != nil {
@@ -465,10 +496,13 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		writeGateFailure("bootstrap", err.Error()) // reaper release-comment context (ward#609)
 		return err
 	}
-	defer r.reap(ctx, work)
-
-	branch := r.captureTrim(ctx, "git", "-C", work, "branch", "--show-current")
-	blog("ready: %s/%s on %s [mode=%s]", e.TargetOwner, e.TargetName, branch, e.Mode)
+	if !e.Collaboration {
+		defer r.reap(ctx, work)
+		branch := r.captureTrim(ctx, "git", "-C", work, "branch", "--show-current")
+		blog("ready: %s/%s on %s [mode=%s]", e.TargetOwner, e.TargetName, branch, e.Mode)
+	} else {
+		blog("ready: collaboration cluster %s in %s [mode=%s]", e.ClusterID, work, e.Mode)
+	}
 
 	argv, stream := buildAgentArgv(e, agentArgs)
 	logAgentArgv(e, agentArgs)
@@ -487,12 +521,14 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 			return berr
 		}
 		r.grantDockerSocketAccess(ctx, e)
-	} else if cerr := r.ensureGitCredReadable(e); cerr != nil {
-		// Re-assert the credential perms git's `store` helper clobbered on the clones,
-		// else the dropped agent falls back to the human token (ward#288).
-		blog("fatal: %v", cerr)
-		writeGateFailure("bootstrap", cerr.Error()) // reaper release-comment context (ward#609)
-		return cerr
+	} else if !e.Collaboration {
+		if cerr := r.ensureGitCredReadable(e); cerr != nil {
+			// Re-assert the credential perms git's `store` helper clobbered on the clones,
+			// else the dropped agent falls back to the human token (ward#288).
+			blog("fatal: %v", cerr)
+			writeGateFailure("bootstrap", cerr.Error()) // reaper release-comment context (ward#609)
+			return cerr
+		}
 	}
 	_ = os.Unsetenv("ANTHROPIC_API_KEY")
 	_ = os.Unsetenv("ANTHROPIC_AUTH_TOKEN")

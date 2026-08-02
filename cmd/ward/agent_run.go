@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 
@@ -65,6 +66,16 @@ func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode conta
 	if forwarded, err := r.maybeForwardGenericAgent(ctx, c, mode, role, agentID, work); forwarded {
 		return err
 	}
+	clusterID := strings.TrimSpace(c.String("cluster"))
+	if clusterID == "" && strings.TrimSpace(os.Getenv(envChildBrokerAddr)) != "" {
+		clusterID = strings.TrimSpace(os.Getenv(envClusterID))
+	}
+	if clusterID != "" && !validClusterID(clusterID) {
+		return fmt.Errorf("ward agent run: invalid --cluster %q", clusterID)
+	}
+	if clusterID != "" && strings.TrimSpace(c.String("repo")) == "" {
+		return r.runCollaborationAgent(ctx, c, mode, role, agentID, clusterID, work)
+	}
 
 	repo, cwd, err := r.resolveTarget(ctx, strings.TrimSpace(c.String("repo")))
 	if err != nil {
@@ -88,10 +99,6 @@ func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode conta
 	plan.Interactive = false
 	plan.TTY = false
 	plan.DispatchRequestID = strings.TrimSpace(os.Getenv(envDispatchRequestID))
-	clusterID := strings.TrimSpace(c.String("cluster"))
-	if clusterID != "" && !validClusterID(clusterID) {
-		return fmt.Errorf("ward agent run: invalid --cluster %q", clusterID)
-	}
 	if plan.ClusterID == "" {
 		plan.ClusterID = clusterID
 	}
@@ -138,6 +145,187 @@ func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode conta
 	return nil
 }
 
+func (r *Runner) runCollaborationAgent(ctx context.Context, c *cli.Command, mode containerMode, role, agentID, clusterID, work string) error {
+	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+	if err != nil {
+		return fmt.Errorf("ward agent run: %w", err)
+	}
+	defer cleanupAssets()
+	plan, err := buildCollaborationPlan(c, mode, role, agentID, clusterID, work, assetsDir)
+	if err != nil {
+		return fmt.Errorf("ward agent run: %w", err)
+	}
+	if c.Bool("print") {
+		stack, err := r.runningDispatchBrokerStack(ctx, plan.ClusterID)
+		if err != nil {
+			return fmt.Errorf("ward agent run: %w", err)
+		}
+		previewID := plan.AgentID
+		if previewID == "" {
+			previewID = role + "-<ab12>"
+		}
+		plan.AgentID = previewID
+		plan.Name = config.SanitizeSlug(previewID + "-" + plan.ClusterID)
+		applyDispatchBrokerAttachment(&plan, stack, "<broker-minted-peer-capability>")
+		plan.AgentArgs = []string{work + "\n\n" + genericPeerMessagingPrompt(plan.AgentID)}
+		return json.NewEncoder(agentCommandWriter(c)).Encode(map[string]any{
+			"agent_id":      plan.AgentID,
+			"cluster_id":    plan.ClusterID,
+			"role":          plan.Role,
+			"repository":    nil,
+			"collaboration": true,
+			"command":       dockerCreateArgv(plan, "<agent-credential-env-file>"),
+		})
+	}
+	if err := r.admitRunningDispatchBrokerPeer(ctx, &plan); err != nil {
+		return fmt.Errorf("ward agent run: %w", err)
+	}
+	plan.AgentArgs = []string{work + "\n\n" + genericPeerMessagingPrompt(plan.AgentID)}
+	failAdmission := func(cause error) error {
+		if statusErr := r.finishRunningDispatchBrokerPeer(ctx, plan, dispatchPeerStatusFailed); statusErr != nil {
+			return fmt.Errorf("%w (also failed to retire broker peer admission: %v)", cause, statusErr)
+		}
+		return cause
+	}
+	if err := r.prelaunchDispatch(ctx, c, plan, "ward agent run"); err != nil {
+		return failAdmission(err)
+	}
+	creds := r.resolveLaunchCreds(ctx, &plan, mode)
+	envFile, cleanupEnv, err := writeAgentEnvFile(creds)
+	if err != nil {
+		return failAdmission(fmt.Errorf("ward agent run: write collaboration environment: %w", err))
+	}
+	defer cleanupEnv()
+	fmt.Fprintf(os.Stderr, "ward agent run: launching %s as role %s in cluster %s without a repository target (container %s)\n", plan.AgentID, role, clusterID, plan.Name)
+	if err := r.createAgentContainer(ctx, plan, envFile); err != nil {
+		return failAdmission(err)
+	}
+	if err := r.finishRunningDispatchBrokerPeer(ctx, plan, dispatchPeerStatusActive); err != nil {
+		return fmt.Errorf("ward agent run: mark broker peer %s active: %w", plan.AgentID, err)
+	}
+	writef(agentCommandWriter(c), "%s\n", plan.AgentID)
+	return nil
+}
+
+func buildCollaborationPlan(c *cli.Command, mode containerMode, role, agentID, clusterID, work, assetsDir string) (upPlan, error) {
+	if !validClusterID(clusterID) {
+		return upPlan{}, fmt.Errorf("invalid collaboration cluster id %q", clusterID)
+	}
+	contextBundle, err := resolveContextBundle(c.String("context-bundle"), role, mode)
+	if err != nil {
+		return upPlan{}, err
+	}
+	if contextBundle.Root == "" {
+		return upPlan{}, fmt.Errorf("--context-bundle is required for a repository-free collaboration peer")
+	}
+	wardVersion, wardVersionSource, err := resolveLaunchWardVersion(c)
+	if err != nil {
+		return upPlan{}, err
+	}
+	configEnv, err := resolveLaunchConfigEnv(c.StringSlice("config"), resolveInvokeCWD(), mode)
+	if err != nil {
+		return upPlan{}, err
+	}
+	localModel := configEnv["WARD_OPENCODE_MODEL"]
+	if mode == modeGoose {
+		localModel = configEnv["WARD_GOOSE_MODEL"]
+	}
+	if err := validateLocalHarnessConfig(mode, localModel, configEnv["WARD_OLLAMA_URL"]); err != nil {
+		return upPlan{}, err
+	}
+	memoryLimit, memorySwap, err := resolveContainerMemorySettings()
+	if err != nil {
+		return upPlan{}, err
+	}
+	requestID := strings.TrimSpace(os.Getenv(envDispatchRequestID))
+	if requestID == "" {
+		requestID = newDispatchBrokerRequestID()
+	}
+	machine := randHex()
+	return upPlan{
+		Image:      imageRef(c.String("image"), c.String("tag")),
+		Name:       config.SanitizeSlug(emptyDefault(agentID, role+"-pending") + "-" + clusterID),
+		Role:       role,
+		ConfigRole: role,
+		Machine:    machine,
+		Mode:       mode,
+		Mounts: leastAccessMounts("", mountOpts{
+			AssetsDir: assetsDir, WardSource: c.String("ward-source"), ContextBundle: contextBundle.Root,
+		}),
+		Headless:          true,
+		Interactive:       false,
+		TTY:               false,
+		WardVersion:       wardVersion,
+		WardVersionSource: wardVersionSource,
+		WardFromSource:    c.String("ward-source") != "",
+		MemoryLimit:       memoryLimit,
+		MemorySwap:        memorySwap,
+		AgentArgs:         []string{work},
+		ConfigEnv:         configEnv,
+		ContextBundle:     contextBundle.Root,
+		ContextTools:      contextBundle.HasTools,
+		ClusterID:         clusterID,
+		Collaboration:     true,
+		AgentID:           agentID,
+		DispatchRequestID: requestID,
+	}, nil
+}
+
+func (r *Runner) runningDispatchBrokerStack(ctx context.Context, clusterID string) (directorStack, error) {
+	stack, err := resolveDirectorStack(clusterID)
+	if err != nil {
+		return directorStack{}, err
+	}
+	running, err := r.dockerCapture(ctx, "inspect", "--format", "{{.State.Running}}", stack.BrokerName)
+	if err != nil || strings.TrimSpace(string(running)) != "true" {
+		return directorStack{}, fmt.Errorf("collaboration cluster %s has no running broker", clusterID)
+	}
+	return stack, nil
+}
+
+func (r *Runner) admitRunningDispatchBrokerPeer(ctx context.Context, plan *upPlan) error {
+	if plan == nil || !plan.Collaboration || !validClusterID(plan.ClusterID) {
+		return fmt.Errorf("broker peer admission requires a repository-free collaboration plan")
+	}
+	stack, err := r.runningDispatchBrokerStack(ctx, plan.ClusterID)
+	if err != nil {
+		return err
+	}
+	args := []string{
+		"exec", stack.BrokerName, "/usr/local/bin/ward", "container", "dispatch-broker-peer-admit",
+		"--role", plan.Role, "--request-id", plan.DispatchRequestID,
+	}
+	if plan.AgentID != "" {
+		args = append(args, "--agent-id", plan.AgentID)
+	}
+	out, err := r.dockerCapture(ctx, args...)
+	if err != nil {
+		return fmt.Errorf("attach to broker %s: admit peer: %w", stack.BrokerName, err)
+	}
+	var response dispatchBrokerPeerAdmissionResponse
+	if err := json.Unmarshal(out, &response); err != nil {
+		return fmt.Errorf("attach to broker %s: decode peer admission: %w", stack.BrokerName, err)
+	}
+	if response.ClusterID != plan.ClusterID || response.RequestID != plan.DispatchRequestID || !validDispatchAgentID(response.PeerID) || response.Capability == "" {
+		return fmt.Errorf("attach to broker %s: invalid peer admission response", stack.BrokerName)
+	}
+	plan.AgentID = response.PeerID
+	plan.Name = config.SanitizeSlug(plan.AgentID + "-" + plan.ClusterID)
+	applyDispatchBrokerAttachment(plan, stack, response.Capability)
+	return nil
+}
+
+func (r *Runner) finishRunningDispatchBrokerPeer(ctx context.Context, plan upPlan, status string) error {
+	stack, err := resolveDirectorStack(plan.ClusterID)
+	if err != nil {
+		return err
+	}
+	return r.dockerExec(ctx,
+		"exec", stack.BrokerName, "/usr/local/bin/ward", "container", "dispatch-broker-peer-status",
+		"--role", plan.Role, "--request-id", plan.DispatchRequestID, "--agent-id", plan.AgentID, "--status", status,
+	)
+}
+
 func (r *Runner) maybeAttachRunningDispatchBroker(ctx context.Context, plan *upPlan) error {
 	if plan == nil || plan.DispatchBrokerAddr != "" || inContainer() {
 		return nil
@@ -145,14 +333,9 @@ func (r *Runner) maybeAttachRunningDispatchBroker(ctx context.Context, plan *upP
 	if strings.TrimSpace(plan.ClusterID) == "" {
 		return nil
 	}
-	stack, err := resolveDirectorStack(plan.ClusterID)
+	stack, err := r.runningDispatchBrokerStack(ctx, plan.ClusterID)
 	if err != nil {
 		return err
-	}
-	running, err := r.dockerCapture(ctx, "inspect", "--format", "{{.State.Running}}", stack.BrokerName)
-	brokerIsRunning := err == nil && strings.TrimSpace(string(running)) == "true"
-	if !brokerIsRunning {
-		return nil
 	}
 	capability, err := r.dockerCapture(
 		ctx,

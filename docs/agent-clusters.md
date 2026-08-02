@@ -26,6 +26,18 @@ ward agent cluster stop codex-ab45 --print
 ward agent cluster stop codex-ab45
 ```
 
+Attach a repository-free peer by pairing that id with a matching verified
+context bundle:
+
+```bash
+ward agent run --cluster codex-ab45 --harness codex --role critic \
+  --context-bundle /path/to/critic-bundle "Review the current proposal."
+```
+
+This attach path uses no current Git checkout, repository target, repository
+workflow, or Forgejo credential. Supplying `--repo owner/name` deliberately
+selects the separate repository-backed plan.
+
 `cluster status` is also the live peer roster. It shows the broker-minted peer
 id, role, harness, status, and container without consulting a repository.
 

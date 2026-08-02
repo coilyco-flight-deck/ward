@@ -12,6 +12,9 @@ import (
 // seedExternalContextMirrors seeds the ward-gitcache volume with every external
 // catalog.dependsOn mirror host-side before the sealed container launches (ward#612).
 func (r *Runner) seedExternalContextMirrors(ctx context.Context, plan upPlan) {
+	if plan.Collaboration {
+		return
+	}
 	// Only the real host can seed the mirror.
 	// An in-container dispatch has none of the launch-time credentials.
 	if inContainer() {

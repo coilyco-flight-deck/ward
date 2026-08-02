@@ -933,6 +933,34 @@ func TestReadBootstrapEnvRequired(t *testing.T) {
 	}
 }
 
+func TestAgentFrameworkReadBootstrapEnvCollaborationNeedsClusterNotRepository(t *testing.T) {
+	t.Setenv(envCollaborationPlan, "1")
+	t.Setenv(envClusterID, "codex-ab45")
+	t.Setenv("WARD_TARGET_OWNER", "")
+	t.Setenv("WARD_TARGET_NAME", "")
+	t.Setenv("WARD_FORGEJO_BASE", "")
+	t.Setenv("WARD_EXTRA_REPOS", "owner/ignored")
+	t.Setenv("WARD_MODE", string(modeCodex))
+	t.Setenv("WARD_AGENT", string(modeCodex))
+	t.Setenv("WARD_ROLE", "critic")
+
+	e, err := readBootstrapEnv()
+	if err != nil {
+		t.Fatalf("repository-free collaboration env: %v", err)
+	}
+	if !e.Collaboration || e.ClusterID != "codex-ab45" {
+		t.Fatalf("collaboration bootstrap identity = %+v", e)
+	}
+	if e.TargetOwner != "" || e.TargetName != "" || e.ForgejoBase != "" || len(e.ExtraRepos) != 0 {
+		t.Fatalf("collaboration bootstrap retained repository authority: %+v", e)
+	}
+
+	t.Setenv(envClusterID, "repo-derived-name")
+	if _, err := readBootstrapEnv(); err == nil || !strings.Contains(err.Error(), "invalid repository-free collaboration cluster id") {
+		t.Fatalf("invalid cluster error = %v", err)
+	}
+}
+
 func TestReadBootstrapEnvRequiresLocalHarnessConfig(t *testing.T) {
 	for _, tc := range []struct {
 		name, mode, model, endpoint, want string

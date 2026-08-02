@@ -290,6 +290,52 @@ func TestBuildUpPlanMountsContextBundleReadOnly(t *testing.T) {
 	}
 }
 
+func TestAgentFrameworkBuildCollaborationPlanHasNoRepositoryAuthority(t *testing.T) {
+	bundle := writeContextBundleFixture(t, "critic", modeCodex, true)
+	cmd := parseCommandForTest(t, agentRunCommand().Flags, []string{
+		"run", "--role", "critic", "--cluster", "codex-ab45", "--harness", "codex",
+		"--context-bundle", bundle, "review the draft",
+	})
+	plan, err := buildCollaborationPlan(cmd, modeCodex, "critic", "", "codex-ab45", "review the draft", t.TempDir())
+	if err != nil {
+		t.Fatalf("buildCollaborationPlan: %v", err)
+	}
+	if !plan.Collaboration || plan.ClusterID != "codex-ab45" || plan.AgentID != "" || plan.DispatchRequestID == "" {
+		t.Fatalf("collaboration identity = %+v", plan)
+	}
+	if plan.Repo.Owner != "" || plan.Repo.Name != "" || plan.HostCwd != "" || len(plan.ExtraRepos) != 0 {
+		t.Fatalf("repository-free plan retained repository inputs: %+v", plan)
+	}
+	env := plan.wardEnv()
+	for _, key := range []string{"WARD_TARGET_REPO", "WARD_TARGET_OWNER", "WARD_TARGET_NAME", "WARD_TARGET_ISSUE", "WARD_EXTRA_REPOS"} {
+		if _, ok := env[key]; ok {
+			t.Fatalf("repository-free plan exported %s=%q", key, env[key])
+		}
+	}
+	if env[envCollaborationPlan] != "1" || env[envClusterID] != "codex-ab45" {
+		t.Fatalf("collaboration env = %+v", env)
+	}
+	var bundleMount bool
+	for _, mount := range plan.Mounts {
+		if mount.Target == containerContextMount {
+			t.Fatalf("repository-free plan mounted a host cwd: %+v", mount)
+		}
+		if mount.Target == containerContextBundle {
+			bundleMount = true
+			if mount.Source != plan.ContextBundle || !mount.ReadOnly || mount.Volume {
+				t.Fatalf("context bundle mount = %+v, want read-only host bind", mount)
+			}
+		}
+	}
+	if !bundleMount {
+		t.Fatalf("repository-free plan has no context bundle mount: %+v", plan.Mounts)
+	}
+	joined := strings.Join(dockerCreateArgv(plan, ""), " ")
+	if strings.Contains(joined, labelRepo+"=") || !strings.Contains(joined, labelCluster+"=codex-ab45") {
+		t.Fatalf("collaboration docker argv has wrong labels: %s", joined)
+	}
+}
+
 func TestNoContextBundlePreservesLaunch(t *testing.T) {
 	plan := sampleUpPlan()
 	env := plan.wardEnv()

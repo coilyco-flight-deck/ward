@@ -6,23 +6,36 @@ doc_goal: Explain generic composed-agent launches and authenticated broker messa
 Ward can host composed agents without adding each role to its fixed workflow
 roster. The broker treats role slugs as opaque context selectors.
 
-When a matching director broker is already running for the target repository
-and harness, a host-launched generic run joins that broker automatically. Its
-own AOS-generated context bundle remains the source of role context.
+Generic peers have two distinct launch plans. An explicit `--repo owner/name`
+uses the existing repository-backed plan and its repository workflow. An
+existing `--cluster` without `--repo` selects the repository-free
+collaboration plan. In both cases, the peer's AOS-generated context bundle is
+the source of role context.
 
 ## Launch a peer
 
-From a brokered agent:
+From the host, attach a repository-free peer to an existing cluster:
 
 ```bash
 ward agent run \
+  --cluster codex-ab45 \
+  --harness codex \
   --role story-architect \
+  --context-bundle /path/to/story-architect-bundle \
   "Shape the premise, then ask critic for pressure tests."
 ```
 
 `ward agent run` accepts any safe lowercase role slug. It requires no issue.
-The generic command supplies a read-only one-shot lifecycle. The role does not
-select credentials, mounts, network access, or a landing workflow.
+The repository-free plan requires an existing cluster and a context bundle
+whose manifest matches the selected role and harness. It does not infer a Git
+checkout, resolve an owner or repository, clone a target, choose a repository
+workflow, or inject Forgejo credentials. The role does not select credentials,
+mounts, network access, or a landing workflow.
+
+The context bundle and warmed substrate are read-only inputs. The peer gets
+writable `/scratch`, private harness homes, and runtime state. Explicit
+`--repo owner/name` remains the opt-in to Ward's unchanged repository-backed
+launch plan.
 
 The operator normally omits a peer id. Broker admission mints
 `<role>-<ab12>`, records it in the durable request journal before launch, and
@@ -32,6 +45,10 @@ admission and is immediately usable with `message send`. An explicit
 
 A peer capability may launch another generic peer. It cannot select the fixed
 engineer or QA workflows or call privileged broker actions.
+
+Broker-launched descendants inherit the admitting broker's cluster id. A new
+role-specific context bundle still needs a host launch because a container-only
+bundle path cannot become a new host read-only bind.
 
 ## Exchange messages
 
@@ -56,9 +73,12 @@ and conversation patterns.
 Cluster status exposes each active `ward.peer` id beside its role and harness.
 Failed launches move their admission out of the active roster, and broker
 restart reconciliation restores the accepted identity from durable state.
+The same returned id addresses direct messages, `ward agent logs <peer-id>`,
+and `ward agent stop <peer-id>`. Stopping a peer retires its active admission.
 
 ## Context bundles
 
 Host-launched composed peers retain their own validated context bundle when
-they join a broker. Nested agents cannot forward a container-only bundle path
+they join a broker. The bundle is context only and cannot grant repository or
+Forgejo authority. Nested agents cannot forward a container-only bundle path
 as a new host bind. Launch a separately composed role through AOS on the host.

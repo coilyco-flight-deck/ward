@@ -3,7 +3,7 @@ doc_goal: Compress the launch path into one release-era guide so a reader can te
 ---
 # ward agent lifecycle
 
-The launch path is short and explicit.
+The repository workflow launch path is short and explicit.
 Terminology for dispatch, launch, reservation, run, and terminal outcomes lives
 in [terminology.md](terminology.md).
 
@@ -13,6 +13,18 @@ in [terminology.md](terminology.md).
 4. Post or refresh the reservation comment.
 5. Launch the ephemeral container.
 6. Hand off to the selected workflow.
+
+A repository-free collaboration peer follows a separate plan:
+
+1. Validate the existing harness-scoped cluster id.
+2. Validate the context bundle against the selected role and harness.
+3. Confirm the exact cluster broker is running.
+4. Launch with read-only context and substrate plus writable scratch and runtime homes.
+
+That plan performs no repository inference, target resolution, clone,
+allowlisting, reservation, repository workflow selection, or Forgejo credential
+projection. Supplying `--repo owner/name` selects the repository workflow plan
+above and preserves its existing checks.
 
 ## What the launch path enforces
 
@@ -38,8 +50,10 @@ See [agent-check-placement.md](agent-check-placement.md) for the current broker-
 Host-side credentials are resolved before the container starts. Engineer and
 QA runs receive the existing Git and harness channels. A Compose director gets
 only its selected harness channel and broker capability. Its sibling broker
-alone receives the Forgejo credential. The run then inherits the selected
-harness context level and mount set.
+alone receives the Forgejo credential. A repository-free collaboration peer
+receives only its selected harness channel and broker capability, with no Git
+or Forgejo credential. Each run then inherits its selected harness context
+level and mount set.
 
 ## Split-stack repositories
 

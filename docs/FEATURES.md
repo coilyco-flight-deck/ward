@@ -38,8 +38,9 @@ Inventory of what `ward` ships today.
 - Broker-only collaboration clusters can start outside a Git checkout and use
   cluster-scoped list, status, logs, stop, and cleanup. See
   [agent-clusters.md](agent-clusters.md).
-- Generic read-only peers with broker-minted durable identities, active roster
-  labels, and authenticated broker messages. See
+- Generic peers with broker-minted durable identities, active roster labels,
+  authenticated broker messages, and a repository-free context-bundle plan
+  with read-only inputs and writable scratch. See
   [agent-peer-collaboration.md](agent-peer-collaboration.md).
 - PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR lifecycle close/reopen/recovery tools and repair classification.

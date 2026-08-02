@@ -28,7 +28,12 @@ func (r *Runner) agentHostCtx(ctx context.Context) agentsapi.HostCtx {
 // agentTrustDirs mirrors seed_claude_onboarding's trust set: target clone,
 // /workspace root, each granted extra repo, /substrate root + warmed repos (ward#168).
 func agentTrustDirs(e bootstrapEnv) []string {
-	dirs := []string{primaryWorkspaceDir(containerWorkspace, targetRepo{Owner: e.TargetOwner, Name: e.TargetName}), containerWorkspace}
+	dirs := []string{containerWorkspace}
+	if e.Collaboration {
+		dirs = append(dirs, surfaceScratchMnt)
+	} else {
+		dirs = append([]string{primaryWorkspaceDir(containerWorkspace, targetRepo{Owner: e.TargetOwner, Name: e.TargetName})}, dirs...)
+	}
 	for _, repo := range e.ExtraRepos {
 		if repo.Name != "" {
 			dirs = append(dirs, grantedRepoWorkspaceDir(containerWorkspace, repo))
