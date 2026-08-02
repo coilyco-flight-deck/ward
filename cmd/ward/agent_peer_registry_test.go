@@ -116,6 +116,85 @@ func TestLaunchResponseExposesClusterAndPeerIDs(t *testing.T) {
 	}
 }
 
+func TestBrokerAdmitsHostMountedPeerBeforeContainerLaunch(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	t.Setenv(envDispatchJournalDir, t.TempDir())
+	t.Setenv(envContainerService, dispatchBrokerService)
+	t.Setenv(envDispatchBrokerID, "codex-ab45")
+	t.Setenv(envDispatchBrokerToken, "master-capability")
+	original := dispatchPeerIDSuffix
+	t.Cleanup(func() { dispatchPeerIDSuffix = original })
+	dispatchPeerIDSuffix = func() string { return "cd67" }
+	requestID := newDispatchBrokerRequestID()
+
+	response, err := admitHostMountedDispatchPeer("critic", requestID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.ClusterID != "codex-ab45" || response.PeerID != "critic-cd67" ||
+		response.RequestID != requestID || response.Capability == "" {
+		t.Fatalf("host-mounted admission = %#v", response)
+	}
+	journalPath, err := dispatchJournalPath(requestID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal, err := readDispatchJournal(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journal.Request.AgentID != response.PeerID || journal.Phase != dispatchPhaseAccepted {
+		t.Fatalf("accepted journal = %#v", journal)
+	}
+	if err := finishHostMountedDispatchPeer("critic", requestID, response.PeerID, dispatchPeerStatusActive, ""); err != nil {
+		t.Fatal(err)
+	}
+	journal, err = readDispatchJournal(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journal.Outcome != dispatchOutcomeLaunched {
+		t.Fatalf("terminal journal = %#v", journal)
+	}
+	active, err := activeDispatchPeers("codex-ab45")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 || active[0].PeerID != response.PeerID {
+		t.Fatalf("active peer registry = %#v", active)
+	}
+	if err := retireDispatchPeer("codex-ab45", response.PeerID); err != nil {
+		t.Fatal(err)
+	}
+	active, err = activeDispatchPeers("codex-ab45")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 0 {
+		t.Fatalf("stopped peer remained active: %#v", active)
+	}
+	journal, err = readDispatchJournal(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journal.Outcome != dispatchOutcomeInterrupted {
+		t.Fatalf("stopped journal = %#v", journal)
+	}
+}
+
+func TestPeerContainerLookupUsesExactIdentityAndClusterLabels(t *testing.T) {
+	got := peerContainerListArgs("critic-cd67", "codex-ab45", true)
+	want := []string{
+		"ps", "-a", "--format", "{{.Names}}",
+		"--filter", "label=" + containerLabel,
+		"--filter", "label=" + labelPeer + "=critic-cd67",
+		"--filter", "label=" + labelCluster + "=codex-ab45",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("peer lookup argv = %#v, want %#v", got, want)
+	}
+}
+
 func TestPeerLabelExposesBrokerMintedIdentity(t *testing.T) {
 	plan := upPlan{Role: "critic", Mode: modeCodex, ClusterID: "codex-ab45", AgentID: "critic-ab45"}
 	labels := labelsMap(plan.labels())

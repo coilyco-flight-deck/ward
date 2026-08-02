@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -19,6 +20,7 @@ const (
 	envDispatchBrokerRequester   = "WARD_DISPATCH_BROKER_REQUESTER"
 	envDispatchBrokerID          = "WARD_DISPATCH_BROKER_ID"
 	envClusterID                 = "WARD_CLUSTER_ID"
+	envCollaborationPlan         = "WARD_COLLABORATION_PLAN"
 	envPersistentDispatchBroker  = "WARD_PERSISTENT_DISPATCH_BROKER"
 	dispatchBrokerService        = "dispatch-broker"
 	dispatchBrokerServicePort    = "7420"
@@ -100,6 +102,139 @@ func containerDispatchBrokerCapabilityCommand() *cli.Command {
 			return nil
 		},
 	}
+}
+
+type dispatchBrokerPeerAdmissionResponse struct {
+	ClusterID  string `json:"cluster_id"`
+	PeerID     string `json:"peer_id"`
+	RequestID  string `json:"request_id"`
+	Capability string `json:"capability"`
+}
+
+func containerDispatchBrokerPeerAdmitCommand() *cli.Command {
+	return &cli.Command{
+		Name:   "dispatch-broker-peer-admit",
+		Hidden: true,
+		Usage:  "Broker-internal admission for a host-mounted collaboration peer.",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "role", Required: true},
+			&cli.StringFlag{Name: "request-id", Required: true},
+			&cli.StringFlag{Name: "agent-id"},
+		},
+		Action: func(_ context.Context, c *cli.Command) error {
+			response, err := admitHostMountedDispatchPeer(c.String("role"), c.String("request-id"), c.String("agent-id"))
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(agentCommandWriter(c)).Encode(response)
+		},
+	}
+}
+
+func admitHostMountedDispatchPeer(role, requestID, explicitID string) (dispatchBrokerPeerAdmissionResponse, error) {
+	if strings.TrimSpace(os.Getenv(envContainerService)) != dispatchBrokerService {
+		return dispatchBrokerPeerAdmissionResponse{}, fmt.Errorf("ward dispatch broker peer admission: available only inside the broker service")
+	}
+	clusterID := strings.TrimSpace(os.Getenv(envDispatchBrokerID))
+	if !validClusterID(clusterID) {
+		return dispatchBrokerPeerAdmissionResponse{}, fmt.Errorf("ward dispatch broker peer admission: invalid cluster id %q", clusterID)
+	}
+	role = strings.TrimSpace(role)
+	if !validComposedRole(role) || role == roleEngineer || role == roleQA {
+		return dispatchBrokerPeerAdmissionResponse{}, fmt.Errorf("ward dispatch broker peer admission: invalid generic role %q", role)
+	}
+	requestID = strings.TrimSpace(requestID)
+	if !dispatchRequestIDPattern.MatchString(requestID) {
+		return dispatchBrokerPeerAdmissionResponse{}, fmt.Errorf("ward dispatch broker peer admission: invalid request id %q", requestID)
+	}
+	explicitID = strings.TrimSpace(explicitID)
+	if explicitID != "" && !validDispatchAgentID(explicitID) {
+		return dispatchBrokerPeerAdmissionResponse{}, fmt.Errorf("ward dispatch broker peer admission: invalid compatibility agent id %q", explicitID)
+	}
+	argv := []string{"run", "--role", role}
+	if explicitID != "" {
+		argv = append(argv, "--agent-id", explicitID)
+	}
+	argv = append(argv, "host-mounted collaboration peer")
+	req := dispatchBrokerRequest{
+		Action: dispatchActionLaunch, RequestID: requestID, BrokerID: clusterID,
+		Role: role, AgentID: explicitID, Argv: argv,
+	}
+	if err := validateDispatchBrokerLaunch(req); err != nil {
+		return dispatchBrokerPeerAdmissionResponse{}, err
+	}
+	created, err := admitDispatchPeer(&req)
+	if err != nil {
+		return dispatchBrokerPeerAdmissionResponse{}, err
+	}
+	_, logf, _, _, err := acceptDispatchLaunch(req)
+	if logf != nil {
+		_ = logf.Close()
+	}
+	if err != nil {
+		if created {
+			_ = updateDispatchPeerStatus(req, dispatchPeerStatusFailed)
+		}
+		return dispatchBrokerPeerAdmissionResponse{}, err
+	}
+	master := strings.TrimSpace(os.Getenv(envDispatchBrokerToken))
+	if master == "" {
+		if created {
+			_ = updateDispatchPeerStatus(req, dispatchPeerStatusFailed)
+		}
+		return dispatchBrokerPeerAdmissionResponse{}, fmt.Errorf("ward dispatch broker peer admission: %s is not set", envDispatchBrokerToken)
+	}
+	return dispatchBrokerPeerAdmissionResponse{
+		ClusterID: clusterID, PeerID: req.AgentID, RequestID: requestID,
+		Capability: dispatchBrokerAgentCapability(master, req.AgentID),
+	}, nil
+}
+
+func containerDispatchBrokerPeerStatusCommand() *cli.Command {
+	return &cli.Command{
+		Name:   "dispatch-broker-peer-status",
+		Hidden: true,
+		Usage:  "Broker-internal terminal status for a host-mounted collaboration peer.",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "role", Required: true},
+			&cli.StringFlag{Name: "request-id", Required: true},
+			&cli.StringFlag{Name: "agent-id", Required: true},
+			&cli.StringFlag{Name: "status", Required: true},
+			&cli.StringFlag{Name: "detail"},
+		},
+		Action: func(_ context.Context, c *cli.Command) error {
+			return finishHostMountedDispatchPeer(c.String("role"), c.String("request-id"), c.String("agent-id"), c.String("status"), c.String("detail"))
+		},
+	}
+}
+
+func finishHostMountedDispatchPeer(role, requestID, agentID, status, detail string) error {
+	if strings.TrimSpace(os.Getenv(envContainerService)) != dispatchBrokerService {
+		return fmt.Errorf("ward dispatch broker peer status: available only inside the broker service")
+	}
+	clusterID := strings.TrimSpace(os.Getenv(envDispatchBrokerID))
+	req := dispatchBrokerRequest{
+		Action: dispatchActionLaunch, RequestID: strings.TrimSpace(requestID), BrokerID: clusterID,
+		Role: strings.TrimSpace(role), AgentID: strings.TrimSpace(agentID),
+	}
+	journalPath, err := dispatchJournalPath(req.RequestID)
+	if err != nil {
+		return err
+	}
+	switch strings.TrimSpace(status) {
+	case dispatchPeerStatusActive:
+		if err := updateDispatchJournal(journalPath, dispatchPhaseTerminal, "", dispatchOutcomeLaunched, nil); err != nil {
+			return err
+		}
+	case dispatchPeerStatusFailed:
+		launchErr := errors.New(emptyDefault(strings.TrimSpace(detail), "host-mounted collaboration launch failed"))
+		if err := updateDispatchJournal(journalPath, dispatchPhaseTerminal, "", dispatchOutcomeFailed, launchErr); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("ward dispatch broker peer status: invalid terminal status %q", status)
+	}
+	return updateDispatchPeerStatus(req, strings.TrimSpace(status))
 }
 
 func runContainerDispatchBroker(ctx context.Context, c *cli.Command) error {

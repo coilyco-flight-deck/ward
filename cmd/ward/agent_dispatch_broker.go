@@ -1225,6 +1225,13 @@ func (r *Runner) runDispatchBrokerStop(ctx context.Context, req dispatchBrokerRe
 	if serr := r.dockerExec(ctx, "stop", name); serr != nil {
 		return "", fmt.Errorf("dispatch broker: docker stop %s: %w", name, serr)
 	}
+	peerID, peerErr := r.containerPeerLabel(ctx, name)
+	clusterID, clusterErr := r.containerClusterLabel(ctx, name)
+	if peerErr == nil && clusterErr == nil && peerID != "" && validClusterID(clusterID) {
+		if retireErr := retireDispatchPeer(clusterID, peerID); retireErr != nil {
+			return "", fmt.Errorf("dispatch broker: stopped %s but could not retire peer %s: %w", name, peerID, retireErr)
+		}
+	}
 	return name, nil
 }
 
@@ -1250,12 +1257,37 @@ func (r *Runner) resolveEngineerStopTarget(ctx context.Context, target string) (
 	if ref, err := parseAgentIssueRef(target); err == nil && ref.Owner != "" && ref.Repo != "" {
 		return r.resolveEngineerStopRef(ctx, target, ref)
 	}
+	if validDispatchAgentID(target) {
+		peers, err := r.containersForPeerID(ctx, target, currentDispatchClusterID(), false)
+		if err != nil {
+			return "", fmt.Errorf("dispatch broker: resolve peer id %q: %w", target, err)
+		}
+		if len(peers) > 0 {
+			name, err := selectSinglePeerTarget("stop", target, peers)
+			if err != nil {
+				return "", err
+			}
+			return r.guardPeerStop(ctx, name, target)
+		}
+	}
 	// Otherwise a container name: it must be a running container, and its role is
 	// re-checked fail-closed below (never a director/session).
 	if !r.containerRunning(ctx, target) {
 		return "", fmt.Errorf("dispatch broker: no running container named %q to stop", target)
 	}
 	return r.guardEngineerStop(ctx, target)
+}
+
+func (r *Runner) guardPeerStop(ctx context.Context, name, peerID string) (string, error) {
+	actualPeerID, err := r.containerPeerLabel(ctx, name)
+	if err != nil || actualPeerID != peerID {
+		return "", fmt.Errorf("dispatch broker: refusing to stop %q: its %s label does not match peer id %q", name, labelPeer, peerID)
+	}
+	role, err := r.containerRoleLabel(ctx, name)
+	if err != nil || !validComposedRole(role) || role == roleEngineer || role == roleQA {
+		return "", fmt.Errorf("dispatch broker: refusing to stop %q: role %q is not a generic collaboration peer", name, role)
+	}
+	return name, nil
 }
 
 func (r *Runner) resolveEngineerStopRef(ctx context.Context, target string, ref agentIssueRef) (string, error) {
@@ -1317,6 +1349,24 @@ func (r *Runner) guardEngineerStop(ctx context.Context, name string) (string, er
 func (r *Runner) containerRoleLabel(ctx context.Context, name string) (string, error) {
 	out, err := r.dockerCapture(ctx, "inspect",
 		"--format", `{{index .Config.Labels "`+labelRole+`"}}`, name)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func (r *Runner) containerPeerLabel(ctx context.Context, name string) (string, error) {
+	out, err := r.dockerCapture(ctx, "inspect",
+		"--format", `{{index .Config.Labels "`+labelPeer+`"}}`, name)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func (r *Runner) containerClusterLabel(ctx context.Context, name string) (string, error) {
+	out, err := r.dockerCapture(ctx, "inspect",
+		"--format", `{{index .Config.Labels "`+labelCluster+`"}}`, name)
 	if err != nil {
 		return "", err
 	}

@@ -320,6 +320,19 @@ func (r *Runner) resolveAgentLogsSource(ctx context.Context, target string, tail
 	if ref, err := parseAgentIssueRef(target); err == nil && ref.Owner != "" && ref.Repo != "" {
 		return r.resolveAgentLogsSourceForIssue(ctx, ref, tail, follow, opts)
 	}
+	if validDispatchAgentID(target) {
+		names, err := r.containersForPeerID(ctx, target, currentDispatchClusterID(), true)
+		if err != nil {
+			return agentLogSource{}, fmt.Errorf("resolve peer id %q: %w", target, err)
+		}
+		if len(names) > 0 {
+			name, err := selectSinglePeerTarget("read", target, names)
+			if err != nil {
+				return agentLogSource{}, err
+			}
+			return r.resolveAgentLogsSourceForName(ctx, name, tail, follow, opts)
+		}
+	}
 	return r.resolveAgentLogsSourceForName(ctx, target, tail, follow, opts)
 }
 
@@ -438,8 +451,11 @@ func (r *Runner) resolveAgentLogsSourceForRunningName(ctx context.Context, name 
 	case roleEngineer, roleDirector:
 		// readable
 	default:
-		return agentLogSource{}, fmt.Errorf("dispatch broker: refusing to read %q: it is a %q container, not a readable agent - "+
-			"logs only target %s and %s (session containers are never read here)", name, role, roleEngineer, roleDirector)
+		peerID, peerErr := r.containerPeerLabel(ctx, name)
+		if peerErr != nil || !validComposedRole(role) || peerID == "" {
+			return agentLogSource{}, fmt.Errorf("dispatch broker: refusing to read %q: it is a %q container without a readable peer identity - "+
+				"logs target %s, %s, and broker-admitted peers", name, role, roleEngineer, roleDirector)
+		}
 	}
 	return r.dockerAgentLogSource(ctx, name, agentIssueRef{}, tail, follow), nil
 }

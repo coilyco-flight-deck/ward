@@ -11,15 +11,15 @@ import (
 )
 
 // agent_stop.go wires `ward agent stop`: a director surface halts one running engineer
-// or clears one confirmed stale launch through the dispatch broker (ward#627/#1502).
+// or peer, or clears one confirmed stale launch through the dispatch broker.
 
 // agentStopCommand builds `ward agent stop <ref>`: forward a stop request through
 // the dispatch broker. A meta verb (agentMetaCommands), not a startup role.
 func agentStopCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "stop",
-		Usage:     "Stop a running engineer or clear a confirmed stale launch through the dispatch broker (ward#627, ward#1502).",
-		ArgsUsage: "<owner/repo#N | #N | container-name>",
+		Usage:     "Stop a running engineer or broker-admitted peer, or clear a confirmed stale launch.",
+		ArgsUsage: "<owner/repo#N | #N | container-name | peer-id>",
 		Description: `stop halts one running engineer container - the deliberate counterpart to
 ` + "`ward agent reap`" + `'s idle sweep (#376). Where reap stops engineers idle past a
 threshold, stop targets one named engineer on demand: a director that mis-scoped an
@@ -34,13 +34,15 @@ elapsed with no running container, stop clears the stale issue reservation and l
 cache instead. ` + "`--print`" + ` previews either action. Off a surface it errors, like a
 ref-mode dispatch does.
 
-Stop-only, engineer-only. The broker service refuses any container that is not
-ward.role=engineer (director / qa / session are never stopped), and refuses a
-ref that matches zero or more than one engineer rather than guessing.
+Issue and container-name stops remain engineer-only. A broker-minted peer id
+stops only the generic peer carrying the matching ` + "`ward.peer`" + ` label.
+Director, QA, session, and broker containers remain protected, and ambiguous
+matches fail closed.
 
   ward agent stop coilyco-flight-deck/ward#625   # stop the engineer carrying #625
   ward agent stop #625                           # owner/repo inferred from the cwd origin
   ward agent stop engineer-claude-ward-625       # stop by container name
+  ward agent stop critic-ab45                    # stop by broker peer id
   ward agent stop #625 --print                   # resolve + show the stoppable target, stop nothing
 
 See docs/agent-stop.md.`,
@@ -95,9 +97,10 @@ func (r *Runner) resolveAgentStopTarget(ctx context.Context, arg string) (string
 func (r *Runner) forwardAgentStopToHostBroker(ctx context.Context, target string, preview bool) error {
 	addr := strings.TrimSpace(os.Getenv(envDispatchBrokerAddr))
 	if addr == "" || os.Getenv("WARD_READONLY") != "1" {
-		return fmt.Errorf("ward agent stop only works from a director read-only surface with a host "+
-			"dispatch broker (%s is unset here); halt a run host-side with `docker container stop` instead "+
-			"(see docs/container-stop.md)", envDispatchBrokerAddr)
+		if !validDispatchAgentID(target) {
+			return agentStopSurfaceError()
+		}
+		return r.stopHostCollaborationPeer(ctx, target, preview)
 	}
 	if err := probeHostDispatchBroker(ctx, addr); err != nil {
 		return err
@@ -128,5 +131,44 @@ func (r *Runner) forwardAgentStopToHostBroker(ctx context.Context, target string
 		return nil
 	}
 	writef(os.Stderr, "ward agent stop: stopped engineer container %s on host ward\n", name)
+	return nil
+}
+
+func agentStopSurfaceError() error {
+	return fmt.Errorf("ward agent stop only works from a director read-only surface with a host "+
+		"dispatch broker, except for a broker-minted peer id visible on this host (%s is unset here); "+
+		"see docs/agent-stop.md", envDispatchBrokerAddr)
+}
+
+func (r *Runner) stopHostCollaborationPeer(ctx context.Context, peerID string, preview bool) error {
+	peers, err := r.containersForPeerID(ctx, peerID, currentDispatchClusterID(), false)
+	if err != nil {
+		return fmt.Errorf("ward agent stop: this host-side path accepts only a broker-minted peer id: %w", err)
+	}
+	name, err := selectSinglePeerTarget("stop", peerID, peers)
+	if err != nil {
+		if len(peers) == 0 {
+			return agentStopSurfaceError()
+		}
+		return fmt.Errorf("ward agent stop: outside a director surface, only an unambiguous running peer id is stoppable: %w", err)
+	}
+	if _, err := r.guardPeerStop(ctx, name, peerID); err != nil {
+		return err
+	}
+	if preview {
+		writef(os.Stderr, "ward agent stop: would stop collaboration peer %s (container %s)\n", peerID, name)
+		return nil
+	}
+	if err := r.dockerExec(ctx, "stop", name); err != nil {
+		return fmt.Errorf("ward agent stop: docker stop %s: %w", name, err)
+	}
+	clusterID, err := r.containerClusterLabel(ctx, name)
+	if err != nil {
+		return fmt.Errorf("ward agent stop: stopped %s but could not read its cluster identity: %w", name, err)
+	}
+	if err := retireDispatchPeer(clusterID, peerID); err != nil {
+		return fmt.Errorf("ward agent stop: stopped %s but could not retire peer %s: %w", name, peerID, err)
+	}
+	writef(os.Stderr, "ward agent stop: stopped collaboration peer %s (container %s)\n", peerID, name)
 	return nil
 }

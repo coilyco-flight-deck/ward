@@ -17,6 +17,15 @@ This page is the durable anchor for reading one run's logs.
 `ward agent logs <target>` defaults to the console artifact. Add
 `--artifact <name>` to read a specific completed-run artifact:
 
+```bash
+ward agent logs critic-ab45
+```
+
+A broker-minted peer id resolves through the `ward.peer` label. Inside a
+cluster, lookup is scoped to that cluster. Host lookup refuses duplicate ids
+instead of choosing a container. Container names and issue refs retain their
+existing behavior.
+
 - `console` - live `docker logs` while the container is running; for an exited
   container with a completed archive, the drained console is preferred so the
   `WARD-RUN-SUMMARY` footer is visible.

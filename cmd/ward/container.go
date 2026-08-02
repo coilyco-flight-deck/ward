@@ -55,6 +55,8 @@ in-container entrypoint, not by hand. See docs/agent.md for the contributor surf
 			containerDispatchBrokerCommand(),
 			containerDispatchBrokerProbeCommand(),
 			containerDispatchBrokerCapabilityCommand(),
+			containerDispatchBrokerPeerAdmitCommand(),
+			containerDispatchBrokerPeerStatusCommand(),
 			containerForwardCommand(),
 			containerDrainExitCommand(),
 		},

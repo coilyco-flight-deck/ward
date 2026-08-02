@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ const (
 	dispatchPeerStatusAdmitted   = "admitted"
 	dispatchPeerStatusActive     = "active"
 	dispatchPeerStatusFailed     = "failed"
+	dispatchPeerStatusStopped    = "stopped"
 	dispatchPeerMintAttempts     = 32
 )
 
@@ -152,6 +154,79 @@ func activeDispatchPeers(clusterID string) ([]dispatchPeerAdmission, error) {
 	return active, nil
 }
 
+func peerContainerListArgs(peerID, clusterID string, all bool) []string {
+	args := []string{"ps"}
+	if all {
+		args = append(args, "-a")
+	}
+	args = append(args,
+		"--format", "{{.Names}}",
+		"--filter", "label="+containerLabel,
+		"--filter", "label="+labelPeer+"="+peerID,
+	)
+	if validClusterID(clusterID) {
+		args = append(args, "--filter", "label="+labelCluster+"="+clusterID)
+	}
+	return args
+}
+
+func currentDispatchClusterID() string {
+	for _, key := range []string{envDispatchBrokerID, envClusterID} {
+		if clusterID := strings.TrimSpace(os.Getenv(key)); validClusterID(clusterID) {
+			return clusterID
+		}
+	}
+	return ""
+}
+
+func (r *Runner) containersForPeerID(ctx context.Context, peerID, clusterID string, all bool) ([]string, error) {
+	if !validDispatchAgentID(peerID) {
+		return nil, fmt.Errorf("dispatch broker: invalid peer id %q", peerID)
+	}
+	out, err := r.dockerCapture(ctx, peerContainerListArgs(peerID, clusterID, all)...)
+	if err != nil {
+		return nil, err
+	}
+	return parseExitedContainerNames(string(out)), nil
+}
+
+func selectSinglePeerTarget(action, peerID string, names []string) (string, error) {
+	switch len(names) {
+	case 1:
+		return names[0], nil
+	case 0:
+		return "", fmt.Errorf("dispatch broker: no peer container matches %q", peerID)
+	default:
+		return "", fmt.Errorf("dispatch broker: peer id %q matches %d containers (%s), refusing to guess which one to %s", peerID, len(names), strings.Join(names, ", "), action)
+	}
+}
+
+func retireDispatchPeer(clusterID, peerID string) error {
+	dispatchPeerAdmissionsMu.Lock()
+	defer dispatchPeerAdmissionsMu.Unlock()
+	admissions, path, err := readDispatchPeerAdmissions(clusterID)
+	if err != nil {
+		return err
+	}
+	for i := range admissions {
+		if admissions[i].PeerID != peerID || admissions[i].Status == dispatchPeerStatusFailed || admissions[i].Status == dispatchPeerStatusStopped {
+			continue
+		}
+		admissions[i].Status = dispatchPeerStatusStopped
+		admissions[i].Updated = time.Now().UTC()
+		journalPath, pathErr := dispatchJournalPath(admissions[i].RequestID)
+		if pathErr != nil {
+			return pathErr
+		}
+		stopErr := errors.New("collaboration peer stopped by operator")
+		if err := updateDispatchJournal(journalPath, dispatchPhaseTerminal, "", dispatchOutcomeInterrupted, stopErr); err != nil {
+			return err
+		}
+		return writeDispatchPeerAdmissions(path, admissions)
+	}
+	return fmt.Errorf("dispatch broker: active peer admission %s/%s is missing", clusterID, peerID)
+}
+
 func reconcileDispatchPeerAdmissions(clusterID string) error {
 	dispatchPeerAdmissionsMu.Lock()
 	defer dispatchPeerAdmissionsMu.Unlock()
@@ -161,7 +236,7 @@ func reconcileDispatchPeerAdmissions(clusterID string) error {
 	}
 	changed := false
 	for i := range admissions {
-		if admissions[i].Status == dispatchPeerStatusFailed {
+		if admissions[i].Status == dispatchPeerStatusFailed || admissions[i].Status == dispatchPeerStatusStopped {
 			continue
 		}
 		journalPath, pathErr := dispatchJournalPath(admissions[i].RequestID)
