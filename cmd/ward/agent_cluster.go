@@ -17,12 +17,16 @@ import (
 
 type collaborationClusterContainer struct {
 	Name    string `json:"name"`
+	State   string `json:"state"`
+	Health  string `json:"health"`
 	Status  string `json:"status"`
 	Cluster string `json:"cluster"`
 	Role    string `json:"role"`
 	Harness string `json:"harness"`
 	PeerID  string `json:"peer_id,omitempty"`
 }
+
+const clusterDockerRowSentinel = "ward-cluster-row"
 
 func agentClusterCommand() *cli.Command {
 	return &cli.Command{
@@ -337,7 +341,7 @@ func clusterDockerListArgs(clusterID string, brokersOnly bool) []string {
 	if brokersOnly {
 		args = append(args, "--filter", "label="+labelRole+"=broker")
 	}
-	return append(args, "--format", `{{.Names}}\t{{.Status}}\t{{.Label "ward.cluster"}}\t{{.Label "ward.role"}}\t{{.Label "ward.driver"}}\t{{.Label "ward.peer"}}`)
+	return append(args, "--format", `{{.Names}}\t{{.State}}\t{{.Status}}\t{{.Label "ward.cluster"}}\t{{.Label "ward.role"}}\t{{.Label "ward.driver"}}\t{{.Label "ward.peer"}}\t`+clusterDockerRowSentinel)
 }
 
 func (r *Runner) clusterContainers(ctx context.Context, clusterID string, brokersOnly bool) ([]collaborationClusterContainer, error) {
@@ -345,20 +349,20 @@ func (r *Runner) clusterContainers(ctx context.Context, clusterID string, broker
 	if err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(string(out)) == "" {
+		return nil, nil
+	}
 	var containers []collaborationClusterContainer
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\r\n"), "\n") {
+		line = strings.TrimSuffix(line, "\r")
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "\t", 6)
-		if len(parts) != 6 || !validClusterID(strings.TrimSpace(parts[2])) {
-			return nil, fmt.Errorf("unexpected Docker cluster row %q", line)
+		container, err := parseClusterDockerRow(line)
+		if err != nil {
+			return nil, err
 		}
-		containers = append(containers, collaborationClusterContainer{
-			Name: strings.TrimSpace(parts[0]), Status: strings.TrimSpace(parts[1]),
-			Cluster: strings.TrimSpace(parts[2]), Role: strings.TrimSpace(parts[3]),
-			Harness: strings.TrimSpace(parts[4]), PeerID: strings.TrimSpace(parts[5]),
-		})
+		containers = append(containers, container)
 	}
 	sort.Slice(containers, func(i, j int) bool {
 		if containers[i].Cluster == containers[j].Cluster {
@@ -367,6 +371,70 @@ func (r *Runner) clusterContainers(ctx context.Context, clusterID string, broker
 		return containers[i].Cluster < containers[j].Cluster
 	})
 	return containers, nil
+}
+
+func parseClusterDockerRow(line string) (collaborationClusterContainer, error) {
+	parts := strings.Split(line, "\t")
+	malformed := func(format string, args ...any) (collaborationClusterContainer, error) {
+		return collaborationClusterContainer{}, fmt.Errorf("unexpected Docker cluster row %q: %s", line, fmt.Sprintf(format, args...))
+	}
+	if len(parts) != 8 {
+		return malformed("got %d fields, want 8", len(parts))
+	}
+	if strings.TrimSpace(parts[7]) != clusterDockerRowSentinel {
+		return malformed("missing terminal sentinel")
+	}
+	name := strings.TrimSpace(parts[0])
+	if name == "" {
+		return malformed("container name is empty")
+	}
+	state := strings.ToLower(strings.TrimSpace(parts[1]))
+	if !validClusterDockerState(state) {
+		return malformed("unsupported lifecycle state %q", state)
+	}
+	status := strings.TrimSpace(parts[2])
+	if status == "" {
+		return malformed("container status is empty")
+	}
+	clusterID := strings.TrimSpace(parts[3])
+	if !validClusterID(clusterID) {
+		return malformed("invalid cluster id %q", clusterID)
+	}
+	role := strings.TrimSpace(parts[4])
+	if role == "" {
+		return malformed("role label is empty")
+	}
+	harness := strings.TrimSpace(parts[5])
+	if harness == "" {
+		return malformed("harness label is empty")
+	}
+	return collaborationClusterContainer{
+		Name: name, State: state, Health: clusterDockerHealth(status), Status: status,
+		Cluster: clusterID, Role: role, Harness: harness, PeerID: strings.TrimSpace(parts[6]),
+	}, nil
+}
+
+func validClusterDockerState(state string) bool {
+	switch state {
+	case "created", "restarting", "running", "removing", "paused", "exited", "dead":
+		return true
+	default:
+		return false
+	}
+}
+
+func clusterDockerHealth(status string) string {
+	status = strings.ToLower(status)
+	switch {
+	case strings.Contains(status, "(healthy)"):
+		return "healthy"
+	case strings.Contains(status, "(unhealthy)"):
+		return "unhealthy"
+	case strings.Contains(status, "(health: starting)"):
+		return "starting"
+	default:
+		return ""
+	}
 }
 
 func writeClusterContainers(c *cli.Command, containers []collaborationClusterContainer, jsonOut bool) error {
