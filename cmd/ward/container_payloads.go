@@ -11,10 +11,6 @@ set -euo pipefail
 
 log() { printf 'ward-container: %s\n' "$*" >&2; }
 
-: "${WARD_TARGET_OWNER:?missing WARD_TARGET_OWNER}"
-: "${WARD_TARGET_NAME:?missing WARD_TARGET_NAME}"
-: "${WARD_FORGEJO_BASE:?missing WARD_FORGEJO_BASE}"
-
 install_ward() {
   install -m 0755 /opt/ward/ward /usr/local/bin/ward
   ln -sf ward /usr/local/bin/warded
@@ -25,10 +21,14 @@ install_ward() {
 die() { log "fatal: $*"; exit 1; }
 
 main() {
-  install_ward
   if [[ "${WARD_CONTAINER_SERVICE:-}" == "dispatch-broker" ]]; then
+    install_ward
     exec /usr/local/bin/ward container dispatch-broker
   fi
+  : "${WARD_TARGET_OWNER:?missing WARD_TARGET_OWNER}"
+  : "${WARD_TARGET_NAME:?missing WARD_TARGET_NAME}"
+  : "${WARD_FORGEJO_BASE:?missing WARD_FORGEJO_BASE}"
+  install_ward
   exec /usr/local/bin/ward container bootstrap "$@"
 }
 
