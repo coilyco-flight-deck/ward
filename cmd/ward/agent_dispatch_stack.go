@@ -177,33 +177,7 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, brokerEnvFile,
 	}
 	doc := composeDocument{
 		Services: map[string]composeService{
-			"broker": {
-				Image:         plan.Image,
-				ContainerName: stack.BrokerName,
-				Restart:       "unless-stopped",
-				Entrypoint:    containerEntrypointPath,
-				Environment:   brokerEnv,
-				EnvFile:       []string{brokerEnvFile},
-				Volumes:       brokerMounts,
-				Networks:      networks,
-				Labels: map[string]string{
-					"ward":       "true",
-					labelRole:    "broker",
-					labelCluster: stack.Project,
-					labelRepo:    plan.Repo.slug(),
-					labelDriver:  string(plan.Mode),
-				},
-				MemLimit:     plan.MemoryLimit,
-				MemswapLimit: plan.MemorySwap,
-				OOMScoreAdj:  -250,
-				Healthcheck: &composeHealth{
-					Test:        []string{"CMD", "/usr/local/bin/ward", "container", "dispatch-broker-probe"},
-					Interval:    "5s",
-					Timeout:     "2s",
-					Retries:     12,
-					StartPeriod: "5s",
-				},
-			},
+			"broker": brokerComposeService(plan, stack, brokerEnvFile, brokerEnv, brokerMounts, networks),
 			"director": {
 				Image:         plan.Image,
 				ContainerName: plan.Name,
@@ -224,6 +198,52 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, brokerEnvFile,
 		Networks: topNetworks,
 	}
 	return yaml.Marshal(doc)
+}
+
+func renderBrokerOnlyStackCompose(plan upPlan, stack directorStack, brokerEnvFile, globalDir string) ([]byte, error) {
+	body, err := renderDirectorStackCompose(plan, stack, brokerEnvFile, "", globalDir)
+	if err != nil {
+		return nil, err
+	}
+	var doc composeDocument
+	if err := yaml.Unmarshal(body, &doc); err != nil {
+		return nil, fmt.Errorf("ward collaboration cluster: decode rendered Compose plan: %w", err)
+	}
+	delete(doc.Services, "director")
+	return yaml.Marshal(doc)
+}
+
+func brokerComposeService(plan upPlan, stack directorStack, brokerEnvFile string, brokerEnv map[string]string, mounts []composeMount, networks []string) composeService {
+	labels := map[string]string{
+		"ward":       "true",
+		labelRole:    "broker",
+		labelCluster: stack.Project,
+		labelDriver:  string(plan.Mode),
+	}
+	if plan.Repo.Owner != "" && plan.Repo.Name != "" {
+		labels[labelRepo] = plan.Repo.slug()
+	}
+	return composeService{
+		Image:         plan.Image,
+		ContainerName: stack.BrokerName,
+		Restart:       "unless-stopped",
+		Entrypoint:    containerEntrypointPath,
+		Environment:   brokerEnv,
+		EnvFile:       []string{brokerEnvFile},
+		Volumes:       mounts,
+		Networks:      networks,
+		Labels:        labels,
+		MemLimit:      plan.MemoryLimit,
+		MemswapLimit:  plan.MemorySwap,
+		OOMScoreAdj:   -250,
+		Healthcheck: &composeHealth{
+			Test:        []string{"CMD", "/usr/local/bin/ward", "container", "dispatch-broker-probe"},
+			Interval:    "5s",
+			Timeout:     "2s",
+			Retries:     12,
+			StartPeriod: "5s",
+		},
+	}
 }
 
 func composeMounts(mounts []mountSpec) []composeMount {

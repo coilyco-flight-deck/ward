@@ -25,7 +25,25 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 - --harness, --agent, --thoroughness, --depth, --config, --family, --verification-fixture, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, --no-pull
 ## `ward agent run`
 
-- --harness, --agent, --role, --agent-id, --repo, --config, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull
+- --harness, --agent, --role, --agent-id, --cluster, --repo, --config, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull
+## `ward agent cluster`
+
+- No direct flags.
+## `ward agent cluster start`
+
+- --harness, --agent, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print
+## `ward agent cluster list`
+
+- --json
+## `ward agent cluster status`
+
+- --json
+## `ward agent cluster logs`
+
+- --tail
+## `ward agent cluster stop`
+
+- --print
 ## `ward agent message`
 
 - No direct flags.

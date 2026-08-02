@@ -902,9 +902,6 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop,gocognit,f
 		// Explicit "inside a ward container" marker host-only fleet-walk scripts fence
 		// on (ward#114); a host shell never has it. See docs/container-skill-surface.md.
 		"WARD_CONTAINER":      "1",
-		"WARD_TARGET_REPO":    p.Repo.slug(),
-		"WARD_TARGET_OWNER":   p.Repo.Owner,
-		"WARD_TARGET_NAME":    p.Repo.Name,
 		"WARD_RUN_ID":         p.Name,
 		"WARD_FORGEJO_BASE":   p.ForgejoBase,
 		"WARD_MODE":           string(p.Mode),
@@ -914,7 +911,6 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop,gocognit,f
 		"WARD_AGENT_HOME":     "/home/ubuntu/.ward",
 		"WARD_GITCACHE":       containerGitcacheMnt,
 		"WARD_CONTEXT_SRC":    containerContextMount,
-		"WARD_MIRROR_NAME":    p.Repo.mirrorName(),
 		"WARD_VERSION":        p.WardVersion,
 		"WARD_VERSION_SOURCE": wardVersionLaunchLabel(p.WardVersion, p.WardVersionSource),
 		envHostGOOS:           launchHostGOOS(),
@@ -924,6 +920,12 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop,gocognit,f
 		"WARD_SUBSTRATE_DEST":     envOrBundleOr("WARD_SUBSTRATE_DEST", topo.SubstrateDest, containerSubstrateDest),
 		"WARD_SUBSTRATE_MANIFEST": envOrBundleOr("WARD_SUBSTRATE_MANIFEST", topo.SubstrateManifest, containerSubstrateManifest),
 		"WARD_SUBSTRATE_TTL":      envOrBundleOr("WARD_SUBSTRATE_TTL", topo.SubstrateTTL, containerSubstrateTTL),
+	}
+	if p.Repo.Owner != "" && p.Repo.Name != "" {
+		env["WARD_TARGET_REPO"] = p.Repo.slug()
+		env["WARD_TARGET_OWNER"] = p.Repo.Owner
+		env["WARD_TARGET_NAME"] = p.Repo.Name
+		env["WARD_MIRROR_NAME"] = p.Repo.mirrorName()
 	}
 	if p.Branch != "" {
 		env["WARD_BRANCH"] = p.Branch
@@ -1035,7 +1037,9 @@ func (p upPlan) labels() []string {
 		containerLabel,
 		labelRole + "=" + role,
 		labelDriver + "=" + string(p.Mode),
-		labelRepo + "=" + p.Repo.slug(),
+	}
+	if p.Repo.Owner != "" && p.Repo.Name != "" {
+		out = append(out, labelRepo+"="+p.Repo.slug())
 	}
 	if p.ClusterID != "" {
 		out = append(out, labelCluster+"="+p.ClusterID)

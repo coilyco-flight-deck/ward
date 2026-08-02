@@ -35,6 +35,9 @@ Inventory of what `ward` ships today.
   durable request IDs, restart recovery, sibling launch isolation, and
   credential-free director Forgejo RPC. See
   [agent-dispatch-broker.md](agent-dispatch-broker.md).
+- Broker-only collaboration clusters can start outside a Git checkout and use
+  cluster-scoped list, status, logs, stop, and cleanup. See
+  [agent-clusters.md](agent-clusters.md).
 - Generic read-only peers and authenticated broker messages. See
   [agent-peer-collaboration.md](agent-peer-collaboration.md).
 - PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).

@@ -41,6 +41,7 @@ Start here if you open `docs/` directly. The tree holds the release-era operatin
 - [agent-roles.md](agent-roles.md) - engineer, director, qa.
 - [agent-harnesses.md](agent-harnesses.md).
 - [agent-peer-collaboration.md](agent-peer-collaboration.md).
+- [agent-clusters.md](agent-clusters.md) - repository-independent broker lifecycle.
 - [context-bundle.md](context-bundle.md) - context and tool handoff.
 - [agent-lifecycle.md](agent-lifecycle.md) - launch, preflight, reservation.
 - [agent-check-placement.md](agent-check-placement.md) - guard matrix.
