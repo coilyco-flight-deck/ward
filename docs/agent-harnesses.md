@@ -39,8 +39,9 @@ manifest and injects the status command only for supported harnesses.
 
 ### codex
 
-`codex` is the OpenAI path. It uses the host-side auth file or login flow and
-then launches the agent inside the container.
+`codex` is the OpenAI path. It resolves host auth from `~/.codex/auth.json` or,
+on macOS, Codex CLI's `Codex Auth` Keychain item. The container receives either
+source through the same private bootstrap credential channel.
 Its install step is self-contained and only verifies that `codex` is already
 on PATH.
 

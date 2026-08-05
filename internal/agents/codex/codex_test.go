@@ -1,7 +1,9 @@
 package codex
 
 import (
+	"context"
 	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +13,33 @@ import (
 )
 
 func noopLog(string, ...any) {}
+
+type fakeExec struct {
+	out  []byte
+	err  error
+	bin  string
+	argv []string
+}
+
+func (f *fakeExec) Exec(context.Context, string, ...string) error { return nil }
+
+func (f *fakeExec) Capture(_ context.Context, bin string, argv ...string) ([]byte, error) {
+	f.bin = bin
+	f.argv = append([]string(nil), argv...)
+	return f.out, f.err
+}
+
+func decodedAuthLine(t *testing.T, lines []agentsapi.EnvLine) string {
+	t.Helper()
+	if len(lines) != 1 || lines[0].Key != authEnvKey {
+		t.Fatalf("ResolveCreds lines = %+v", lines)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(lines[0].Value)
+	if err != nil {
+		t.Fatalf("decode auth line: %v", err)
+	}
+	return string(decoded)
+}
 
 // TestWriteCredsScrubsEnv: WriteCreds writes ~/.codex/auth.json then scrubs the
 // bootstrap-only WARD_CODEX_AUTH_B64 env var (ward#357).
@@ -26,6 +55,105 @@ func TestWriteCredsScrubsEnv(t *testing.T) {
 	}
 	if v := os.Getenv(authEnvKey); v != "" {
 		t.Errorf("%s should be scrubbed after seeding, got %q", authEnvKey, v)
+	}
+}
+
+// TestResolveCredsPrefersFile preserves the cross-platform auth.json contract
+// when a macOS Keychain credential is also available (ward#1641).
+func TestResolveCredsPrefersFile(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const fileBlob = `{"source":"file"}`
+	if err := os.WriteFile(filepath.Join(dir, "auth.json"), []byte(fileBlob), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exec := &fakeExec{out: []byte(`{"source":"keychain"}`)}
+	hc := agentsapi.HostCtx{Ctx: context.Background(), GOOS: "darwin", Home: home, Exec: exec, Log: noopLog}
+	if got := decodedAuthLine(t, (Agent{}).ResolveCreds(hc)); got != fileBlob {
+		t.Errorf("resolved auth = %q, want file credential %q", got, fileBlob)
+	}
+	if exec.bin != "" {
+		t.Errorf("Keychain lookup ran despite a usable auth.json: %s %v", exec.bin, exec.argv)
+	}
+}
+
+// TestResolveCredsFromMacOSKeychain covers the host-only Keychain fallback and
+// exact security(1) lookup contract (ward#1641).
+func TestResolveCredsFromMacOSKeychain(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "auth.json"), []byte(" \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const keychainBlob = `{"source":"keychain"}`
+	exec := &fakeExec{out: []byte("  " + keychainBlob + "\n")}
+	hc := agentsapi.HostCtx{Ctx: context.Background(), GOOS: "darwin", Home: home, Exec: exec, Log: noopLog}
+	if got := decodedAuthLine(t, (Agent{}).ResolveCreds(hc)); got != keychainBlob {
+		t.Errorf("resolved auth = %q, want Keychain credential %q", got, keychainBlob)
+	}
+	wantArgv := []string{"find-generic-password", "-s", codexKeychainService, "-a", codexKeychainAccount(filepath.Join(home, ".codex")), "-w"}
+	if exec.bin != "security" || strings.Join(exec.argv, "\x00") != strings.Join(wantArgv, "\x00") {
+		t.Errorf("Keychain lookup = %s %v, want security %v", exec.bin, exec.argv, wantArgv)
+	}
+}
+
+func TestCodexKeychainAccount(t *testing.T) {
+	if got, want := codexKeychainAccount("/Users/example/.codex"), "cli|8533f99d37c07dbb"; got != want {
+		t.Errorf("codexKeychainAccount = %q, want %q", got, want)
+	}
+
+	realHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(realHome, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	linkRoot := t.TempDir()
+	linkHome := filepath.Join(linkRoot, "home-link")
+	if err := os.Symlink(realHome, linkHome); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := codexKeychainAccount(filepath.Join(linkHome, ".codex")), codexKeychainAccount(filepath.Join(realHome, ".codex")); got != want {
+		t.Errorf("symlinked CODEX_HOME account = %q, canonical account %q", got, want)
+	}
+}
+
+func TestResolveCredsKeychainFailureAndEmpty(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		exec *fakeExec
+	}{
+		{name: "lookup failure", exec: &fakeExec{err: errors.New("not found")}},
+		{name: "empty item", exec: &fakeExec{out: []byte(" \n")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs []string
+			hc := agentsapi.HostCtx{
+				Ctx: context.Background(), GOOS: "darwin", Home: t.TempDir(), Exec: tc.exec,
+				Log: func(format string, _ ...any) { logs = append(logs, format) },
+			}
+			if got := (Agent{}).ResolveCreds(hc); got != nil {
+				t.Errorf("ResolveCreds = %+v, want nil", got)
+			}
+			if len(logs) != 1 {
+				t.Errorf("log count = %d, want 1", len(logs))
+			}
+		})
+	}
+}
+
+func TestResolveCredsNonMacDoesNotReadKeychain(t *testing.T) {
+	exec := &fakeExec{out: []byte(`{"source":"keychain"}`)}
+	hc := agentsapi.HostCtx{Ctx: context.Background(), GOOS: "linux", Home: t.TempDir(), Exec: exec, Log: noopLog}
+	if got := (Agent{}).ResolveCreds(hc); got != nil {
+		t.Errorf("ResolveCreds = %+v, want nil", got)
+	}
+	if exec.bin != "" {
+		t.Errorf("non-macOS lookup ran Keychain command: %s %v", exec.bin, exec.argv)
 	}
 }
 

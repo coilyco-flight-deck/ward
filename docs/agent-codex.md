@@ -2,7 +2,10 @@
 
 The `codex` role is the OpenAI harness.
 
-- It reads host auth from `~/.codex`.
+- It reads host auth from `~/.codex/auth.json`. On macOS, a missing or empty
+  file falls back to Codex CLI's `Codex Auth` login-keychain item. Ward resolves
+  either source on the host and writes the serialized credential only into the
+  private container home.
 - It has no host one-shot preflight.
 - It launches headless work with `codex exec -- <prompt>`, so a dash-prefixed
   seed remains prompt text instead of becoming a CLI option.

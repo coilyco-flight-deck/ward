@@ -65,7 +65,7 @@ func TestLocalModelAgentFailsafe(t *testing.T) {
 		t.Errorf("localModelAgent(claude-keychain) = true, want false (cloud)")
 	}
 	// A pinned provider endpoint tips even a named auth into local territory.
-	if !localModelAgent(manifestWithAuth("codex-file", "http://localhost:11434/v1")) {
+	if !localModelAgent(manifestWithAuth("codex-host", "http://localhost:11434/v1")) {
 		t.Errorf("localModelAgent(endpoint set) = false, want true (local endpoint)")
 	}
 }

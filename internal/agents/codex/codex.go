@@ -23,7 +23,7 @@ var record = agentsapi.Manifest{
 	Binary:          "codex",
 	ContextLevel:    1,
 	Stream:          "none",
-	Auth:            "codex-file",
+	Auth:            "codex-host",
 	ReasoningEffort: "medium",
 	Verbosity:       "low",
 	Argv: agentsapi.Argv{

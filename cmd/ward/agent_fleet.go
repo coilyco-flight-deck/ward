@@ -52,7 +52,7 @@ func builtInLaunchConfig() launchConfig {
 			},
 			{
 				Name: string(modeCodex), Binary: "codex", ContextLevel: 1,
-				Stream: "none", Auth: "codex-file",
+				Stream: "none", Auth: "codex-host",
 				Argv: agentArgv{
 					Headless:    []string{"codex", "exec"},
 					Interactive: []string{"codex"},
