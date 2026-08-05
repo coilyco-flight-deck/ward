@@ -227,6 +227,25 @@ func TestRunExecGateIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("named Forgejo pull-request merge passes with audited attribution", func(t *testing.T) {
+		repo, mergeSHA := newDetachedForgejoPRRepo(t)
+		git(t, repo, "switch", "-c", "ward-ci")
+		git(t, repo, "branch", "--set-upstream-to=origin/main")
+		state, ci, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err != nil {
+			t.Fatalf("named Forgejo checkout refused: %v", err)
+		}
+		if used {
+			t.Fatal("named CI pass must not use the dirty-tree override")
+		}
+		if !state.Clean || state.Branch != "ward-ci" {
+			t.Fatalf("named CI state = %+v, want clean ward-ci pass", state)
+		}
+		if ci == nil || ci.Provider != "forgejo-actions" || ci.PullRequest != "42" || ci.HeadSHA != mergeSHA || ci.RunID != "1234" {
+			t.Fatalf("CI context = %+v, want immutable PR and run attribution", ci)
+		}
+	})
+
 	t.Run("exec leaf runs and serializes detached CI attribution", func(t *testing.T) {
 		repo, mergeSHA := newDetachedForgejoPRRepo(t)
 		auditPath := filepath.Join(t.TempDir(), "audit.jsonl")

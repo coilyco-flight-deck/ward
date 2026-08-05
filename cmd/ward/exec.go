@@ -44,8 +44,8 @@ func execCommand() *cli.Command {
 			"Per-repo command declared in %s. Expands to a pre-validated argv "+
 				"and runs with cwd set to %s. Every argv token is checked against "+
 				"cli-guard's shell-metacharacter policy before execve. Repo verbs "+
-				"require a clean+synced named branch, or a clean detached Forgejo "+
-				"Actions pull-request merge whose CI and Git evidence agree. The "+
+				"require a clean+synced named branch, or a clean Forgejo Actions "+
+				"pull-request merge checkout whose CI and Git evidence agree. The "+
 				"declaring ward.yaml stays committed so the audit row is reconstructable; "+
 				"--audit-override-dirty bypasses named-branch refusals with an audit tag.",
 			cfg.Path, repoRoot,

@@ -25,9 +25,13 @@ func runExecGate(c *cli.Command, repoRoot, cfgPath, verbName string, readOnly bo
 		state *gittree.State
 		err   error
 	)
-	if readOnly {
+	forgejoPR := !readOnly && forgejoActionsPullRequestEnvPresent()
+	switch {
+	case forgejoPR:
 		state, err = checkCleanReadOnly(repoRoot)
-	} else {
+	case readOnly:
+		state, err = checkCleanReadOnly(repoRoot)
+	default:
 		state, err = gittree.CheckClean(repoRoot)
 	}
 	if err != nil {
@@ -35,8 +39,11 @@ func runExecGate(c *cli.Command, repoRoot, cfgPath, verbName string, readOnly bo
 			"ward could not evaluate the repo verb gate; run `git status` "+
 				"in the repo to confirm it is in a sane state, then retry")
 	}
+	if forgejoPR {
+		return runForgejoActionsPRMergeExecGate(state, repoRoot, verbName)
+	}
 	if state.Branch == "HEAD" {
-		return runDetachedExecGate(state, repoRoot, verbName)
+		return runForgejoActionsPRMergeExecGate(state, repoRoot, verbName)
 	}
 	if state.Clean {
 		return state, nil, false, nil
@@ -62,6 +69,8 @@ func formatExecGateRefusal(state *gittree.State, verbName string) string {
 		return refusalNoUpstream(state, verbName)
 	case strings.HasPrefix(state.Reason, "HEAD is detached"):
 		return refusalDetachedHead(state, verbName)
+	case strings.HasPrefix(state.Reason, "Forgejo Actions"):
+		return refusalForgejoActionsPR(state, verbName)
 	case strings.Contains(state.Reason, " commits behind "):
 		return refusalBehindUpstream(state, verbName)
 	case strings.HasPrefix(state.Reason, "git fetch failed for "):
@@ -91,6 +100,23 @@ func refusalDetachedHead(state *gittree.State, verbName string) string {
 		}
 	}
 	b.WriteString("\nDetached repo verbs require a clean Forgejo Actions pull-request merge checkout\n")
+	b.WriteString("whose environment, event payload, origin, workspace, HEAD, and merge parents agree.\n")
+	b.WriteString("Otherwise, recover with:\n\n")
+	b.WriteString("  git checkout <branch>\n")
+	fmt.Fprintf(&b, "  %s %s   # retry\n", filepath.Base(os.Args[0]), verbName)
+	return b.String()
+}
+
+func refusalForgejoActionsPR(state *gittree.State, verbName string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "refusing repo verb %q - %s\n", verbName, state.Reason)
+	if state.Status != "" {
+		b.WriteString(state.Status)
+		if !strings.HasSuffix(state.Status, "\n") {
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("\nForgejo Actions pull-request repo verbs require a clean merge checkout\n")
 	b.WriteString("whose environment, event payload, origin, workspace, HEAD, and merge parents agree.\n")
 	b.WriteString("Otherwise, recover with:\n\n")
 	b.WriteString("  git checkout <branch>\n")

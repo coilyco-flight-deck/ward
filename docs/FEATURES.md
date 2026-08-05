@@ -4,7 +4,7 @@ Inventory of what `ward` ships today.
 
 ## Core gate
 
-- `ward exec` - gated repo verbs, including validated detached Forgejo CI merges.
+- `ward exec` - gated repo verbs, including validated Forgejo CI pull-request merge checkouts.
 - `ward audit` - append-only trail.
 - `ward git` - audited git.
 - `ward setup` - local bootstrap + policy check.

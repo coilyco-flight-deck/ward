@@ -9,21 +9,22 @@ doc_goal: Give the dev-verb gate a compact release-era reference so contributors
 
 - argv is validated before the verb runs.
 - one audit row is written for every invocation.
-- a named branch must retain the existing clean-and-synced contract.
-- a detached HEAD is admitted only for a clean Forgejo Actions pull-request
-  merge checkout whose environment, event payload, origin, workspace, HEAD,
-  and two merge parents agree.
+- a named branch must retain the existing clean-and-synced contract unless the
+  checkout is a validated Forgejo Actions pull-request merge checkout.
+- a Forgejo Actions pull-request merge checkout is admitted when it is clean
+  and its environment, event payload, origin, workspace, HEAD, and two merge
+  parents agree. It may be detached or temporarily named by CI.
 - unknown verbs fall back to `ward exec` routing.
 
-The detached path requires `FORGEJO_ACTIONS`, `GITHUB_ACTIONS`, and `CI` to be
+The Forgejo Actions path requires `FORGEJO_ACTIONS`, `GITHUB_ACTIONS`, and `CI` to be
 true. Ward matches the repository and server to `origin`, verifies
 `GITHUB_WORKSPACE` is the discovered repository, matches `GITHUB_SHA` to the
-immutable detached commit, and matches the event base and head SHAs to that
+immutable checkout commit, and matches the event base and head SHAs to that
 commit's two parents. Missing or inconsistent evidence fails closed. A local
 detached checkout remains refused, and `--audit-override-dirty` does not bypass
 this path.
 
-An accepted detached invocation records a typed `ci` object in the audit row.
+An accepted Forgejo Actions invocation records a typed `ci` object in the audit row.
 It includes the provider server and repository, event ref, pull-request number,
 base and head refs, immutable HEAD SHA, workflow, job, actor, run ID, run number,
 and run attempt.

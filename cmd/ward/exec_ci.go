@@ -62,15 +62,23 @@ type forgejoActionsMetadata struct {
 	runAttempt  string
 }
 
-func runDetachedExecGate(state *gittree.State, repoRoot, verbName string) (*gittree.State, *audit.CIContext, bool, error) {
+func runForgejoActionsPRMergeExecGate(state *gittree.State, repoRoot, verbName string) (*gittree.State, *audit.CIContext, bool, error) {
 	if state.Status != "" {
-		state.Reason = "HEAD is detached with a dirty working tree"
-		return nil, nil, false, detachedExecGateError(state, verbName)
+		if state.Branch == "HEAD" {
+			state.Reason = "HEAD is detached with a dirty working tree"
+		} else {
+			state.Reason = "Forgejo Actions pull-request checkout has a dirty working tree"
+		}
+		return nil, nil, false, forgejoActionsPRMergeExecGateError(state, verbName)
 	}
 	ci, err := validateForgejoActionsPR(repoRoot)
 	if err != nil {
-		state.Reason = "HEAD is detached; Forgejo Actions evidence is invalid: " + err.Error()
-		return nil, nil, false, detachedExecGateError(state, verbName)
+		if state.Branch == "HEAD" {
+			state.Reason = "HEAD is detached; Forgejo Actions evidence is invalid: " + err.Error()
+		} else {
+			state.Reason = "Forgejo Actions pull-request evidence is invalid: " + err.Error()
+		}
+		return nil, nil, false, forgejoActionsPRMergeExecGateError(state, verbName)
 	}
 	state.Clean = true
 	state.Reason = ""
@@ -78,12 +86,21 @@ func runDetachedExecGate(state *gittree.State, repoRoot, verbName string) (*gitt
 	return state, ci, false, nil
 }
 
-func detachedExecGateError(state *gittree.State, verbName string) error {
+func forgejoActionsPRMergeExecGateError(state *gittree.State, verbName string) error {
 	return exitcode.New(exitcode.PolicyDenied, "repo_verb_dirty",
 		errors.New(formatExecGateRefusal(state, verbName)),
 		"restore a clean Forgejo Actions pull-request checkout with complete metadata, "+
 			"or checkout a named branch with an upstream").
-		WithReason("detached repo verbs need enough immutable CI evidence for the audit row to be reconstructed")
+		WithReason("Forgejo Actions pull-request repo verbs need enough immutable CI evidence for the audit row to be reconstructed")
+}
+
+func forgejoActionsPullRequestEnvPresent() bool {
+	for _, pair := range [][2]string{{"CI", "true"}, {"GITHUB_ACTIONS", "true"}, {"FORGEJO_ACTIONS", "true"}, {"GITHUB_EVENT_NAME", "pull_request"}} {
+		if strings.TrimSpace(os.Getenv(pair[0])) != pair[1] {
+			return false
+		}
+	}
+	return true
 }
 
 func validateForgejoActionsPR(repoRoot string) (*audit.CIContext, error) {
@@ -97,7 +114,7 @@ func validateForgejoActionsPR(repoRoot string) (*audit.CIContext, error) {
 	if err := validateForgejoWorkspace(repoRoot, metadata.workspace); err != nil {
 		return nil, err
 	}
-	actualHEAD, err := validateDetachedHEAD(repoRoot, metadata.headSHA)
+	actualHEAD, err := validateCurrentHEAD(repoRoot, metadata.headSHA)
 	if err != nil {
 		return nil, err
 	}
@@ -167,14 +184,14 @@ func validateForgejoRunnerEnv() error {
 	return nil
 }
 
-func validateDetachedHEAD(repoRoot, expectedSHA string) (string, error) {
+func validateCurrentHEAD(repoRoot, expectedSHA string) (string, error) {
 	actualHEAD, err := runGitReadOnly(repoRoot, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
-		return "", fmt.Errorf("resolve detached HEAD: %w", err)
+		return "", fmt.Errorf("resolve HEAD: %w", err)
 	}
 	actualHEAD = strings.TrimSpace(actualHEAD)
 	if !strings.EqualFold(expectedSHA, actualHEAD) {
-		return "", fmt.Errorf("GITHUB_SHA does not match detached HEAD")
+		return "", fmt.Errorf("GITHUB_SHA does not match HEAD")
 	}
 	return actualHEAD, nil
 }
@@ -199,19 +216,19 @@ func validateForgejoPREvent(repoRoot string, metadata *forgejoActionsMetadata) e
 	if !fullObjectIDPattern.MatchString(event.PullRequest.Base.SHA) || !fullObjectIDPattern.MatchString(event.PullRequest.Head.SHA) {
 		return fmt.Errorf("event base/head SHAs must be full Git object IDs")
 	}
-	return validateDetachedParents(repoRoot, event.PullRequest.Base.SHA, event.PullRequest.Head.SHA)
+	return validateCurrentMergeParents(repoRoot, event.PullRequest.Base.SHA, event.PullRequest.Head.SHA)
 }
 
-func validateDetachedParents(repoRoot, baseSHA, headSHA string) error {
-	parents, err := detachedCommitParents(repoRoot)
+func validateCurrentMergeParents(repoRoot, baseSHA, headSHA string) error {
+	parents, err := headCommitParents(repoRoot)
 	if err != nil {
 		return err
 	}
 	if len(parents) != 2 {
-		return fmt.Errorf("detached HEAD has %d parents, want a two-parent pull-request merge", len(parents))
+		return fmt.Errorf("HEAD has %d parents, want a two-parent pull-request merge", len(parents))
 	}
 	if !strings.EqualFold(parents[0], baseSHA) || !strings.EqualFold(parents[1], headSHA) {
-		return fmt.Errorf("detached HEAD parents do not match event base/head SHAs")
+		return fmt.Errorf("HEAD parents do not match event base/head SHAs")
 	}
 	return nil
 }
@@ -354,10 +371,10 @@ func readForgejoPREvent(eventPath string) (*forgejoPREvent, error) {
 	return &event, nil
 }
 
-func detachedCommitParents(repoRoot string) ([]string, error) {
+func headCommitParents(repoRoot string) ([]string, error) {
 	commit, err := runGitReadOnly(repoRoot, "cat-file", "-p", "HEAD")
 	if err != nil {
-		return nil, fmt.Errorf("inspect detached HEAD commit: %w", err)
+		return nil, fmt.Errorf("inspect HEAD commit: %w", err)
 	}
 	var parents []string
 	for _, line := range strings.Split(commit, "\n") {
