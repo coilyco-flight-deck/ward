@@ -3,12 +3,11 @@ doc_goal: Capture the landing-policy surface in one place so the run modes and r
 ---
 # ward agent workflow
 
-`--workflow` chooses how a run lands.
-For the distinction between workflow, run, landing, submitted, merge-ready,
-done, blocked, and failed, see [terminology.md](terminology.md).
+`--workflow` chooses how a run lands. For workflow and terminal-outcome terms,
+see [terminology.md](terminology.md).
 
 - `merge-remote-main` - merge to `main` and close.
-- `pull-request` - open a PR and watch it to green.
+- `pull-request` - open a PR and observe its checks under the sealed worker CI boundary.
 - `pull-request-and-merge` - open a PR, wait for merge readiness, then let the director merge sweep finish the landing. The machine-readable `ward.workflow` marker uses the canonical `pull-request-and-merge` spelling.
 - `remote-branch-only` - publish a branch only.
 
@@ -46,7 +45,8 @@ visible path.
 
 ### pull-request
 
-The run opens a branch and a PR, then keeps watching until the PR is green.
+The run opens a branch and a PR, then observes checks under the sealed
+[worker CI boundary](agent-ci-boundary.md) until green or an operator handoff.
 Failure comments stay on the issue, and the PR copy mirrors the actionable
 message when one already exists.
 When the PR is opened, the issue thread's workflow comment starts with the

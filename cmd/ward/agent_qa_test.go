@@ -44,11 +44,20 @@ func TestQAPromptIncludesInspectionBrief(t *testing.T) {
 		"first thread note",
 		"inspect the branch and checks",
 		"verdict",
+		"live CI as read-only evidence",
+		"single locally proven corrective push",
+		"separate `interactive` issue",
+		"exact run",
+		"first actionable error",
+		"local proof state",
+		"operator verification request",
+		"Director and Ops retain live remediation authority",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("qaResearchPrompt missing %q\n---\n%s", want, got)
 		}
 	}
+	assertSeedRejectsLiveCIPushLoop(t, got)
 }
 
 func TestQAVerdictCommentSurfacesFailure(t *testing.T) {

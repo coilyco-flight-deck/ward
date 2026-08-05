@@ -66,7 +66,7 @@ func TestWorkflowCarryClauseDirectToMain(t *testing.T) {
 // TestWorkflowCarryClausePullRequest checks the PR carry clause.
 func TestWorkflowCarryClausePullRequest(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12}, workflowPullRequest)
-	for _, want := range []string{"pull request", "closes o/r#12", "paragraph or two", "small bullet list", "watching its CI/checks", "director is encouraged to merge it later"} {
+	for _, want := range []string{"pull request", "closes o/r#12", "paragraph or two", "small bullet list", "observe its CI/checks", "director is encouraged to merge it later"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("pull-request carry clause missing %q\n got: %s", want, got)
 		}
@@ -90,7 +90,7 @@ func TestWorkflowCarryClausePullRequest(t *testing.T) {
 // terms when the target forge is GitLab.
 func TestWorkflowCarryClauseGitLabMR(t *testing.T) {
 	got := workflowCarryClause(agentIssueRef{Owner: "o", Repo: "r", Number: 12, Forge: forgeGitLab}, workflowPullRequest)
-	for _, want := range []string{"merge request", "closes o/r#12", "paragraph or two", "small bullet list", "watching its CI/checks", "director is encouraged to merge it later"} {
+	for _, want := range []string{"merge request", "closes o/r#12", "paragraph or two", "small bullet list", "observe its CI/checks", "director is encouraged to merge it later"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("gitlab pull-request carry clause missing %q\n got: %s", want, got)
 		}
@@ -100,6 +100,62 @@ func TestWorkflowCarryClauseGitLabMR(t *testing.T) {
 	}
 	if !strings.Contains(got, "skip the merge request comment") {
 		t.Errorf("gitlab carry clause should steer failure comments to merge requests\n got: %s", got)
+	}
+}
+
+func TestEngineerPRSeedsSealLiveCIIteration(t *testing.T) {
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1587}
+	for _, tc := range []struct {
+		name       string
+		workflow   workflowMode
+		reviewGate bool
+	}{
+		{name: "direct workflow with review gate", workflow: workflowDirectToMain, reviewGate: true},
+		{name: "pull request", workflow: workflowPullRequest},
+		{name: "pull request with review gate", workflow: workflowPullRequest, reviewGate: true},
+		{name: "director merge lane", workflow: workflowPullRequestAndMerge},
+		{name: "director merge lane with review gate", workflow: workflowPullRequestAndMerge, reviewGate: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := agentSeedPromptWorkflow(ref, "seal live CI", "keep the worker local", "", true, nil, tc.workflow, tc.reviewGate, "")
+			for _, want := range []string{
+				"live CI as read-only evidence",
+				"at most one corrective push",
+				"only when local repository evidence proves the change",
+				"separate `interactive` issue",
+				"exact run",
+				"first actionable error",
+				"local proof state",
+				"operator verification request",
+				"Director and Ops retain live remediation authority",
+			} {
+				if !strings.Contains(got, want) {
+					t.Errorf("engineer seed missing sealed CI boundary %q\n%s", want, got)
+				}
+			}
+			assertSeedRejectsLiveCIPushLoop(t, got)
+		})
+	}
+}
+
+func assertSeedRejectsLiveCIPushLoop(t *testing.T, seed string) {
+	t.Helper()
+	for _, sentence := range strings.FieldsFunc(strings.ToLower(seed), func(r rune) bool {
+		switch r {
+		case '.', '\n', '!', '?':
+			return true
+		default:
+			return false
+		}
+	}) {
+		if !strings.Contains(sentence, "push") {
+			continue
+		}
+		for _, loop := range []string{"repeat", "retry", "iterate", "keep pushing", "push again", "until"} {
+			if strings.Contains(sentence, loop) {
+				t.Errorf("seed combines a push with live-iteration wording %q\n%s", loop, seed)
+			}
+		}
 	}
 }
 

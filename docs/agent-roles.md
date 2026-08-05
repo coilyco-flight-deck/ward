@@ -17,6 +17,12 @@ credentials, mounts, network access, broker grants, merge authority, model,
 identity, or container topology. Ward enforces those boundaries in the fixed
 launch and broker paths.
 
+Engineer and QA prompts also treat live CI as read-only evidence. An engineer
+may make one locally proven corrective push. QA never mutates the candidate.
+Live-only or repeated failures move to a separate `interactive` operator issue,
+while director and Ops authority stays distinct. See
+[agent-ci-boundary.md](agent-ci-boundary.md).
+
 `--verification-fixture` narrows director, engineer, and QA runs to an
 explicitly configured disposable target. It does not change the role's
 credentials or authority. See [verification-fixtures.md](verification-fixtures.md).

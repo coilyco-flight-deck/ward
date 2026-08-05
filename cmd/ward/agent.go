@@ -485,15 +485,15 @@ func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 	var workflowTail string
 	switch mode := string(canonicalWorkflow(wf.orDefault())); mode {
 	case string(workflowDirectToMain):
-		workflowTail = "For `merge-remote-main` workflows, landing means merging to `main`. Do not stop before the merge lands."
+		workflowTail = "For `merge-remote-main` workflows, landing means merging to `main`. Do not stop before the merge lands. " + sealedEngineerCIBoundaryClause()
 	case string(workflowPullRequest):
-		workflowTail = "For `pull-request` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-request` workflows, opening the " + noun + " is not a stopping point. Follow the live-CI boundary in the workflow instructions, and run this review gate only after the " + noun + " is green."
 	case string(workflowPullRequestAndMerge):
-		workflowTail = "For `pull-request-and-merge` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks and merge status after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green and merged or the failure is genuinely blocked."
+		workflowTail = "For `pull-request-and-merge` workflows, opening the " + noun + " is not a stopping point. Follow the live-CI boundary in the workflow instructions, and run this review gate only after the " + noun + " is green. The director owns the merge after the worker handoff."
 	case string(workflowRemoteBranchOnly):
 		workflowTail = "For `remote-branch-only` workflows, the remote branch push is the finish line. Do not open a pull request and do not merge."
 	default:
-		workflowTail = "For `pull-request` workflows, opening the " + noun + " is not a stopping point. Keep watching the " + noun + " checks after it opens. A failing check is not done: fetch the logs/status, patch the branch, push the update, and repeat until the " + noun + " is green or the failure is genuinely blocked."
+		workflowTail = "For `pull-request` workflows, opening the " + noun + " is not a stopping point. Follow the live-CI boundary in the workflow instructions, and run this review gate only after the " + noun + " is green."
 	}
 	return fmt.Sprintf(
 		"REVIEW GATE (%s): before you land this change (%s), and ONLY after CI is green, run the "+

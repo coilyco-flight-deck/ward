@@ -100,8 +100,8 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 		t.Errorf("merge-remote-main landing phrase missing from the gate clause")
 	}
 	pr := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequest, true, "")
-	if !strings.Contains(pr, "watching its CI/checks") {
-		t.Errorf("pull-request seed should tell PR workflows to keep watching checks after opening the PR")
+	if !strings.Contains(pr, "observe its CI/checks") {
+		t.Errorf("pull-request seed should tell PR workflows to observe checks after opening the PR")
 	}
 	if !strings.Contains(pr, pullRequestWorkflowOutcomeMarker) {
 		t.Errorf("pull-request seed should end with the PR URL marker, not done\n got: %s", pr)
@@ -114,8 +114,9 @@ func TestReviewGateClauseInSeed(t *testing.T) {
 	if !strings.Contains(direct, "For `merge-remote-main` workflows, landing means merging to `main`") {
 		t.Errorf("review gate clause must name the merge-remote-main landing path\n got: %s", direct)
 	}
-	if !strings.Contains(pr, "For `pull-request` workflows, opening the pull request is not a stopping point") {
-		t.Errorf("review gate clause must tell pull-request runs to keep watching PR CI\n got: %s", pr)
+	if !strings.Contains(pr, "For `pull-request` workflows, opening the pull request is not a stopping point") ||
+		!strings.Contains(pr, "Follow the live-CI boundary in the workflow instructions") {
+		t.Errorf("review gate clause must preserve the sealed pull-request CI boundary\n got: %s", pr)
 	}
 	merge := agentSeedPromptWorkflow(ref, "t", "b", "", true, nil, workflowPullRequestAndMerge, true, "")
 	if !strings.Contains(merge, pullRequestWorkflowOutcomeMarker) {

@@ -345,6 +345,7 @@ func qaResearchPrompt(ref agentIssueRef, title, body string, comments []issueCom
 			"```\n\n"+
 			"Treat pass/fail/blocked as advisory verdicts. A fail still gets surfaced and recorded, but it "+
 			"does not gate landing in this first slice.\n\n"+
+			qaLiveCIBoundaryClause()+"\n\n"+
 			"Use the issue text, the comment thread, and the live repository state. Inspect the current branch, "+
 			"any linked pull request, and the available checks. The repo is a fresh clone in your working "+
 			"directory. The issue thread already carries the operator framing and the current release state.\n\n"+
@@ -360,6 +361,16 @@ func qaResearchPrompt(ref agentIssueRef, title, body string, comments []issueCom
 			"Comment thread (oldest first):\n\n%s\n\n"+
 			"----- the QA request -----\n%s\n----- end request -----",
 		ctx.PRRef, ctx.CandidateBranch, ctx.ReviewedSHA, ctx.ReviewerFamily, ctx.RunIdentity, level.Guidance, ref, title, ref.url(), body, thread, prompt)
+}
+
+// qaLiveCIBoundaryClause keeps the read-only QA seed explicit about the same
+// live-CI handoff boundary carried by engineer seeds.
+func qaLiveCIBoundaryClause() string {
+	return "Treat live CI as read-only evidence: inspect status and logs, but do not debug, rerun, or iterate " +
+		"against live CI. QA does not edit files or make the engineer's single locally proven corrective push. " +
+		"If the failure exists only in live CI or recurs after that push, require a separate `interactive` issue " +
+		"containing the exact run, first actionable error, local proof state, and operator verification request. " +
+		"Director and Ops retain live remediation authority."
 }
 
 // printAgentQAPlan renders the repo, the QA request, and the docker plan without

@@ -234,15 +234,24 @@ func pullRequestDescriptionClause(noun string) string {
 		noun, noun)
 }
 
-// pullRequestCIWatchClause tells pull-request workflows that opening the PR is not
-// the end. They must keep watching CI/checks and only report done once the PR is green.
+// pullRequestCIWatchClause tells sealed engineer workflows how to observe live CI
+// without turning the forge into an iterative debugging surface.
 func pullRequestCIWatchClauseFor(f forge) string {
 	noun := workflowReviewNoun(f)
-	return "After the " + noun + " opens, keep watching its CI/checks and fetch the status/logs if anything " +
-		"fails. Patch the branch, push updates, and repeat until the checks are green or the failure is " +
-		"genuinely blocked. A failing check is not a done state, human feedback on the issue or " + noun + " is " +
-		"blocking until it is visibly acknowledged, and the final `WARD-WORKFLOW` comment is not allowed until " +
-		"the " + noun + " is green. " + workflowFailureCommentClauseFor(f)
+	return "After the " + noun + " opens, observe its CI/checks and fetch the status/logs if anything fails. " +
+		sealedEngineerCIBoundaryClause() + " A failing check is not a done state, human feedback on the issue or " +
+		noun + " is blocking until it is visibly acknowledged, and a successful `WARD-WORKFLOW` handoff is not " +
+		"allowed until the " + noun + " is green. " + workflowFailureCommentClauseFor(f)
+}
+
+// sealedEngineerCIBoundaryClause is the single live-CI policy embedded in every
+// engineer PR seed. Director and Ops prompts intentionally do not consume it.
+func sealedEngineerCIBoundaryClause() string {
+	return "Treat live CI as read-only evidence: inspect status and logs, but do not debug or iterate against " +
+		"live CI. Make at most one corrective push, and only when local repository evidence proves the change. " +
+		"If the failure exists only in live CI or recurs after that push, file a separate `interactive` issue " +
+		"containing the exact run, first actionable error, local proof state, and operator verification request, " +
+		"then report this workflow blocked. Director and Ops retain live remediation authority."
 }
 
 // workflowFailureCommentClause tells PR workflows to mirror failure comments onto
