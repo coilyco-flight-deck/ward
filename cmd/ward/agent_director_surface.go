@@ -13,8 +13,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_director_surface.go is the director's read-only interactive surface phase: the
-// seedless bring-up it drops into on drain (ward#353). See docs/agent-surface.md.
+// agent_director_surface.go is the director's attached read-only interactive
+// supervision surface. See docs/agent-surface.md.
 
 // directorSurfaceVerb names the surface for its command line, name, and audit verb.
 // Internal: `warded surface` is not registered, only the director reaches it.
@@ -26,7 +26,7 @@ func agentScratchFlags() []cli.Flag {
 	flags := agentHarnessFlags()
 	flags = append(flags,
 		&cli.StringFlag{Name: "repo", Usage: "owner/repo to clone for context (default: inferred from the cwd's git origin)"},
-		&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional repo for context (owner/name; repeatable), landed at /workspace/<owner>/<repo> (ward#1526)."},
+		&cli.StringSliceFlag{Name: "with-repo", Usage: "clone an additional read-only repo for context (owner/name; repeatable), landed at /workspace/<owner>/<repo> (ward#1526)."},
 	)
 	flags = append(flags, agentImageFlags()...)
 	return append(flags,
@@ -40,8 +40,8 @@ func agentScratchFlags() []cli.Flag {
 func directorSurfaceCommand() *cli.Command {
 	return &cli.Command{
 		Name: directorSurfaceVerb,
-		Usage: "The director's read-only interactive surface (internal): a fresh ephemeral container (repo clone + " +
-			"operating context) with no issue and no seed - reads the repo and scopes + dispatches work, but cannot commit, push, or merge.",
+		Usage: "The director's attached read-only interactive surface (internal): a fresh ephemeral container (repo clone + " +
+			"operating context) with no issue and no seed - supervises and dispatches through brokered primitives, but cannot commit, push, or merge.",
 		Flags: agentScratchFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()

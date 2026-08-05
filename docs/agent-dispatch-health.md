@@ -3,13 +3,15 @@ doc_goal: Keep the dispatch-health surface and its alert line in one durable pla
 ---
 # ward agent dispatch-health
 
-`ward agent dispatch-health` summarizes the live dispatch surface.
+`ward agent dispatch-health` summarizes live issue-thread lifecycle signals and
+the live engineer list. It does not read or refresh a local backlog ledger.
 
-- It reads the backlog ledger and the live engineer list.
-- It reports queued, in-flight, held, PR-open, merge-ready, deferred, and failed counts.
-- It reports running engineers separately from active launch intents.
-- It surfaces cleanup-needed and failed-before-start records separately, plus double-dispatch, stale prelaunch holds, backpressure, and runaway signals.
-- It prints the stable `WARD-DISPATCH-HEALTH:` line that the director loop and alert rules can match.
+- Redispatch markers provide the queued and deferred counts.
+- Fresh reservations provide the in-flight count.
+- Stale prelaunch reservations provide the held count.
+- Trusted workflow comments provide submitted, merge-ready, blocked, and failed counts.
+- Container state provides running, partial-launch, launch-intent, cleanup-needed, and failed-before-start counts.
+- Duplicate refs, stale prelaunch holds, backpressure, and runaway launch rates remain explicit signals.
 
 ## Surfaces
 
@@ -17,23 +19,23 @@ doc_goal: Keep the dispatch-health surface and its alert line in one durable pla
 - `ward agent dispatch-health --line` - the one-line status feed.
 - `ward agent dispatch-health --json` - the machine-readable snapshot.
 
+The JSON schema remains versioned. `generated_at` is observation metadata, not
+orchestration state.
+
 ## Status line injection
 
-Ward only injects the live status line into harnesses whose manifest says they can render one.
-
-- Claude is marked `StatusLine=true`, so the bootstrap writes a `ward agent dispatch-health --line` status command into its settings.
-- Other harnesses skip the injection and keep the base settings unchanged.
+Ward only injects the live status line into harnesses whose manifest says they
+can render one. Claude is marked `StatusLine=true`. Other harnesses keep their
+base settings unchanged.
 
 ## Alerts
 
-The same summary line is what the director heartbeat emits for alert matching.
-
-- native desktop notification, when the operator has an interactive desktop and the local notifier exists.
-- SigNoz alert rules on the existing ward agent-run envelope stream.
-- Telegram and ntfy fallback channels for headless or remote runs.
+Alert integrations match the stable `WARD-DISPATCH-HEALTH:` summary line.
+Native desktop notification is best effort when an interactive desktop and
+local notifier exist. Hosted alert routing remains outside Ward.
 
 ## See also
 
+- [agent-director.md](agent-director.md) - attached supervision and queue JSON.
 - [agent-harnesses.md](agent-harnesses.md) - which harness can render the status line.
-- [agent-ops.md](agent-ops.md) - the rest of the operator surfaces.
 - [agent-observability.md](agent-observability.md) - the log and envelope schema.

@@ -17,7 +17,7 @@ Inventory of what `ward` ships today.
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
 - Typed harness adapters and fixed workflows. Role metadata grants no authority.
-- `ward agent director queue` / `status` - read-only queue view.
+- `ward agent director queue` / `status` - read-only live queue view with a stable versioned JSON schema.
 - Read-only Forgejo issue-comment guard.
 - Reservation and dispatch comment cleanup.
 - Harness install hooks for claude, codex, goose, and opencode.
@@ -26,8 +26,8 @@ Inventory of what `ward` ships today.
 - Launch-intent vs running-engineer split in list, dispatch-health, reap, and director.
 - Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
 - Open-PR backpressure gate.
-- Issue-scoped director dispatch.
-- Bounded director, engineer, and QA fixtures. See [verification-fixtures.md](verification-fixtures.md).
+- Issue-scoped director snapshot and attached read-only surface. Harness-native goals own repetition and dispatch judgment.
+- Bounded engineer and QA fixtures. See [verification-fixtures.md](verification-fixtures.md).
 - Compose broker with durable cluster/request IDs, restart recovery, sibling
   launch, lifecycle status, and Forgejo RPC. See [agent-dispatch-lifecycle.md](agent-dispatch-lifecycle.md).
 - Broker-only clusters with scoped lifecycle verbs. See [agent-clusters.md](agent-clusters.md).
@@ -36,7 +36,7 @@ Inventory of what `ward` ships today.
 - PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR close/reopen/recovery and repair classification.
 - Secret-safe agent archives with exact-value and RE2 redaction. See [agent-observability.md](agent-observability.md).
-- Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
+- Director reads one live startup snapshot and persists no orchestration ledger.
 - `ward agent issue create` files through the director broker without dispatch.
 - Actor admission seals exact external snapshots. Agent tracker writes use
   role-bound typed broker actions and Git-only credentials. See [agent-human-feedback.md](agent-human-feedback.md).

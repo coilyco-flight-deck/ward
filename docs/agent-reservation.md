@@ -34,9 +34,9 @@ This page is the durable anchor for launch-time reservations.
 - A forwarded dispatch that still collides with a live hold defers: it posts a
   needs-redispatch marker without releasing the hold (the hold belongs to the
   run that is still working) and starts nothing.
-- The needs-redispatch marker has an owner: the `ward agent director` heartbeat
-  sweeps it and re-queues the issue, bounded by the redispatch attempt cap
-  ([ward#1149](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1149)). See [agent-director-dispatch.md](agent-director-dispatch.md).
+- Queue/status and dispatch-health surface the needs-redispatch marker. A
+  harness-native goal decides whether and when to dispatch the issue again.
+  Ward applies the reservation and capacity gates again at launch time.
 
 ## See also
 

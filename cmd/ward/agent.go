@@ -790,7 +790,7 @@ container bring-up stack plus a prompt.
   warded <role> #98 --harness <harness>       # pick another harness
   warded <role> #98 --agent <harness>        # --agent: the same pick, equal spelling
   warded director --repo coilyco-flight-deck/ward # read-only director surface
-  warded director --burndown --repo coilyco-flight-deck/ward # add --burndown when you want autonomous dispatch
+  warded director queue --repo coilyco-flight-deck/ward --json # stable live queue snapshot
   ward agent engineer coilyco-flight-deck/ward#98 # the canonical spelling warded fronts
   ward agent #98 --print                      # resolve + show the plan, run nothing
 

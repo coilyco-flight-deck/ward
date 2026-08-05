@@ -1121,18 +1121,6 @@ func filterOpenIssueFeedByType(raw []forgejoIssueRaw, kind string) []forgejoIssu
 	return out
 }
 
-// addIssueLabels adds the labels (by name) to an open issue - the write side of startup
-// triage (ward#397); an undefined label errors, up to the best-effort caller.
-func (c *forgejoClient) addIssueLabels(ctx context.Context, owner, repo string, number int, labels []string) error {
-	if len(labels) == 0 {
-		return nil
-	}
-	if _, err := c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "issues", strconv.Itoa(number), "labels"}, nil, map[string][]string{"labels": labels}, true, nil); err != nil {
-		return fmt.Errorf("forgejo: add labels %v to %s/%s#%d: %w", labels, owner, repo, number, err)
-	}
-	return nil
-}
-
 // listOwnerRepos lists an owner's repos, trying the org leaf then the user leaf
 // (the survey's primary owners are both - coilyco-* orgs and the coilysiren user).
 func (c *forgejoClient) listOwnerRepos(ctx context.Context, owner string) ([]repoBrief, error) {

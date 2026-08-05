@@ -1,5 +1,5 @@
 ---
-doc_goal: Carry the behavioral detail behind the three ward agent roles - engineer detached, director attached heartbeat, qa verdict-only - map the old retired verbs onto them, and explain the shared pre-flight and reaper backstop so an operator knows what each role does and leaves behind.
+doc_goal: Carry the behavioral detail behind the three ward agent roles, including the attached read-only director boundary, and explain the shared pre-flight and reaper backstop so an operator knows what each role does and leaves behind.
 ---
 # ward agent subcommands
 
@@ -24,7 +24,7 @@ This doc and the per-role docs ([agent-engineer.md](agent-engineer.md),
 prose detail behind each row. Run `warded roster` for the live list.
 
 - **`engineer`** - detached only. A ref runs the agent in print mode to completion and exits into the reaper. From a terminal it first runs a pre-flight check ([agent-preflight.md](agent-preflight.md)): GO launches, NO-GO comments and launches nothing. Freeform text files an issue first, then carries it.
-- **`director`** - an attached read-only control surface. It refreshes backlog status, opens the surface by default, and dispatches queued issues under `--max-parallel` only when `--burndown` or `--drain` is set.
+- **`director`** - an attached read-only control surface. It reads one live queue snapshot and opens the surface. Harness-native goals own repetition and dispatch judgment.
 - **`qa`** - opt-in structured inspection. A ref reads the issue, candidate branch or PR, and checks, then posts a verdict comment.
 
 ## Pre-flight parity

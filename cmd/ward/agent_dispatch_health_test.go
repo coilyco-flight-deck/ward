@@ -120,19 +120,14 @@ func TestDispatchHealthSkipsClosedCompletedIssueRefs(t *testing.T) {
 	}
 
 	report := dispatchHealthReport{}
-	entries := []*backlogEntry{
-		{Num: 1443, Kind: backlogKindIssue, Lane: "headless", State: "blocked", repo: "coilyco-flight-deck/ward", LastOutcome: &backlogOutcome{Status: "blocked"}},
-		{Num: 1526, Kind: backlogKindIssue, Lane: "headless", State: "queued", repo: "coilyco-flight-deck/ward", LastOutcome: &backlogOutcome{Status: "deferred"}},
-		{Num: 2000, Kind: backlogKindIssue, Lane: "headless", State: "queued", repo: "coilyco-flight-deck/ward"},
-		{Num: 2001, Kind: backlogKindIssue, Lane: "headless", State: "blocked", repo: "coilyco-flight-deck/ward"},
-		{Num: 9001, Kind: backlogKindPullRequest, Lane: backlogKindPullRequest, State: "blocked", repo: "coilyco-flight-deck/ward", LastOutcome: &backlogOutcome{Status: "failed"}},
+	items := []directorQueueItem{
+		{Repo: "coilyco-flight-deck/ward", Number: 2000, Kind: backlogKindIssue, State: directorQueueStateNeedsRedispatch, Action: directorQueueActionRedispatch},
+		{Repo: "coilyco-flight-deck/ward", Number: 2001, Kind: backlogKindIssue, State: directorQueueStateBlockedRun, Action: directorQueueActionInspectLogs},
+		{Repo: "coilyco-flight-deck/ward", Number: 9001, Kind: backlogKindPullRequest, State: directorQueueStateFailedRun, Action: directorQueueActionInspectLogs},
 	}
-	dispatchHealthTallyEntries(&report, entries, activeIssue)
-	if report.Queued != 1 || report.Failed != 2 {
-		t.Fatalf("report = %+v, want one active queued issue and two active failures (one issue, one PR)", report)
-	}
-	if report.Deferred != 0 || report.Submitted != 0 || report.MergeReady != 0 {
-		t.Fatalf("report should not count filtered historical states, got %+v", report)
+	dispatchHealthTallyQueueItems(&report, items)
+	if report.Queued != 1 || report.Deferred != 1 || report.Failed != 2 {
+		t.Fatalf("report = %+v, want one live redispatch and two live failures", report)
 	}
 
 	stale := []stalePrelaunchReservation{

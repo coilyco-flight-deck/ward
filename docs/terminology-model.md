@@ -35,8 +35,8 @@ work item
 - the harness owns model or CLI execution. It does not own Ward's workflow
   authority.
 - the selected workflow owns what successful delivery means for the run.
-- the director owns read-only supervision, backlog heartbeat, redispatch
-  sweeps, and merge-ready follow-through.
+- the director owns attached read-only supervision, one-shot live queue views,
+  and explicit merge-ready follow-through. The harness owns repeated judgment.
 - `ward exec` owns audited local repo verbs outside the agent container flow.
 - release automation owns promotion and published artifacts after work reaches
   `main`.
@@ -55,7 +55,7 @@ work item
   runtime permissions.
 - A run reaches terminal or parked workflow state; an issue can close, remain
   open for PR follow-through, or receive later runs.
-- `stop` and `logs` affect one run. `reap`, capacity, burndown, and
-  dispatch-health operate over wider fleet or backlog state.
+- `stop` and `logs` affect one run. `reap`, capacity, queue/status, and
+  dispatch-health operate over wider fleet or tracker state.
 - Successful process termination is not successful software delivery. Delivery
   is proven by the workflow's repository or PR evidence.

@@ -28,7 +28,6 @@ type smartDefaults struct {
 	engineerOpenPRBranchLimit     int
 	directorMaxParallel           int
 	directorLimit                 int
-	directorPollInterval          time.Duration
 	reviewerTimeout               time.Duration
 	gitRefCacheTTL                time.Duration
 	containerAssetsTTL            time.Duration
@@ -41,9 +40,6 @@ type smartDefaults struct {
 	trustedOwners                 []string
 	repoAuthorityDefault          forge
 	repoAuthorityRules            []repoAuthorityRule
-	burndownConfigured            bool
-	burndownDefault               bool
-	burndownRules                 []burndownRule
 	verificationFixtures          []verificationFixtureRule
 }
 
@@ -55,11 +51,6 @@ type repoAuthorityRule struct {
 	Landing    forge
 	LandingSet bool
 	Mirrors    []forge
-}
-
-type burndownRule struct {
-	Pattern string
-	Enabled bool
 }
 
 type verificationFixtureRule struct {
@@ -75,7 +66,6 @@ type operatorPreferences struct {
 	WorkflowRepos  map[string]workflowMode
 	MaxParallel    int
 	DirectorLimit  int
-	PollInterval   time.Duration
 }
 
 func defaultSmartDefaults() smartDefaults {
@@ -92,7 +82,6 @@ func defaultSmartDefaults() smartDefaults {
 		engineerOpenPRBranchLimit:     6,
 		directorMaxParallel:           6,
 		directorLimit:                 50,
-		directorPollInterval:          30 * time.Second,
 		reviewerTimeout:               8 * time.Minute,
 		gitRefCacheTTL:                10 * time.Minute,
 		containerAssetsTTL:            time.Hour,
@@ -161,12 +150,6 @@ func loadOperatorPreferences() (operatorPreferences, error) {
 		MaxParallel:    cfg.Director.MaxParallel,
 		DirectorLimit:  cfg.Director.Limit,
 	}
-	if raw := strings.TrimSpace(cfg.Director.PollInterval); raw != "" {
-		out.PollInterval, err = time.ParseDuration(raw)
-		if err != nil || out.PollInterval <= 0 {
-			return operatorPreferences{}, fmt.Errorf("director.poll-interval must be a positive duration")
-		}
-	}
 	if raw := strings.TrimSpace(cfg.Agent.Workflow.Default); raw != "" {
 		out.Workflow, err = parseWorkflow(raw)
 		if err != nil {
@@ -208,9 +191,6 @@ func applyOperatorPreferences(defs *smartDefaults, prefs operatorPreferences) {
 	}
 	if prefs.DirectorLimit > 0 {
 		defs.directorLimit = prefs.DirectorLimit
-	}
-	if prefs.PollInterval > 0 {
-		defs.directorPollInterval = prefs.PollInterval
 	}
 }
 
@@ -276,29 +256,8 @@ func cloneSmartDefaults(in smartDefaults) smartDefaults {
 	}
 	out.trustedOwners = append([]string{}, in.trustedOwners...)
 	out.repoAuthorityRules = append([]repoAuthorityRule{}, in.repoAuthorityRules...)
-	out.burndownRules = append([]burndownRule{}, in.burndownRules...)
 	out.verificationFixtures = append([]verificationFixtureRule{}, in.verificationFixtures...)
 	return out
-}
-
-func (d smartDefaults) burndownEnabled(slug string) bool {
-	if !d.burndownConfigured {
-		return true
-	}
-	slug = strings.TrimSpace(slug)
-	bestSpecificity := -1
-	bestEnabled := d.burndownDefault
-	for _, rule := range d.burndownRules {
-		ok, err := path.Match(rule.Pattern, slug)
-		if err != nil || !ok {
-			continue
-		}
-		if specificity := repoPatternSpecificity(rule.Pattern); specificity > bestSpecificity {
-			bestSpecificity = specificity
-			bestEnabled = rule.Enabled
-		}
-	}
-	return bestEnabled
 }
 
 func repoPatternSpecificity(pattern string) int {
@@ -427,11 +386,8 @@ func engineerRepoWorkingLimitDefault() int {
 func engineerOpenPRBranchLimitDefault() int {
 	return currentSmartDefaults().engineerOpenPRBranchLimit
 }
-func directorMaxParallelDefault() int { return currentSmartDefaults().directorMaxParallel }
-func directorLimitDefault() int       { return currentSmartDefaults().directorLimit }
-func directorPollIntervalDefault() time.Duration {
-	return currentSmartDefaults().directorPollInterval
-}
+func directorMaxParallelDefault() int       { return currentSmartDefaults().directorMaxParallel }
+func directorLimitDefault() int             { return currentSmartDefaults().directorLimit }
 func reviewerTimeoutDefault() time.Duration { return currentSmartDefaults().reviewerTimeout }
 func gitRefCacheTTLDefault() time.Duration  { return bakedSmartDefaults().gitRefCacheTTL }
 func containerAssetsTTL() time.Duration     { return currentSmartDefaults().containerAssetsTTL }

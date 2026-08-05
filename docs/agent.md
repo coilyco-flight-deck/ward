@@ -56,7 +56,7 @@ warded #98
 warded engineer #98
 warded engineer freeform smoke test
 warded director --repo owner/name # open the read-only surface
-warded director --burndown --repo owner/name # autonomously drain headless work
+warded director queue --repo owner/name --json # stable live queue snapshot
 warded director owner/name#98
 ```
 
@@ -67,7 +67,7 @@ positional ref.
 Freeform engineer text files an issue first, then carries that issue through
 the detached run.
 
-The director has no separate interactive subcommand. Start `warded director --repo owner/name` from a terminal to open the read-only session from the stored ledger. Add `--burndown` only when the command should autonomously dispatch queued headless work or enumerate the live backlog. During a full burndown lane, press Enter during the sleep offer to open the same session.
+The director has no separate interactive subcommand. Start `warded director --repo owner/name` from a terminal to read one live snapshot and open the attached read-only session. Ward stores no director queue ledger and runs no autonomous loop. A harness-native goal owns repetition and dispatch judgment.
 
 ## Why the docs are smaller
 

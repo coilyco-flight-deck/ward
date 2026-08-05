@@ -56,3 +56,18 @@ var dispatchExitCodes = []dispatchExitCode{
 func dispatchDeclineErr(code int, kind, format string, args ...any) error {
 	return exitcode.New(code, kind, fmt.Errorf(format, args...), "")
 }
+
+// isDispatchDecline reports whether err is a stable per-issue refusal rather
+// than an infrastructure or launch failure.
+func isDispatchDecline(err error) bool {
+	coded := exitcode.From(err)
+	if coded == nil {
+		return false
+	}
+	switch coded.Code() {
+	case dispatchNoGo, dispatchWrongRepo, dispatchUntrustedOwner, dispatchIssueClosed, dispatchModeCeiling:
+		return true
+	default:
+		return false
+	}
+}

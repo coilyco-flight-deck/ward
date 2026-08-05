@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -14,6 +15,7 @@ import (
 // It is the read-only queue view for stale reservations and redispatch candidates.
 
 const (
+	directorQueueSchemaVersion        = 1
 	directorQueueActionRedispatch     = "redispatch"
 	directorQueueActionInspectLogs    = "inspect logs"
 	directorQueueActionMergePR        = "merge PR"
@@ -30,6 +32,35 @@ const (
 	directorQueueStateFailedRun       = "failed run"
 	directorQueueStateBlockedRun      = "blocked run"
 )
+
+type directorQueueJSON struct {
+	SchemaVersion int                      `json:"schema_version"`
+	Scope         []string                 `json:"scope"`
+	Summary       directorQueueJSONSummary `json:"summary"`
+	Items         []directorQueueJSONItem  `json:"items"`
+}
+
+type directorQueueJSONSummary struct {
+	Repositories int `json:"repositories"`
+	OpenCarries  int `json:"open_carries"`
+	Redispatch   int `json:"redispatch"`
+	InspectLogs  int `json:"inspect_logs"`
+	MergePR      int `json:"merge_pr"`
+	RecoverPR    int `json:"recover_pr"`
+	CloseDone    int `json:"close_done"`
+	Wait         int `json:"wait"`
+}
+
+type directorQueueJSONItem struct {
+	Repository string `json:"repository"`
+	Number     int    `json:"number"`
+	Kind       string `json:"kind"`
+	Tier       string `json:"tier,omitempty"`
+	Title      string `json:"title"`
+	State      string `json:"state"`
+	NextAction string `json:"next_action"`
+	Note       string `json:"note,omitempty"`
+}
 
 type directorQueueClient interface {
 	ListOpenIssues(ctx context.Context, owner, repo string, limit int) ([]backlogIssue, error)
@@ -54,7 +85,8 @@ func directorQueueFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: director.default-scope from ~/.ward/config.yaml)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped"},
-		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo per refresh"},
+		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo for this snapshot"},
+		&cli.BoolFlag{Name: "json", Usage: "emit the stable machine-readable queue schema"},
 	}
 }
 
@@ -67,7 +99,7 @@ func agentDirectorQueueCommand() *cli.Command {
 of the durable operator states: running/reserved, stale reservation, failed dispatch needing redispatch,
 submitted PR awaiting merge/review, merge-ready PR awaiting merge, done-but-still-open, blocked, or failed.
 It prints the next operator action beside each carry so the operator does not have to grep hidden marker
-names by hand. See docs/agent-director.md.`,
+names by hand. --json emits the versioned deterministic schema. See docs/agent-director.md.`,
 		Flags: directorQueueFlags(),
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -82,19 +114,25 @@ func (r *Runner) runDirectorQueue(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if err := r.backlogTrustGate(label, repos); err != nil {
+	if err := r.directorTrustGate(label, repos); err != nil {
 		return err
 	}
 	limit := c.Int("limit")
 	if limit < 1 {
 		limit = directorLimitDefault()
 	}
-	cl := r.hostForgejoClient(ctx)
-	body, err := renderDirectorQueueStatus(ctx, cl, repos, limit)
+	items, err := collectDirectorQueueItems(ctx, r.hostForgejoClient(ctx), repos, limit, time.Now().UTC(), agentReservationTTL())
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
-	return r.emit(body)
+	if c.Bool("json") {
+		body, err := formatDirectorQueueJSON(repos, items)
+		if err != nil {
+			return fmt.Errorf("%s: %w", label, err)
+		}
+		return r.emit(body)
+	}
+	return r.emit(formatDirectorQueueStatus(repos, items))
 }
 
 func renderDirectorQueueStatus(ctx context.Context, cl directorQueueClient, repos []string, limit int) (string, error) {
@@ -190,6 +228,49 @@ func formatDirectorQueueStatus(repos []string, items []directorQueueItem) string
 		}
 	}
 	return b.String()
+}
+
+func formatDirectorQueueJSON(repos []string, items []directorQueueItem) (string, error) {
+	payload := directorQueueJSON{
+		SchemaVersion: directorQueueSchemaVersion,
+		Scope:         append([]string(nil), repos...),
+		Summary: directorQueueJSONSummary{
+			Repositories: len(repos),
+			OpenCarries:  len(items),
+		},
+		Items: make([]directorQueueJSONItem, 0, len(items)),
+	}
+	for _, item := range items {
+		payload.Items = append(payload.Items, directorQueueJSONItem{
+			Repository: item.Repo,
+			Number:     item.Number,
+			Kind:       backlogKindOf(item.Kind),
+			Tier:       item.Tier,
+			Title:      item.Title,
+			State:      item.State,
+			NextAction: item.Action,
+			Note:       item.Note,
+		})
+		switch item.Action {
+		case directorQueueActionRedispatch:
+			payload.Summary.Redispatch++
+		case directorQueueActionInspectLogs:
+			payload.Summary.InspectLogs++
+		case directorQueueActionMergePR:
+			payload.Summary.MergePR++
+		case directorQueueActionRecoverPR:
+			payload.Summary.RecoverPR++
+		case directorQueueActionCloseDone:
+			payload.Summary.CloseDone++
+		case directorQueueActionWait:
+			payload.Summary.Wait++
+		}
+	}
+	body, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(body) + "\n", nil
 }
 
 func classifyDirectorQueueIssue(repo string, issue backlogIssue, comments []issueComment, openPR bool, now time.Time, ttl time.Duration) directorQueueItem {

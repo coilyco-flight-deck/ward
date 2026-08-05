@@ -73,7 +73,7 @@ func dispatchHealthFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{Name: "repo", Usage: "comma-separated scope 'a/b,c/d' (default: the cwd git origin)"},
 		&cli.StringSliceFlag{Name: "org", Usage: "expand every repo an org owns into the scope (owner; repeatable), unioned with --repo and de-duped"},
-		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo before the health snapshot refreshes"},
+		&cli.IntFlag{Name: "limit", Value: directorLimitDefault(), Usage: "open issues read per repo for the health snapshot"},
 		&cli.IntFlag{Name: "max-parallel", Value: directorMaxParallelDefault(), Usage: "in-flight engineer cap used to judge backpressure from typed defaults or ~/.ward/config.yaml"},
 		&cli.BoolFlag{Name: "json", Usage: "emit the stable machine-readable JSON schema"},
 		&cli.BoolFlag{Name: "line", Usage: "emit the single-line summary used by the Claude status line"},
@@ -84,8 +84,8 @@ func agentDispatchHealthCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "dispatch-health",
 		Usage: "Show the live dispatch pathology summary for the current director scope, plus the one-line status feed used by Claude Code.",
-		Description: `dispatch-health summarizes the live dispatch surface from the backlog ledger and
-running engineer containers. It is the operator HUD behind the dispatch-health
+		Description: `dispatch-health summarizes the live issue-thread lifecycle and running
+engineer containers. It is the operator HUD behind the dispatch-health
 status line, and it is the stable line the alert hook mirrors into the log stream.
 
   ward agent dispatch-health
@@ -111,21 +111,22 @@ func (r *Runner) runAgentDispatchHealth(ctx context.Context, c *cli.Command) err
 	if err != nil {
 		return err
 	}
-	if err := r.backlogTrustGate(label, repos); err != nil {
+	if err := r.directorTrustGate(label, repos); err != nil {
 		return err
-	}
-	limit := c.Int("limit")
-	if limit < 1 {
-		limit = directorLimitDefault()
 	}
 	maxParallel := c.Int("max-parallel")
 	if maxParallel < 1 {
 		maxParallel = directorMaxParallelDefault()
 	}
-	if err := r.backlogRefresh(ctx, label, repos, limit); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: refresh failed (%v); using the current ledger snapshot\n", label, err)
+	limit := c.Int("limit")
+	if limit < 1 {
+		limit = directorLimitDefault()
 	}
-	report := r.dispatchHealthSnapshot(ctx, repos, maxParallel)
+	items, queueErr := collectDirectorQueueItems(ctx, r.hostForgejoClient(ctx), repos, limit, time.Now().UTC(), agentReservationTTL())
+	report := r.dispatchHealthSnapshotWithQueue(ctx, repos, maxParallel, items)
+	if queueErr != nil {
+		report.Warnings = append(report.Warnings, firstLine(queueErr.Error()))
+	}
 	if report.alertable() {
 		fmt.Fprintf(os.Stderr, "WARD-DISPATCH-HEALTH: %s\n", report.summaryLine())
 		if notifyDispatchHealth(ctx, report) {
@@ -149,16 +150,15 @@ func (r *Runner) runAgentDispatchHealth(ctx context.Context, c *cli.Command) err
 }
 
 func (r *Runner) dispatchHealthSnapshot(ctx context.Context, repos []string, maxParallel int) dispatchHealthReport {
-	cl, err := r.hostTrackerClient(ctx, trackerForgejo, currentAgentMode())
+	items, err := collectDirectorQueueItems(ctx, r.hostForgejoClient(ctx), repos, directorLimitDefault(), time.Now().UTC(), agentReservationTTL())
+	report := r.dispatchHealthSnapshotWithQueue(ctx, repos, maxParallel, items)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward agent dispatch-health: note: cannot read live issue state (%v); using cached ledger state\n", err)
-		cl = nil
+		report.Warnings = append(report.Warnings, firstLine(err.Error()))
 	}
-	return r.dispatchHealthSnapshotWithTracker(ctx, repos, maxParallel, cl)
+	return report
 }
 
-func (r *Runner) dispatchHealthSnapshotWithTracker(ctx context.Context, repos []string, maxParallel int, cl Tracker) dispatchHealthReport {
-	entries := r.backlogScopeEntries(repos)
+func (r *Runner) dispatchHealthSnapshotWithQueue(ctx context.Context, repos []string, maxParallel int, items []directorQueueItem) dispatchHealthReport {
 	rows, err := r.agentListRows(ctx)
 	report := dispatchHealthReport{
 		Scope: repos,
@@ -176,7 +176,12 @@ func (r *Runner) dispatchHealthSnapshotWithTracker(ctx context.Context, repos []
 	if serr != nil {
 		report.Warnings = append(report.Warnings, firstLine(serr.Error()))
 	}
-	activeIssue := dispatchHealthActiveIssueFilter(ctx, cl)
+	tracker, trackerErr := r.hostTrackerClient(ctx, trackerForgejo, currentAgentMode())
+	if trackerErr != nil {
+		report.Warnings = append(report.Warnings, firstLine(trackerErr.Error()))
+		tracker = nil
+	}
+	activeIssue := dispatchHealthActiveIssueFilter(ctx, tracker)
 	visibleRows := dispatchHealthVisibleRows(rows, scope, activeIssue)
 	runningRows := dispatchHealthRunningRows(visibleRows)
 	inv := agentLaunchInventoryFromRowsWithScope(visibleRows, scope)
@@ -185,9 +190,10 @@ func (r *Runner) dispatchHealthSnapshotWithTracker(ctx context.Context, repos []
 	report.LaunchIntents = inv.LaunchIntents
 	report.CleanupNeeded = inv.CleanupNeeded
 	report.FailedBefore = inv.FailedBefore
-	dispatchHealthTallyEntries(&report, entries, activeIssue)
+	dispatchHealthTallyQueueItems(&report, items)
 	report.RecentDispatches, report.DuplicateRefs = dispatchHealthRunningSignals(runningRows)
 	report.StalePrelaunch = len(dispatchHealthStalePrelaunchReservations(stale, activeIssue))
+	report.Held = report.StalePrelaunch
 	report.Backpressure = maxParallel > 0 && report.InFlight >= maxParallel && report.Queued > 0
 	report.Runaway = maxParallel > 0 && report.RecentDispatches > maxParallel*2
 	report.Signals = dispatchHealthSignals(report)
@@ -245,53 +251,24 @@ func dispatchHealthIssueHasDoneOutcome(comments []issueComment) bool {
 	return false
 }
 
-func dispatchHealthTallyEntries(report *dispatchHealthReport, entries []*backlogEntry, activeIssue dispatchHealthIssueFilter) {
-	for _, e := range entries {
-		if e == nil {
-			continue
-		}
-		if backlogKindOf(e.Kind) == backlogKindIssue && activeIssue != nil && !activeIssue(dispatchHealthEntryRef(e)) {
-			continue
-		}
-		dispatchHealthTallyEntry(report, e)
-	}
-}
-
-func dispatchHealthTallyEntry(report *dispatchHealthReport, e *backlogEntry) {
-	switch e.State {
-	case "queued", backlogReservationSafeToRedispatch:
-		report.Queued++
-	case "dispatched":
-		report.InFlight++
-	case backlogReservationWaitingReaper:
-		report.Held++
-	}
-	switch e.State {
-	case "submitted":
-		report.Submitted++
-	case "merge-ready":
-		report.MergeReady++
-	}
-	dispatchHealthTallyEntryOutcome(report, e)
-}
-
-func dispatchHealthTallyEntryOutcome(report *dispatchHealthReport, e *backlogEntry) {
-	if e.LastOutcome != nil {
-		switch strings.ToLower(strings.TrimSpace(e.LastOutcome.Status)) {
-		case "deferred":
+func dispatchHealthTallyQueueItems(report *dispatchHealthReport, items []directorQueueItem) {
+	for _, item := range items {
+		switch item.Action {
+		case directorQueueActionRedispatch:
+			report.Queued++
 			report.Deferred++
-		case "declined", "exited-no-outcome", "orphaned-needs-redispatch":
+		case directorQueueActionInspectLogs:
 			report.Failed++
 		}
+		switch item.State {
+		case directorQueueStateRunning:
+			report.InFlight++
+		case directorQueueStateSubmittedPR:
+			report.Submitted++
+		case directorQueueStateMergeReadyPR:
+			report.MergeReady++
+		}
 	}
-	switch e.State {
-	case "failed", "blocked":
-		report.Failed++
-	}
-}
-
-func dispatchHealthEntryRef(e *backlogEntry) agentIssueRef {
-	return agentIssueRef{Owner: ownerOf(e.repo), Repo: nameOf(e.repo), Number: e.Num}
 }
 
 func dispatchHealthVisibleRows(rows []agentRunningEngineer, scope map[string]bool, activeIssue dispatchHealthIssueFilter) []agentRunningEngineer {

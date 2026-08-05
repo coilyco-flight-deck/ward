@@ -13,7 +13,7 @@ preferred.
 - `.ward/ward.yaml` and `~/.ward/config.yaml`.
 - README, FEATURES, architecture, agent, lifecycle, workflow, container,
   reservation, reaper, director, broker, audit, and release docs.
-- code workflow comment variants, backlog states, launch phases, list statuses,
+- code workflow comment variants, live queue states, launch phases, list statuses,
   dispatch artifacts, rescue, and salvage paths.
 - recent Forgejo issues and PRs covering release runs, broker dispatch, actor
   admission, status summaries, terminal outcomes, and recovery.
@@ -30,9 +30,9 @@ preferred.
 ## Work And Queue
 
 - incoming work: work, issue, ref, issue URL, freeform task, backlog.
-- queue objects: backlog entry, lane, headless, interactive, queue, heartbeat.
-- queue states: queued, dispatched, surfaced, skipped, submitted,
-  merge-ready, blocked, failed, done.
+- queue objects: issue, pull request, reservation, workflow outcome, live queue snapshot.
+- queue states: running, stale, needs redispatch, submitted, merge-ready,
+  recover, blocked, failed, and done-but-open.
 - pressure: backpressure, open-PR pressure, repo engineer cap, global pool
   ceiling, capacity, stale hold.
 

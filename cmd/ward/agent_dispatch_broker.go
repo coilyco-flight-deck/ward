@@ -1179,7 +1179,7 @@ func dispatchLaunchDeferredCommentBody(mode containerMode, container string, req
 			"Container created: no running engineer was observed.\n"+
 			"Host log: `%s`\n"+
 			"Capacity: `%s`\n\n"+
-			"Retry: the issue stays queued and the director will try again when a slot opens.",
+			"Retry: the issue stays queued. A harness-native goal can refresh `ward agent director queue` and retry when a slot opens.",
 		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
 	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
 		collapsedIssueComment(workflowDispatchDeferredVisible(), "deferred details", detail)
@@ -1200,7 +1200,7 @@ func dispatchLaunchReservationConflictCommentBody(mode containerMode, req dispat
 			"Host log: `%s`\n"+
 			"Collision: `%s`\n\n"+
 			"Nothing new is running for this dispatch, and the live run's hold is untouched. "+
-			"Retry: a `ward agent director` heartbeat sweeps this marker and redispatches once the hold "+
+			"Retry: a harness-native goal can refresh `ward agent director queue` and redispatch once the hold "+
 			"releases - the run's terminal `WARD-WORKFLOW` outcome supersedes its reservation (ward#1149). A manual "+
 			"retry can pass `--override-reservation` if the collision is genuinely stale.",
 		mode, attempted, logDetail, firstLine(launchErr.Error()))
@@ -1224,7 +1224,7 @@ func dispatchLaunchReleaseAssetsDeferredCommentBody(mode containerMode, containe
 			"Container created: no running engineer was observed.\n"+
 			"Host log: `%s`\n"+
 			"Release assets: `%s`\n\n"+
-			"Retry: the issue stays queued until the release publishes the missing platform assets, then the director can try again.",
+			"Retry: the issue stays queued until the release publishes the missing platform assets, then a harness-native goal can try again.",
 		mode, attempted, container, logDetail, firstLine(launchErr.Error()))
 	return agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\n" +
 		collapsedIssueComment(workflowDispatchDeferredVisible(), "release-assets-not-ready details", detail)

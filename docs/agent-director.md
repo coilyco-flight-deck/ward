@@ -1,75 +1,80 @@
 ---
-doc_goal: Give the director surface one durable description so the read-only lane and its merge-ready follow-through do not live in scattered issue pages.
+doc_goal: Give the attached director surface one durable description, including its live startup snapshot and explicit boundary from harness-owned orchestration.
 ---
 # ward agent director
 
-The director surface is the read-only control plane for runs.
+The director is Ward's attached read-only supervision surface.
 
-- It can inspect the fleet, read logs, and stop a run.
-- It can keep a backlog moving without writing implementation code.
-- It can also run against one exact issue ref or Forgejo issue URL without
-  widening into the repo backlog.
-* `~/.ward/config.yaml` provides implicit scope; `--repo` / `--org` override it.
-  If an attached no-scope director has no `director.default-scope`, Ward prompts
-  for a repo/org default and saves it. Headless launches still fail closed. The
-  director needs no git cwd; AOSguard config cannot alter native policy.
-- By default it prints status from the stored ledger, then opens the attached
-  read-only surface without enumerating the live issue backlog. Add `--burndown`
-  to run the autonomous dispatch heartbeat, or `--triage` to opt into startup issue inventory.
-- Typed defaults keep the interactive lane non-burndown unless the operator
-  passes `--burndown`.
-- When issue-scoped under `--burndown`, each heartbeat refresh stays pinned to
-  that exact issue instead of rehydrating the repo backlog.
-- It is the surface that hosts the merge-ready workflow for PR landings.
-- It distinguishes a fresh reservation hold from a stale one so dead runs do
-  not block burndown forever.
+- It reads one live queue snapshot at startup and persists no orchestration state.
+- It can inspect the fleet, read logs, stop a run, and use role-bound broker actions.
+- It accepts a repository scope or one exact open issue ref. Exact issue input renders only that issue.
+- It does not poll, rank, triage, choose, dispatch, or redispatch work.
+- A harness-native goal owns repetition and judgment. The issue thread remains the durable work and lifecycle record.
 
-## Typical uses
+`~/.ward/config.yaml` may provide `director.default-scope`. Explicit `--repo`
+and `--org` values override it. If an attached no-scope director has no default,
+Ward prompts for a repository or organization scope and saves that preference.
 
-- check whether an engineer is still alive.
-- read the last logs before deciding whether to re-dispatch.
-- inspect the queue/status view for stale reservations, redispatch candidates, PR-open handoffs, closed-unmerged PR recovery, and stale-open done issues.
-- stop a run that is definitely on the wrong ref.
-- target one issue by `owner/repo#N` or full Forgejo issue URL when the run
-  should stay scoped to a single decision payload.
-- launch from any working directory when the repo scope is explicit or
-  configured.
-- opt into autonomous headless dispatch with `--burndown` or `--drain`.
-- sweep the merge-ready branch once CI is green.
-- update the oldest merge-ready PR branch when open PR pressure is over cap and
-  the branch still conflicts with main.
-
-The director's machine-readable issue comments use `WARD-WORKFLOW:` as the canonical first line. `WARDED_WORKFLOW:` and the older typed `WARD-*` headers remain parser compatibility for old threads, but new PR handoffs start with `WARD-WORKFLOW: <fully-qualified pull request link>`.
-Review-gated `pull-request-and-merge` handoffs keep the first line as the PR URL
-and carry `director merge authorization: reviewed-and-ready` in the details
-block so the merge sweep can still recognize the ready state.
-
-## Starting interactively
-
-There is no separate public `warded surface` command:
+## Starting the surface
 
 ```bash
 warded director --repo owner/name
-warded director # prompts once for repo/org default scope if none is configured
-warded director --burndown --repo owner/name # autonomous drain
+warded director owner/name#123
+warded director --org example
+warded director --print --repo owner/name
 ```
 
-The first form refreshes status and opens the read-only session without
-dispatching engineers. `--drain` aliases `--burndown`. During burndown, press
-Enter at the sleep offer to open the same session.
+The first three forms print one current tracker-backed snapshot and open the
+read-only session. `--print` prints that snapshot plus the resolved container
+plan and launches nothing. There is no detached or autonomous director mode.
 
-The director surface is intentionally narrower than the engineer path. It is
-for supervision and landing, not for implementation.
+The surface clone cannot push. Its sibling broker can perform only the typed,
+role-bound actions Ward exposes. Read-only clone access is therefore distinct
+from having no control-plane authority.
 
-## What it is not
+## Queue and status
 
-- it is not a shell into the target repo.
-- it is not a general-purpose container admin surface.
-- it is not a replacement for the issue thread.
+The queue view is a separate read-only command:
+
+```bash
+ward agent director queue --repo owner/name
+ward agent director status --repo owner/name
+ward agent director queue --repo owner/name --json
+```
+
+It reads live open issues, pull requests, and trusted machine comments. It
+classifies fresh and stale reservations, redispatch candidates, submitted and
+merge-ready pull requests, recovery cases, stale-open done issues, blocked
+runs, and failed runs. Each carry includes the next operator action.
+
+`--json` emits schema version 1 with deterministic ordering:
+
+- `schema_version`
+- `scope`
+- action counts under `summary`
+- `items` with repository, number, kind, tier, title, state, next action, and optional note
+
+The command reports state. It does not act on that state.
+
+## Goal-driven loop
+
+Ward does not implement this loop. A harness-native `/goal` repeats these
+governed primitives until its own completion or blocked judgment:
+
+1. Read the live work surface with `ward agent director queue --json`.
+2. Dispatch one bounded carry with `warded engineer owner/name#N`. Reservations,
+   capacity, backpressure, and workflow gates still run at launch.
+3. Observe broker requests with `ward agent dispatch list --json`. Inspect one
+   with `ward agent dispatch status <request-id> --json`. Read the secret-safe
+   run artifact with `ward agent logs <request-id>` when a result needs diagnosis.
+4. Use the explicit PR, reap, stop, or recovery primitive named by the queue item,
+   then read a fresh queue snapshot before choosing again.
+
+The issue thread and dispatch lifecycle remain durable between observations.
+The goal owns waiting, prioritization, progress reporting, and the terminal
+decision. It must not infer that Ward is polling in the background.
 
 ## See also
 
-- [agent-ops.md](agent-ops.md) - list, logs, stop, reap.
+- [agent-ops.md](agent-ops.md) - list, logs, stop, and reap.
 - [agent-pr-workflow.md](agent-pr-workflow.md) - native merge, CI status, and rerun tools.
-- [agent-workflow.md](agent-workflow.md) - PR and merge policy.
-- [agent-roles.md](agent-roles.md) - role semantics.

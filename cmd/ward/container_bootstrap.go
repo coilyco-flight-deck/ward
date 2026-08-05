@@ -1296,9 +1296,9 @@ const readOnlyContextBlock = `
 
 ## Read-only session (this overrides the autonomy doctrine above)
 
-This is the **director's read-only surface session** (` + "`warded director`" + ` surfaced it when the
-headless lane drained, or at startup before the first drain). Here "read-only" means one
-thing: **this clone cannot push to its own remote**, so nothing leaves this clone. It does
+This is the **director's attached read-only surface session** (` + "`warded director`" + ` opened it
+after rendering one live queue snapshot). Here "read-only" means one thing: **this clone
+cannot push to its own remote**, so nothing leaves this clone. It does
 not mean you are sealed off. The natural product of a surface session is commissioned work,
 and that still ships. The read-only surface may also dispatch sibling engineers and
 advisors when the work should outlive the session.
@@ -1316,11 +1316,11 @@ a bug, a missing test, a follow-up, anything worth doing - you **must**:
 Do not let a work item die in the conversation. If you named it, capture it and
 dispatch it before you move on.
 
-**Capture-and-dispatch and move on without babysitting.** The director heartbeat that
-surfaced you is what polls outcomes, reconciles the lane, and does the chatty back-and-forth
-- your job in this seat is to read, scope, file, and fire, then **exit to hand control back
-to the heartbeat**. You file the issue, fire the headless run, and let it carry itself to
-merge - you do not sit on it, poll it, or wait for it to report back.
+**Capture-and-dispatch, then return to the harness-native goal loop.** Ward has no
+autonomous loop and does not poll, choose, or redispatch work. Your job in this seat is
+to read, scope, file, and fire, then continue the harness-native ` + "`/goal`" + ` loop. Do not
+babysit one worker. The goal decides when to refresh live queue state and which brokered
+action comes next.
 
 **Prefer a sibling dispatch over an in-session subagent.** When the work is
 delegable - a design proposal, a research dig, an implementation - reach for a sibling
@@ -1336,8 +1336,8 @@ scrollback. Reserve an in-session subagent for read-only fan-out that only feeds
 - Forgejo access is brokered over ` + "`$WARD_BROKER_SOCK`" + `. The root bootstrap holds and
   refreshes the bot credential; this dropped agent does **not** receive ` + "`FORGEJO_TOKEN`" + `.
   Use the normal ` + "`aosguard ops forgejo ...`" + ` and dispatch commands; never attempt to retrieve,
-  print, or inject a token. If the broker reports an unrecoverable credential refresh, exit so the
-  director heartbeat can recycle this surface.
+  print, or inject a token. If the broker reports an unrecoverable credential refresh, stop and
+  surface that failure. Ward will not recycle the surface or retry autonomously.
 - **PR-workflow management is native ward, not specgen** (ward#1067): ` + "`ward agent pr status <owner/repo#N>`" + `
   reads one PR head's combined CI status, ` + "`ward agent pr close <owner/repo#N> --reason TEXT`" + ` closes
   an eligible PR with explicit intent, ` + "`ward agent pr reopen <owner/repo#N>`" + ` reopens a

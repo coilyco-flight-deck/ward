@@ -289,13 +289,16 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 	if !strings.Contains(readonly, "obligation, not a") {
 		t.Error("the read-only block should frame capture-and-dispatch as an obligation, not a 'may' (ward#320)")
 	}
-	// ward#353: the surface is now the director's own drain-surface, so the block tells
-	// the agent to file + fire and hand control back to the heartbeat, not babysit.
-	if !strings.Contains(readonly, "hand control back") || !strings.Contains(readonly, "heartbeat") {
-		t.Error("the read-only block should tell the surface to hand control back to the director heartbeat (ward#353)")
+	// ward#1620: the attached surface returns judgment and repetition to the
+	// harness-native goal. Ward itself has no heartbeat or autonomous retry loop.
+	if !strings.Contains(readonly, "harness-native goal loop") || !strings.Contains(readonly, "`/goal`") {
+		t.Error("the read-only block should return control to the harness-native goal loop")
 	}
-	if !strings.Contains(readonly, "without babysitting") {
-		t.Error("the read-only block should frame the surface as capture-and-dispatch without babysitting (ward#320)")
+	if strings.Contains(readonly, "director heartbeat") {
+		t.Error("the read-only block must not promise a retired director heartbeat")
+	}
+	if !strings.Contains(readonly, "babysit one worker") {
+		t.Error("the read-only block should return to the goal loop instead of babysitting one worker (ward#320)")
 	}
 	// ward#374: prefer a sibling warded dispatch over an in-session subagent. The block
 	// must steer delegable work to a durable sibling run, not a scrollback-bound subagent.

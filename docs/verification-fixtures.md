@@ -1,10 +1,10 @@
 ---
-doc_goal: Define Ward's bounded live-verification fixture mode so deployments can prove the director, engineer, and QA chain without granting general live mutation authority.
+doc_goal: Define Ward's bounded live-verification fixture mode so deployments can prove engineer and QA paths without granting general live mutation authority.
 ---
 # Verification fixtures
 
 `--verification-fixture` admits one explicitly configured disposable repository
-and issue into a bounded director, engineer, and QA proof.
+and issue into a bounded engineer and QA proof.
 
 The mode is for verifying Ward's real hosted control path. It does not grant an
 engineer or QA general live-operations authority.
@@ -28,17 +28,16 @@ Ward admits a run only when both conditions match:
 
 No fixture entries means no live-verification target is admitted.
 
-## Director and engineer proof
+## Engineer proof
 
-The director accepts one exact issue and carries the flag to the engineer:
+The engineer accepts one exact admitted issue:
 
 ```bash
-ward agent director example/ward-qa-fixture#7 --burndown --verification-fixture --max-cycles 1
+ward agent engineer example/ward-qa-fixture#7 --verification-fixture
 ```
 
-Ward disables startup triage, fixes the director pool at one engineer, and
-refuses repository-wide or organization-wide fixture scope. The engineer gets
-the deterministic `issue-7` branch and a forced `remote-branch-only` workflow.
+The engineer gets the deterministic `issue-7` branch and a forced
+`remote-branch-only` workflow.
 Ward refuses extra writable repositories, custom branches, capacity overrides,
 and pull request inputs in this mode.
 
@@ -72,6 +71,5 @@ observation required after the run.
 ## See also
 
 * [ward-yaml.md](ward-yaml.md) - repository configuration schema.
-* [agent-director.md](agent-director.md) - the director surface.
 * [agent-qa.md](agent-qa.md) - QA verdict behavior.
 * [agent-workflow.md](agent-workflow.md) - landing modes.

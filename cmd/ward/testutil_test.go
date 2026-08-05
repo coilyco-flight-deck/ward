@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func writeTestWardGlobalConfig(t *testing.T, body string) string {
+func writeTestWardGlobalConfig(t *testing.T, body string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -18,7 +18,6 @@ func writeTestWardGlobalConfig(t *testing.T, body string) string {
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("write global Ward config: %v", err)
 	}
-	return path
 }
 
 func readFile(t *testing.T, path string) string {

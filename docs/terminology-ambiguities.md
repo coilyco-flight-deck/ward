@@ -9,9 +9,8 @@ doc_goal: Record Ward terms that are overloaded, collision-prone, deprecated, or
 When precision matters, say `role` for engineer/director/qa and `harness` for
 claude/codex/goose/opencode.
 
-`drain` is both the director alias for `--burndown` and a log/lane verb. New
-docs should prefer `burndown` for autonomous backlog dispatch and `log drain`
-for output preservation.
+`drain` means output preservation in current Ward surfaces. The former director
+dispatch alias is removed.
 
 `terminal` can mean a TTY, model completion output, or terminal outcome. Say
 `TTY`, `completion output`, or `terminal outcome` when more than one could fit.

@@ -59,17 +59,6 @@ func TestVerificationFixtureForcesRemoteBranchOnly(t *testing.T) {
 	}
 }
 
-func TestVerificationFixtureDirectorDispatchPropagation(t *testing.T) {
-	dispatch := dispatchEngineer{harness: modeCodex, verificationFixture: true}
-	argv := dispatch.engineerArgv(agentIssueRef{Owner: "example", Repo: "ward-qa-fixture", Number: 9})
-	got := strings.Join(argv, " ")
-	for _, want := range []string{"--verification-fixture", "--workflow remote-branch-only"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("fixture dispatch argv missing %q: %s", want, got)
-		}
-	}
-}
-
 func TestVerificationFixturePlanEvidence(t *testing.T) {
 	plan := upPlan{
 		Role:                roleEngineer,

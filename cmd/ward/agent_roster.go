@@ -73,8 +73,8 @@ func agentRoleDefinitions() (map[string]agentRoleDefinition, error) {
 			ExecutionTimeLimit: fixedRoleExecutionLimit(roleEngineer), ExecutionLimitSet: true,
 		},
 		roleDirector: {
-			Name: roleDirector, Tagline: "Opens the read-only director surface. Autonomous burndown is opt-in.",
-			Modes:          "Attached read-only control surface over a repo backlog. Use --burndown or --drain for the autonomous heartbeat.",
+			Name: roleDirector, Tagline: "Opens the attached read-only director surface.",
+			Modes:          "Reads one live queue snapshot, then opens the attached supervision surface. Harness-native goals own repetition and dispatch judgment.",
 			DefaultHarness: harness, Posture: agentRolePostureAttached,
 		},
 		roleQA: {

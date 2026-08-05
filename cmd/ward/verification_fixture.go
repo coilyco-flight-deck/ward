@@ -91,25 +91,3 @@ func validateVerificationFixtureEngineerOptions(c *cli.Command) error {
 	}
 	return nil
 }
-
-func validateVerificationFixtureDirectorOptions(c *cli.Command, ref *agentIssueRef) error {
-	if !verificationFixtureRequested(c) {
-		return nil
-	}
-	if ref == nil {
-		return fmt.Errorf("--%s requires one exact issue ref", verificationFixtureFlagName)
-	}
-	if !c.Bool("burndown") {
-		return fmt.Errorf("--%s requires --burndown so the exact issue reaches the engineer", verificationFixtureFlagName)
-	}
-	if strings.TrimSpace(c.String("repo")) != "" || len(c.StringSlice("org")) > 0 {
-		return fmt.Errorf("--%s refuses repository or organization backlog scope", verificationFixtureFlagName)
-	}
-	if len(c.StringSlice("with-repo")) > 0 {
-		return fmt.Errorf("--%s does not allow additional writable repositories", verificationFixtureFlagName)
-	}
-	if c.Bool("override-reservation") {
-		return fmt.Errorf("--%s does not allow --override-reservation", verificationFixtureFlagName)
-	}
-	return nil
-}

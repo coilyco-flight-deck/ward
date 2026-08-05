@@ -54,7 +54,7 @@ func (r *Runner) runDirectorMerge(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if err := r.backlogTrustGate(label, repos); err != nil {
+	if err := r.directorTrustGate(label, repos); err != nil {
 		return err
 	}
 	prClient := r.hostForgejoClient(ctx)

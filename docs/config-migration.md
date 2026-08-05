@@ -33,7 +33,6 @@ agent:
 director:
   max-parallel: 4
   limit: 50
-  poll-interval: 30s
 ```
 
 Example repository config:
@@ -54,6 +53,11 @@ Custom startup roles, role capability presets, role-specific model and identity
 profiles, role-based network selection, and role-based broker or merge grants
 are removed. Operators must not recreate them in YAML. The three fixed workflow
 labels are `engineer`, `director`, and `qa`.
+
+Director polling and repository burndown filters are also removed without
+replacement. A harness-native goal owns repeated queue reads and dispatch
+decisions. `director.limit` remains the live snapshot page size, while
+`director.max-parallel` remains a dispatch-health backpressure threshold.
 
 Legacy config-reference environment values are ignored. Operators can delete
 them after all hosts run the release containing this migration.

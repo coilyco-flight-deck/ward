@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
@@ -36,6 +37,39 @@ func TestDirectorQueueCommandWired(t *testing.T) {
 	}
 	if !commandHasSubcommandAlias(cmd, "status") {
 		t.Fatal("ward agent director missing status alias on the queue subcommand")
+	}
+	for _, sub := range cmd.Commands {
+		if sub.Name == "queue" && !containsString(directorFlagNames(sub.Flags), "json") {
+			t.Fatal("ward agent director queue missing --json")
+		}
+	}
+}
+
+func TestDirectorQueueJSONStableSchema(t *testing.T) {
+	repos := []string{"a/b"}
+	items := []directorQueueItem{
+		{Repo: "a/b", Number: 9, Kind: backlogKindIssue, Tier: "P1", Title: "retry", State: directorQueueStateNeedsRedispatch, Action: directorQueueActionRedispatch, Note: "reservation released"},
+		{Repo: "a/b", Number: 10, Kind: backlogKindPullRequest, Title: "land it", State: directorQueueStateMergeReadyPR, Action: directorQueueActionMergePR},
+	}
+	body, err := formatDirectorQueueJSON(repos, items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload directorQueueJSON
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("queue JSON is invalid: %v\n%s", err, body)
+	}
+	if payload.SchemaVersion != directorQueueSchemaVersion || payload.Summary.Repositories != 1 || payload.Summary.OpenCarries != 2 {
+		t.Fatalf("queue JSON summary = %+v, schema=%d", payload.Summary, payload.SchemaVersion)
+	}
+	if payload.Summary.Redispatch != 1 || payload.Summary.MergePR != 1 {
+		t.Fatalf("queue JSON action counts = %+v", payload.Summary)
+	}
+	if len(payload.Items) != 2 || payload.Items[0].Repository != "a/b" || payload.Items[0].NextAction != directorQueueActionRedispatch {
+		t.Fatalf("queue JSON items = %+v", payload.Items)
+	}
+	if !strings.HasSuffix(body, "\n") {
+		t.Fatal("queue JSON must end in a newline")
 	}
 }
 
@@ -273,7 +307,7 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 		"PR     " + repo + "#6",
 		"recover PR",
 		directorQueueStateRecoverPR,
-		"issue  " + repo + "#3",
+		"ISSUE  " + repo + "#3",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered queue missing %q\n%s", want, out)

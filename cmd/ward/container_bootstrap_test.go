@@ -1116,7 +1116,7 @@ func TestSplitOwnerName(t *testing.T) {
 // TestComposeContextRuntimeDoctrineLoadPoints covers ward#377 for Go bootstrap:
 // canonical AGENTS.md feeds Codex, Claude, and Goose load points.
 func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
-	const marker = "director's read-only surface session"
+	const marker = "director's attached read-only surface session"
 	r := &Runner{}
 
 	home := t.TempDir()
