@@ -45,15 +45,11 @@ func run() int {
 	os.Args = maybeRewriteWardedShim(os.Args)
 
 	configFlagOverride = preParseConfigFlag(os.Args)
-	if initErrorReporting() {
-		defer reportPanic()
-	}
 	app := rootCommand()
 
 	// Unknown-verb fallback: `ward <leaf>` -> `ward exec <leaf>` for a declared
 	// leaf that isn't a top-level verb. See docs/verb-fallback.md, issue #87.
 	os.Args = maybeRewriteToExec(os.Args, topLevelVerbs(app))
-	configureCrashReportingScope(os.Args)
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, "ward:", err)

@@ -1955,9 +1955,9 @@ func TestCommentDeferredDispatch(t *testing.T) {
 	}
 }
 
-// TestCommentDispatchLaunchErrorReportsCapacityLocally keeps pool-full backpressure
+// TestCommentDispatchLaunchErrorSurfacesCapacityLocally keeps pool-full backpressure
 // on stderr only so the issue thread stays untouched.
-func TestCommentDispatchLaunchErrorReportsCapacityLocally(t *testing.T) {
+func TestCommentDispatchLaunchErrorSurfacesCapacityLocally(t *testing.T) {
 	r := &Runner{}
 	req := dispatchBrokerRequest{
 		Role: "engineer",

@@ -20,7 +20,6 @@ Start here for Ward's operating surface.
 - [ward-yaml.md](ward-yaml.md) - `.ward/ward.yaml`.
 - [workspace](workspace.md) / [Windows tests](windows-development.md) - local lanes.
 - [homebrew-build.md](homebrew-build.md) - build and release packaging.
-- [error-reporting.md](error-reporting.md) - panic telemetry.
 - [tool-failures.md](tool-failures.md) - Claude tool-failure producer.
 - [golangci.md](golangci.md) - lint policy.
 - [release.md](release.md) - release pipeline.
