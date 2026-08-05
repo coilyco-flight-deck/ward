@@ -592,10 +592,34 @@ func TestResolveDispatchBrokerLogsSourcePrefersLiveDocker(t *testing.T) {
 	}
 }
 
+func TestRenderedDockerLogsRedactInjectedCredentialAndCredentialResponses(t *testing.T) {
+	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-1582\n", strings.Join([]string{
+		"stdout synthetic-rendered-credential",
+		"password=git-credential-fill-value",
+		"Authorization: Bearer header-value-without-token-shape",
+	}, "\n")+"\n", nil, "")
+	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#1582"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := r.streamAgentLogsSource(t.Context(), src, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"synthetic-rendered-credential", "git-credential-fill-value", "header-value-without-token-shape"} {
+		if strings.Contains(out.String(), secret) {
+			t.Fatalf("rendered Docker log leaked %q: %q", secret, out.String())
+		}
+	}
+	if strings.Count(out.String(), redactionPlaceholder) != 3 {
+		t.Fatalf("rendered Docker log = %q, want three redaction markers", out.String())
+	}
+}
+
 func TestResolveDispatchBrokerLogsSourceFallsBackToLiveTranscriptWhenDockerEmpty(t *testing.T) {
 	tarBytes := liveTranscriptTar(t, map[string]string{
-		"projects/enc/session-a.jsonl": `{"type":"assistant","text":"working"}` + "\n" + `{"type":"assistant","text":"still here"}` + "\n",
-		"projects/enc/session-b.jsonl": `{"type":"assistant","text":"latest"}` + "\n",
+		"projects/enc/session-a.jsonl": `{"type":"assistant","timestamp":"2026-08-05T01:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/workspace/ward/first.go"}}]}}` + "\n" + `{"type":"assistant","timestamp":"2026-08-05T01:00:01Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t2","name":"Read","input":{"file_path":"/workspace/ward/still-here.go"}}]}}` + "\n",
+		"projects/enc/session-b.jsonl": `{"type":"assistant","timestamp":"2026-08-05T01:00:02Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t3","name":"Read","input":{"file_path":"/workspace/ward/latest.go"}}]}}` + "\n",
 	})
 	r := fakeAgentLogsDockerRunner(t, "engineer-claude-ward-692\n", "", tarBytes, ".claude/projects")
 	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#692", Tail: 2})
@@ -610,8 +634,8 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToLiveTranscriptWhenDockerEmpty
 	for _, want := range []string{
 		"ward agent logs: docker logs engineer-claude-ward-692 --tail 2 had no readable bytes; using live transcript tree from /home/ubuntu/.ward/.claude/projects",
 		".claude/projects",
-		`{"type":"assistant","text":"still here"}`,
-		`{"type":"assistant","text":"latest"}`,
+		`"file_path":"/workspace/ward/still-here.go"`,
+		`"file_path":"/workspace/ward/latest.go"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("fallback output missing %q\n%s", want, got)
@@ -621,8 +645,8 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToLiveTranscriptWhenDockerEmpty
 
 func TestResolveDispatchBrokerLogsSourceUsesCodexTranscriptTreeWhenDockerEmpty(t *testing.T) {
 	tarBytes := liveTranscriptTar(t, map[string]string{
-		"sessions/session-a.jsonl": `{"type":"assistant","text":"working"}` + "\n" + `{"type":"assistant","text":"still here"}` + "\n",
-		"sessions/session-b.jsonl": `{"type":"assistant","text":"latest"}` + "\n",
+		"sessions/session-a.jsonl": `{"type":"assistant","timestamp":"2026-08-05T01:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/workspace/ward/first.go"}}]}}` + "\n" + `{"type":"assistant","timestamp":"2026-08-05T01:00:01Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t2","name":"Read","input":{"file_path":"/workspace/ward/still-here.go"}}]}}` + "\n",
+		"sessions/session-b.jsonl": `{"type":"assistant","timestamp":"2026-08-05T01:00:02Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t3","name":"Read","input":{"file_path":"/workspace/ward/latest.go"}}]}}` + "\n",
 	})
 	r := fakeAgentLogsDockerRunner(t, "engineer-codex-ward-692\n", "", tarBytes, ".codex/sessions")
 	src, err := r.resolveDispatchBrokerLogsSource(t.Context(), dispatchBrokerRequest{Target: "coilyco-flight-deck/ward#692", Tail: 2})
@@ -637,8 +661,8 @@ func TestResolveDispatchBrokerLogsSourceUsesCodexTranscriptTreeWhenDockerEmpty(t
 	for _, want := range []string{
 		"ward agent logs: docker logs engineer-codex-ward-692 --tail 2 had no readable bytes; using live transcript tree from /home/ubuntu/.ward/.codex/sessions",
 		".codex/sessions",
-		`{"type":"assistant","text":"still here"}`,
-		`{"type":"assistant","text":"latest"}`,
+		`"file_path":"/workspace/ward/still-here.go"`,
+		`"file_path":"/workspace/ward/latest.go"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("fallback output missing %q\n%s", want, got)
@@ -687,7 +711,7 @@ func TestResolveDispatchBrokerLogsSourceFallsBackToArchive(t *testing.T) {
 func TestRunAgentLogsIssueScopedArchiveEmptyExplainsSelectedSource(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
-	archiveDir := filepath.Join(home, ".ward", "agent-logs", "engineer-claude-ward-692")
+	archiveDir := filepath.Join(home, ".ward", "agent-logs-redacted", "engineer-claude-ward-692")
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		t.Fatalf("mkdir archive: %v", err)
 	}
@@ -1552,7 +1576,7 @@ func TestRunHostDispatchBrokerRequestDetachesAfterHostLaunchStarts(t *testing.T)
 	setTestHome(t, home)
 	t.Cleanup(func() {
 		// Let the temp-home teardown own the whole .ward tree; per-artifact
-		// removal races the broker's final redacted/raw artifact writes.
+		// removal races the broker's final secret-safe artifact writes.
 		_ = os.RemoveAll(filepath.Join(home, ".ward"))
 	})
 	origReadOnly, hadReadOnly := os.LookupEnv("WARD_READONLY")
@@ -1592,6 +1616,10 @@ func TestRunHostDispatchBrokerRequestDetachesAfterHostLaunchStarts(t *testing.T)
 		logPath string
 		err     error
 	}, 1)
+	finalized := make(chan struct{})
+	origRestoreHook := dispatchStdioRestoreHook
+	dispatchStdioRestoreHook = func() { close(finalized) }
+	t.Cleanup(func() { dispatchStdioRestoreHook = origRestoreHook })
 	var logPath string
 	origLaunch := dispatchBrokerLaunch
 	t.Cleanup(func() { dispatchBrokerLaunch = origLaunch })
@@ -1648,6 +1676,11 @@ func TestRunHostDispatchBrokerRequestDetachesAfterHostLaunchStarts(t *testing.T)
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("host launch never finished")
+	}
+	select {
+	case <-finalized:
+	case <-time.After(2 * time.Second):
+		t.Fatal("host launch artifact was not finalized")
 	}
 	body, err := os.ReadFile(logPath) // #nosec G304 -- test-controlled temp path
 	if err != nil {
@@ -2645,6 +2678,8 @@ func TestDispatchLogNameIsStampedAndAttributable(t *testing.T) {
 
 func TestDispatchArtifactPersistsMetaSummaryAndLookup(t *testing.T) {
 	setTestHome(t, t.TempDir())
+	const secret = "synthetic-dispatch-metadata-credential"
+	t.Setenv("FORGEJO_TOKEN", secret)
 	at := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
 	req := dispatchBrokerRequest{
 		Requester: "director-codex-host",
@@ -2655,13 +2690,13 @@ func TestDispatchArtifactPersistsMetaSummaryAndLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openDispatchArtifact: %v", err)
 	}
-	if _, err := fmt.Fprintln(logf, "ward dispatch broker: launch failed: Conflict. The container name \"engineer-codex-ward-389\" is already in use"); err != nil {
+	if _, err := fmt.Fprintf(logf, "ward dispatch broker: launch failed with %s: Conflict. The container name \"engineer-codex-ward-389\" is already in use\n", secret); err != nil {
 		t.Fatalf("write dispatch log: %v", err)
 	}
 	if err := logf.Close(); err != nil {
 		t.Fatalf("close dispatch log: %v", err)
 	}
-	finalizeDispatchArtifact(paths, req, paths.ConsolePath, errors.New(`Conflict. The container name "/engineer-codex-ward-389" is already in use`))
+	finalizeDispatchArtifact(paths, req, paths.ConsolePath, fmt.Errorf(`credential %s: Conflict. The container name "/engineer-codex-ward-389" is already in use`, secret))
 
 	body, err := os.ReadFile(paths.MetaPath)
 	if err != nil {
@@ -2685,6 +2720,15 @@ func TestDispatchArtifactPersistsMetaSummaryAndLookup(t *testing.T) {
 	}
 	if !strings.Contains(string(summary), "already in use") {
 		t.Fatalf("summary missing failure detail:\n%s", summary)
+	}
+	console, err := os.ReadFile(paths.ConsolePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, artifact := range map[string][]byte{"console": console, "meta": body, "summary": summary} {
+		if strings.Contains(string(artifact), secret) || !strings.Contains(string(artifact), redactionPlaceholder) {
+			t.Fatalf("%s artifact did not redact arbitrary injected credential:\n%s", name, artifact)
+		}
 	}
 	if got, ok, err := latestDispatchConsolePathForRef(agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 389}); err != nil || !ok {
 		t.Fatalf("latestDispatchConsolePathForRef: ok=%v err=%v", ok, err)
@@ -2750,14 +2794,9 @@ func TestStartHostDispatchBrokerRequestDecisionArtifactShape(t *testing.T) {
 
 	raw, err := os.ReadFile(logPath) // #nosec G304 -- test-owned artifact path
 	if err != nil {
-		t.Fatalf("read raw dispatch console: %v", err)
+		t.Fatalf("read safe dispatch console: %v", err)
 	}
-	redactedPath := filepath.Join(agentLogsRedactedDir(), dispatchArtifactsSubdir, filepath.Base(filepath.Dir(logPath)), dispatchArtifactRedactedConsole)
-	redacted, err := os.ReadFile(redactedPath) // #nosec G304 -- test-owned artifact path
-	if err != nil {
-		t.Fatalf("read redacted dispatch console: %v", err)
-	}
-	for _, body := range []string{string(raw), string(redacted)} {
+	for _, body := range []string{string(raw)} {
 		for _, want := range []string{
 			"ward dispatch decision: component=broker checkpoint=request-accepted",
 			"ward dispatch decision: component=broker checkpoint=backpressure-open-pr passed",
@@ -2893,7 +2932,7 @@ func fakeAgentLogsDockerRunner(t *testing.T, psOut, logsOut string, cpOut []byte
 		"  exit 0\n" +
 		"fi\n" +
 		"if [ \"$1\" = inspect ] && [ \"$2\" = --format ] && [ \"$3\" = '{{json .Config.Env}}' ]; then\n" +
-		"  printf '%s' " + shellQuote(`["WARD_AGENT_HOME=/home/ubuntu/.ward"]`) + "\n" +
+		"  printf '%s' " + shellQuote(`["WARD_AGENT_HOME=/home/ubuntu/.ward","FORGEJO_TOKEN=synthetic-rendered-credential"]`) + "\n" +
 		"  exit 0\n" +
 		"fi\n" +
 		"if [ \"$1\" = logs ]; then\n" +
@@ -3007,6 +3046,8 @@ func liveTranscriptTar(t *testing.T, files map[string]string) []byte {
 // served run's os.Stdout/os.Stderr bytes into the per-dispatch log, then restores them.
 func TestServedRunStdioLandsInLogNotTTY(t *testing.T) {
 	setTestHome(t, t.TempDir())
+	const secret = "synthetic-stdio-credential"
+	t.Setenv("FORGEJO_TOKEN", secret)
 	req := dispatchBrokerRequest{
 		Requester: "director-claude-ward-1",
 		Argv:      []string{"engineer", "coilyco-flight-deck/ward#1", "--agent", "claude"},
@@ -3021,13 +3062,14 @@ func TestServedRunStdioLandsInLogNotTTY(t *testing.T) {
 
 	origOut, origErr := os.Stdout, os.Stderr
 	restore := redirectStdioToLog(logf)
-	if os.Stdout != logf || os.Stderr != logf {
+	if os.Stdout == origOut || os.Stderr == origErr {
 		restore()
 		_ = logf.Close()
 		t.Fatal("redirect did not point os.Stdout/os.Stderr at the log file")
 	}
-	// A byte a served run would emit lands in the log, not on the terminal.
-	fmt.Fprint(os.Stderr, "director-claude-ward-1: pulling some-image\n")
+	// Both process streams land in the safe log, not on the terminal.
+	fmt.Fprintf(os.Stdout, "stdout credential %s\n", secret)
+	fmt.Fprintf(os.Stderr, "stderr credential %s while pulling some-image\n", secret)
 	restore()
 	_ = logf.Close()
 
@@ -3040,6 +3082,9 @@ func TestServedRunStdioLandsInLogNotTTY(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "pulling some-image") {
 		t.Errorf("run output did not land in the log; got %q", body)
+	}
+	if strings.Contains(string(body), secret) || strings.Count(string(body), redactionPlaceholder) != 2 {
+		t.Fatalf("stdout/stderr archive leaked or mis-redacted credential: %q", body)
 	}
 }
 

@@ -32,7 +32,7 @@ This page groups the on-demand operational surfaces around a run.
 - `logs` prefers the live container, then falls back to the drained archive.
 - `logs` falls back to the harness-specific live transcript tree when `docker
   logs` is empty, then to the drained archive.
-- broker dispatch artifacts live under `~/.ward/agent-logs/dispatch/` and use the same issue/ref lookup path.
+- broker dispatch artifacts use the same issue/ref lookup under `~/.ward/agent-logs-redacted/dispatch/`.
 - `stop` and `reap` only target engineer state. `stop` refuses fresh intents,
   then permits cleanup after the confirmation window.
 - A run that is already finished should not be treated as a new failure.

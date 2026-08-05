@@ -129,39 +129,45 @@ func TestDrainAgentRunIdempotentSkipsMarked(t *testing.T) {
 	}
 }
 
-// TestWriteRedactedArtifacts lands the redacted view under the separate tree (secrets
-// scrubbed, bodies dropped) and never touches the raw agent-logs tree (ward#526).
-func TestWriteRedactedArtifacts(t *testing.T) {
+// TestWriteSecretSafeArtifacts proves arbitrary exact values and body-shaped
+// tool inputs never reach the one canonical archive.
+func TestWriteSecretSafeArtifacts(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	name := "ward-agent-redact-test"
-	console := []byte("boot\nleaked ghp_1234567890abcdefghijklmnopqrstuvwxyz here\ndone\n")
-	transcript := []byte(`{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/workspace/ward/x.go","content":"secret ghp_1234567890abcdefghijklmnopqrstuvwxyz body"}}]}}`)
+	secret := "synthetic-arbitrary-credential-value"
+	console := []byte("boot\nleaked " + secret + " here\ndone\n")
+	transcript := []byte(`{"type":"assistant","timestamp":"2026-06-26T02:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/workspace/ward/x.go","content":"secret ` + secret + ` body"}}]}}`)
 	meta := runMeta{Container: name, Repo: "o/r", Issue: "526", Outcome: outcomePushedMain}
+	redactor, err := newSecretRedactor([]string{secret}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	r := &Runner{}
-	r.writeRedactedArtifacts(name, console, transcript, meta, nil)
+	dir := filepath.Join(agentLogsDir(), name)
+	if err := r.writeDiskArtifacts(name, dir, redactConsoleWith(console, redactor), redactedTranscriptWith(transcript, redactor), meta, nil); err != nil {
+		t.Fatal(err)
+	}
 
-	dir := filepath.Join(agentLogsRedactedDir(), name)
-	con, err := os.ReadFile(filepath.Join(dir, drainConsoleRedactedFile))
+	con, err := os.ReadFile(filepath.Join(dir, drainConsoleFile))
 	if err != nil {
-		t.Fatalf("read console.redacted.log: %v", err)
+		t.Fatalf("read console.log: %v", err)
 	}
-	if strings.Contains(string(con), "ghp_") {
-		t.Errorf("redacted console leaked a token: %q", con)
+	if strings.Contains(string(con), secret) || !strings.Contains(string(con), redactionPlaceholder) {
+		t.Errorf("safe console leaked or failed to mark a credential: %q", con)
 	}
-	tr, err := os.ReadFile(filepath.Join(dir, drainTranscriptRedactedFile))
+	tr, err := os.ReadFile(filepath.Join(dir, drainTranscriptFile))
 	if err != nil {
-		t.Fatalf("read transcript.redacted.jsonl: %v", err)
+		t.Fatalf("read transcript.jsonl: %v", err)
 	}
-	if strings.Contains(string(tr), "ghp_") || strings.Contains(string(tr), "\"content\"") {
+	if strings.Contains(string(tr), secret) || strings.Contains(string(tr), "\"content\"") {
 		t.Errorf("redacted transcript leaked a body/token: %q", tr)
 	}
 	if _, err := os.ReadFile(filepath.Join(dir, drainMetaFile)); err != nil {
-		t.Errorf("meta.json not copied into the redacted view: %v", err)
+		t.Errorf("read meta.json: %v", err)
 	}
-	// The raw tree must be untouched by the redacted write.
-	if _, err := os.Stat(filepath.Join(agentLogsDir(), name)); !os.IsNotExist(err) {
-		t.Errorf("redacted write must not create the raw agent-logs dir; stat err = %v", err)
+	if _, err := os.Stat(filepath.Join(historicalRawAgentLogsDir(), name)); !os.IsNotExist(err) {
+		t.Errorf("safe write must not create the historical raw archive; stat err = %v", err)
 	}
 }
 
@@ -171,10 +177,12 @@ func TestWriteClaudeToolFailureRecords(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
 	t.Setenv("XDG_CACHE_HOME", "")
+	const arbitrarySecret = "synthetic-unshaped-failure-credential"
+	t.Setenv("FORGEJO_TOKEN", arbitrarySecret)
 
 	transcript := strings.Join([]string{
-		`{"type":"assistant","timestamp":"2026-07-15T01:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"grep ghp_1234567890abcdefghijklmnopqrstuvwxyz ."}}]}}`,
-		`{"type":"user","timestamp":"2026-07-15T01:00:02Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"exit code 1: fatal: ghp_1234567890abcdefghijklmnopqrstuvwxyz hidden"}]}}`,
+		`{"type":"assistant","timestamp":"2026-07-15T01:00:00Z","cwd":"/workspace/ward","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"grep ghp_1234567890abcdefghijklmnopqrstuvwxyz synthetic-unshaped-failure-credential ."}}]}}`,
+		`{"type":"user","timestamp":"2026-07-15T01:00:02Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"exit code 1: fatal: ghp_1234567890abcdefghijklmnopqrstuvwxyz synthetic-unshaped-failure-credential hidden"}]}}`,
 	}, "\n")
 	meta := runMeta{Repo: "coilyco-flight-deck/ward"}
 
@@ -203,7 +211,7 @@ func TestWriteClaudeToolFailureRecords(t *testing.T) {
 	if rec.Fingerprint == "" {
 		t.Fatal("record fingerprint must be populated")
 	}
-	if strings.Contains(rec.StderrExcerpt, "ghp_") || strings.Contains(rec.Detail, "ghp_") {
+	if strings.Contains(rec.StderrExcerpt, "ghp_") || strings.Contains(rec.StderrExcerpt, arbitrarySecret) || strings.Contains(rec.Detail, "ghp_") {
 		t.Fatalf("failure detail was not scrubbed: %+v", rec)
 	}
 	if !strings.Contains(rec.StderrExcerpt, "[REDACTED]") {
@@ -348,7 +356,9 @@ func TestWriteDiskArtifactsAddsRunSummaryFooter(t *testing.T) {
 	}
 
 	r := &Runner{}
-	r.writeDiskArtifacts(name, dir, console, nil, meta, nil)
+	if err := r.writeDiskArtifacts(name, dir, console, nil, meta, nil); err != nil {
+		t.Fatal(err)
+	}
 
 	rawConsole, err := os.ReadFile(filepath.Join(dir, drainConsoleFile))
 	if err != nil {
@@ -539,7 +549,8 @@ func TestExtractTranscriptFromTar(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := string(extractTranscriptFromTar(buf.Bytes()))
+	body, paths := extractTranscriptArchiveFromTar(buf.Bytes())
+	got := string(body)
 	if strings.Contains(got, "ignore me") {
 		t.Errorf("non-jsonl member leaked into transcript: %q", got)
 	}
@@ -554,6 +565,9 @@ func TestExtractTranscriptFromTar(t *testing.T) {
 		if strings.TrimSpace(ln) == "" {
 			t.Errorf("empty line in concatenated transcript:\n%s", got)
 		}
+	}
+	if gotPaths, wantPaths := strings.Join(paths, ","), "enc/session-a.jsonl,enc/session-b.jsonl"; gotPaths != wantPaths {
+		t.Errorf("transcript paths = %q, want %q", gotPaths, wantPaths)
 	}
 }
 

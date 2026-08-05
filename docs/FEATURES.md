@@ -41,7 +41,8 @@ Inventory of what `ward` ships today.
   [agent-peer-collaboration.md](agent-peer-collaboration.md).
 - PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR lifecycle close/reopen/recovery tools and repair classification.
-- Claude tool-failure buffer and secret-free drained skill-use summaries. See [agent-observability.md](agent-observability.md).
+- One canonical secret-safe agent archive with configurable exact-value and RE2
+  redaction. See [agent-observability.md](agent-observability.md).
 - Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
 - `ward agent issue create` files a Forgejo issue through the read-only
   director credential broker without dispatching an engineer.

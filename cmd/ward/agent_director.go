@@ -797,7 +797,11 @@ type wardGlobalConfig struct {
 	Agent struct {
 		Image          string `yaml:"image"`
 		ReleaseChannel string `yaml:"release-channel"`
-		Workflow       struct {
+		Redaction      struct {
+			EnvNames []string `yaml:"env-names"`
+			Patterns []string `yaml:"patterns"`
+		} `yaml:"redaction"`
+		Workflow struct {
 			Default      string            `yaml:"default"`
 			Repositories map[string]string `yaml:"repositories"`
 		} `yaml:"workflow"`

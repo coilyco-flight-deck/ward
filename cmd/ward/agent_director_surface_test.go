@@ -74,7 +74,7 @@ func TestDockerSockMount(t *testing.T) {
 func TestAgentLogsMountOptIn(t *testing.T) {
 	// Default (no AgentLogsDir): the drain is never bound.
 	for _, def := range leastAccessMounts("/cwd", mountOpts{AssetsDir: "/a"}) {
-		if def.Target == containerAgentLogsMount || strings.HasSuffix(def.Source, "agent-logs") {
+		if def.Target == containerAgentLogsMount || strings.Contains(def.Source, "agent-logs") {
 			t.Errorf("least-access default must not bind the agent-log drain; got %s -> %s", def.Source, def.Target)
 		}
 	}
@@ -104,7 +104,7 @@ func TestAgentLogsMountOptIn(t *testing.T) {
 }
 
 // buildUpPlan binds the director-surface extras only when its opt-in is passed.
-// The extras are the redacted agent-log drain and the Docker socket (ward#525/#1001).
+// The extras are the secret-safe agent-log drain and the Docker socket (ward#525/#1001).
 func TestBuildUpPlanDirectorSurfaceThreading(t *testing.T) {
 	run := func(mountSurfaceExtras bool) upPlan {
 		var got upPlan

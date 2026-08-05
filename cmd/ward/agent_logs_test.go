@@ -247,7 +247,7 @@ func TestRunAgentLogsArtifactMetaReturnsDrainedMeta(t *testing.T) {
 func TestRunAgentLogsArtifactTranscriptFallsBackToSafeSummary(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1543}
-	dir := filepath.Join(agentLogsRedactedDir(), "engineer-codex-ward-1543")
+	dir := filepath.Join(agentLogsDir(), "engineer-codex-ward-1543")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir archive: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestRunAgentLogsArtifactTranscriptFallsBackToSafeSummary(t *testing.T) {
 	}
 }
 
-func TestRunAgentLogsArtifactDispatchPrefersRedactedDispatchOverContainer(t *testing.T) {
+func TestRunAgentLogsArtifactDispatchPrefersLegacySafeDispatchOverContainer(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1543}
 	writeDispatchArtifactFixture(t, ref, dispatchArtifactMeta{
@@ -281,7 +281,7 @@ func TestRunAgentLogsArtifactDispatchPrefersRedactedDispatchOverContainer(t *tes
 		Repo:      ref.repoSlug(),
 		Issue:     "1543",
 		Outcome:   "launched",
-	}, "redacted dispatch body\n", true)
+	}, "legacy safe dispatch body\n", true)
 
 	r := fakeAgentLogsDockerRunner(t, "engineer-codex-ward-1543\n", "engineer console\n", nil, "")
 	var stdout bytes.Buffer
@@ -291,8 +291,8 @@ func TestRunAgentLogsArtifactDispatchPrefersRedactedDispatchOverContainer(t *tes
 	if err := r.runAgentLogs(t.Context(), cmd); err != nil {
 		t.Fatalf("runAgentLogs: %v", err)
 	}
-	if got := stdout.String(); got != "redacted dispatch body\n" {
-		t.Fatalf("dispatch output = %q, want redacted dispatch artifact", got)
+	if got := stdout.String(); got != "legacy safe dispatch body\n" {
+		t.Fatalf("dispatch output = %q, want legacy safe dispatch artifact", got)
 	}
 }
 
@@ -390,19 +390,19 @@ func TestResolveAgentLogsSourceForIssueIncludesDirectorContainer(t *testing.T) {
 	}
 }
 
-func TestResolveAgentLogsSourceForIssueFallsBackToRedactedDirectorArchive(t *testing.T) {
+func TestResolveAgentLogsSourceForIssueFallsBackToLegacySafeDirectorFilename(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1301}
-	dir := filepath.Join(agentLogsRedactedDir(), "director-codex-ward-1301")
+	dir := filepath.Join(agentLogsDir(), "director-codex-ward-1301")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir redacted archive: %v", err)
+		t.Fatalf("mkdir safe archive: %v", err)
 	}
 	meta := runMeta{Container: "director-codex-ward-1301", Repo: ref.repoSlug(), Issue: "1301", Outcome: outcomePushedMain}
 	if err := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta); err != nil {
-		t.Fatalf("write redacted meta: %v", err)
+		t.Fatalf("write safe meta: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, drainConsoleRedactedFile), []byte("director on disk\n"), 0o644); err != nil {
-		t.Fatalf("write redacted console: %v", err)
+		t.Fatalf("write legacy safe console: %v", err)
 	}
 
 	source, err := fakeDirectorIssueLogRunner(t, "").resolveAgentLogsSourceForIssue(t.Context(), ref, 0, false, agentLogsResolveOptions{})
@@ -417,6 +417,28 @@ func TestResolveAgentLogsSourceForIssueFallsBackToRedactedDirectorArchive(t *tes
 	}
 	if !strings.Contains(source.String(), "archive path") {
 		t.Fatalf("source string = %q, want archive path label", source.String())
+	}
+}
+
+func TestArchivedAgentLogsNeverReadHistoricalRawRoot(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1582}
+	dir := filepath.Join(historicalRawAgentLogsDir(), "engineer-codex-ward-1582")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSONAtomic(filepath.Join(dir, drainMetaFile), runMeta{Container: "engineer-codex-ward-1582", Repo: ref.repoSlug(), Issue: "1582"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, drainConsoleFile), []byte("historical raw body\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source, err := findArchivedAgentArtifactSourceByIssue(ref, 0, false, agentLogArtifactConsole)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.Kind != "" {
+		t.Fatalf("historical raw archive became readable: %+v", source)
 	}
 }
 
@@ -482,7 +504,7 @@ func fakeAgentLogsDockerRunnerWithState(t *testing.T, psOut, logsOut, status str
 	}}
 }
 
-func writeDispatchArtifactFixture(t *testing.T, ref agentIssueRef, meta dispatchArtifactMeta, body string, redactedOnly bool) {
+func writeDispatchArtifactFixture(t *testing.T, ref agentIssueRef, meta dispatchArtifactMeta, body string, legacySafeFilename bool) {
 	t.Helper()
 	if meta.Ref == "" {
 		meta.Ref = ref.String()
@@ -499,17 +521,14 @@ func writeDispatchArtifactFixture(t *testing.T, ref agentIssueRef, meta dispatch
 	if meta.RequestID == "" {
 		meta.RequestID = "req-fixture"
 	}
-	roots := []string{agentLogsRedactedDir()}
-	if !redactedOnly {
-		roots = append(roots, agentLogsDir())
-	}
+	roots := []string{agentLogsDir()}
 	for _, root := range roots {
 		dir := filepath.Join(root, dispatchArtifactsSubdir, meta.RequestID+"-director-codex-ward-"+meta.Issue)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir dispatch fixture: %v", err)
 		}
 		consoleName := dispatchArtifactConsoleFile
-		if strings.Contains(filepath.ToSlash(root), agentLogsRedactedSubdir) {
+		if legacySafeFilename {
 			consoleName = dispatchArtifactRedactedConsole
 		}
 		if err := os.WriteFile(filepath.Join(dir, consoleName), []byte(body), 0o644); err != nil {

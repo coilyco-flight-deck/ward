@@ -24,13 +24,13 @@ import (
 // It runs host-side because the reaper runs INSIDE the container with no docker
 // socket. A selectable SINK routes the drain. See docs/agent-observability.md.
 
-// agentLogsSubdir is the per-host archive root under the .ward app dir, sibling
-// to audit/ (docs/audit.md) - one directory per drained container run.
-const agentLogsSubdir = "agent-logs"
+// agentLogsSubdir is the one canonical secret-safe archive root. It deliberately
+// reuses the former redacted-view path so existing safe archives remain readable.
+const agentLogsSubdir = "agent-logs-redacted"
 
-// agentLogsRedactedSubdir is the parallel archive root for the redacted-at-rest view
-// (ward#526): a SEPARATE tree the surface binds so raw logs never mount. See docs.
-const agentLogsRedactedSubdir = "agent-logs-redacted"
+// historicalRawAgentLogsSubdir names the retired pre-#1582 raw archive. Ward
+// never reads, renders, writes, migrates, or deletes this tree.
+const historicalRawAgentLogsSubdir = "agent-logs"
 
 // containerTranscriptDir returns the harness live transcript tree path rooted
 // at the agent home, with a legacy fallback for older containers.
@@ -63,7 +63,7 @@ func (r *Runner) containerAgentHome(ctx context.Context, name string) string {
 	return strings.TrimSpace(env["WARD_AGENT_HOME"])
 }
 
-// drained artifact filenames inside ~/.ward/agent-logs/<slug>/.
+// Drained artifact filenames inside the canonical secret-safe archive.
 const (
 	drainConsoleFile    = "console.log"
 	drainTranscriptFile = "transcript.jsonl"
@@ -119,8 +119,7 @@ type runSummarySignals struct {
 	ReapReason             string         `json:"-"`
 }
 
-// redacted-view artifact filenames inside ~/.ward/agent-logs-redacted/<slug>/ (ward#526).
-// meta.json is already secret-free, so it is copied over under drainMetaFile verbatim.
+// Legacy secret-safe filenames remain readable within the canonical archive.
 const (
 	drainConsoleRedactedFile    = "console.redacted.log"
 	drainTranscriptRedactedFile = "transcript.redacted.jsonl"
@@ -215,8 +214,7 @@ var reapOutcomeValues = []string{
 	outcomeUnknown,    // no reaper marker matched (crash, external stop, abort)
 }
 
-// agentLogsDir resolves the host archive root: the .ward app dir under $HOME,
-// falling back to $TMPDIR when $HOME is unset (mirrors config.CacheDir).
+// agentLogsDir resolves the one canonical secret-safe host archive root.
 func agentLogsDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
@@ -225,20 +223,18 @@ func agentLogsDir() string {
 	return filepath.Join(home, config.AppDir(), agentLogsSubdir)
 }
 
-// agentLogsDisplayDir renders the host archive root in the container log stream
-// using the stable tilde path the operator can apply on the host.
-func agentLogsDisplayDir(name string) string {
-	return path.Join("~", config.AppDir(), agentLogsSubdir, name)
-}
-
-// agentLogsRedactedDir resolves the parallel redacted archive root (ward#526),
-// resolved the same way as agentLogsDir so the two trees sit side by side.
-func agentLogsRedactedDir() string {
+func historicalRawAgentLogsDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		home = os.TempDir()
 	}
-	return filepath.Join(home, config.AppDir(), agentLogsRedactedSubdir)
+	return filepath.Join(home, config.AppDir(), historicalRawAgentLogsSubdir)
+}
+
+// agentLogsDisplayDir renders the host archive root in the container log stream
+// using the stable tilde path the operator can apply on the host.
+func agentLogsDisplayDir(name string) string {
+	return path.Join("~", config.AppDir(), agentLogsSubdir, name)
 }
 
 // sweepAction is one ordered host-side teardown step: drain a single container, or
@@ -323,16 +319,22 @@ func (r *Runner) drainAgentRunIdempotent(ctx context.Context, name, baseDir stri
 	if err := r.rescueContainerRun(ctx, name); err != nil {
 		return err
 	}
-	r.drainAgentRun(ctx, name, filepath.Join(baseDir, name))
+	if err := r.drainAgentRun(ctx, name, filepath.Join(baseDir, name)); err != nil {
+		return err
+	}
 	markDrained(baseDir, name)
 	return nil
 }
 
 // drainAgentRun pulls one exited container's console + transcript + meta into
 // memory and routes them to the resolved sink; disk is written only if asked.
-func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
+func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) error {
 	mode := resolveSinkMode()
 	fmt.Fprintf(os.Stderr, "ward container: starting drain of container %s (sink %s)\n", name, mode)
+	redactor, err := configuredSecretRedactor(r.inspectContainerEnvAll(ctx, name))
+	if err != nil {
+		return fmt.Errorf("build secret-safe redactor: %w", err)
+	}
 
 	// Console: docker logs carries both the agent's stdout stream and the reaper's
 	// stderr markers; capture combined so the outcome is inferable from one stream.
@@ -340,70 +342,65 @@ func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) {
 
 	// Transcript: docker cp streams the projects tree as a tar to stdout; pull the
 	// jsonl out and concatenate. Held in memory - hits disk only if the sink asks.
-	transcript := r.drainTranscript(ctx, name)
+	transcript := r.drainTranscriptArchive(ctx, name)
+	safeConsole := redactConsoleWith(console, redactor)
+	safeTranscript := redactedTranscriptWith(transcript.Body, redactor)
 
 	// Meta: safe dims from the inspected env allowlist + the inferred outcome.
-	meta := r.buildRunMeta(ctx, name, string(console), transcript)
-	skillUsage := buildSkillUsageArtifact(meta, transcript)
+	meta := r.buildRunMeta(ctx, name, string(safeConsole), transcript.Body)
+	skillUsage := buildSkillUsageArtifact(meta, transcript.Body)
 	if skillUsage != nil {
 		meta.Summary.Artifacts.SkillUsage = filepath.Join(agentLogsDir(), name, drainSkillUsageFile)
 	}
+	var safeMeta runMeta
+	if err := redactJSONStrings(meta, &safeMeta, redactor); err != nil {
+		return fmt.Errorf("sanitize meta.json: %w", err)
+	}
+	meta = safeMeta
+	if skillUsage != nil {
+		var safeSkillUsage skillUsageArtifact
+		if err := redactJSONStrings(skillUsage, &safeSkillUsage, redactor); err != nil {
+			return fmt.Errorf("sanitize skill-usage.json: %w", err)
+		}
+		skillUsage = &safeSkillUsage
+	}
 
-	r.writeDiskArtifacts(name, dir, console, transcript, meta, skillUsage)
-	// The redacted view rides the same disk gate. When the raw archive lands, its
-	// scrubbed sibling lands too, for the director surface mount (ward#526).
-	r.writeRedactedArtifacts(name, console, transcript, meta, skillUsage)
+	if err := r.writeDiskArtifacts(name, dir, safeConsole, safeTranscript, meta, skillUsage); err != nil {
+		return err
+	}
 	if containerModeFromContainerName(name) == modeClaude {
-		r.writeClaudeToolFailureRecords(name, meta, transcript)
+		r.writeClaudeToolFailureRecords(name, meta, []byte(redactor.redact(string(transcript.Body))))
+	}
+	if err := r.scrubContainerTranscripts(ctx, name, transcript.Files); err != nil {
+		return fmt.Errorf("sanitize retained container transcript: %w", err)
 	}
 	fmt.Fprintf(os.Stderr, "ward container: drained %s (sink %s, outcome %s)\n", name, mode, meta.Outcome)
+	return nil
 }
 
-// writeDiskArtifacts persists console.log + transcript.jsonl + meta.json and any
-// observed skill-usage.json under dir. Best-effort.
-func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte, meta runMeta, skillUsage *skillUsageArtifact) {
+// writeDiskArtifacts persists only pre-sanitized artifacts under the canonical
+// archive root. Sanitization happens fully in memory before this function runs.
+func (r *Runner) writeDiskArtifacts(name, dir string, console, transcript []byte, meta runMeta, skillUsage *skillUsageArtifact) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping disk sink\n", name, dir, err)
-		return
+		return fmt.Errorf("create safe archive %s: %w", dir, err)
 	}
 	console = appendRunSummaryFooter(console, meta.Summary)
 	if werr := writeBytesAtomic(filepath.Join(dir, drainConsoleFile), console); werr != nil {
-		fmt.Fprintf(os.Stderr, "ward container: drain %s: write console.log: %v\n", name, werr)
+		return fmt.Errorf("write console.log: %w", werr)
 	}
 	if len(transcript) > 0 {
 		if werr := writeBytesAtomic(filepath.Join(dir, drainTranscriptFile), transcript); werr != nil {
-			fmt.Fprintf(os.Stderr, "ward container: drain %s: write transcript.jsonl: %v\n", name, werr)
+			return fmt.Errorf("write transcript.jsonl: %w", werr)
 		}
 	}
 	if werr := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta); werr != nil {
-		fmt.Fprintf(os.Stderr, "ward container: drain %s: write meta.json: %v\n", name, werr)
+		return fmt.Errorf("write meta.json: %w", werr)
 	}
-	writeSkillUsageArtifact(name, dir, skillUsage)
-	fmt.Fprintf(os.Stderr, "ward container: wrote disk artifacts for %s -> %s\n", name, dir)
-}
-
-// writeRedactedArtifacts persists the redacted-at-rest view (ward#526) under the
-// agent-logs-redacted tree, including the secret-free skill summary when present.
-func (r *Runner) writeRedactedArtifacts(name string, console, transcript []byte, meta runMeta, skillUsage *skillUsageArtifact) {
-	dir := filepath.Join(agentLogsRedactedDir(), name)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "ward container: drain %s: could not create %s (%v); skipping redacted view\n", name, dir, err)
-		return
+	if err := writeSkillUsageArtifact(name, dir, skillUsage); err != nil {
+		return err
 	}
-	console = appendRunSummaryFooter(console, meta.Summary)
-	if werr := writeBytesAtomic(filepath.Join(dir, drainConsoleRedactedFile), redactConsole(console)); werr != nil {
-		fmt.Fprintf(os.Stderr, "ward container: drain %s: write console.redacted.log: %v\n", name, werr)
-	}
-	if red := redactedTranscript(transcript); len(red) > 0 {
-		if werr := writeBytesAtomic(filepath.Join(dir, drainTranscriptRedactedFile), red); werr != nil {
-			fmt.Fprintf(os.Stderr, "ward container: drain %s: write transcript.redacted.jsonl: %v\n", name, werr)
-		}
-	}
-	if werr := writeJSONAtomic(filepath.Join(dir, drainMetaFile), meta); werr != nil {
-		fmt.Fprintf(os.Stderr, "ward container: drain %s: write redacted meta.json: %v\n", name, werr)
-	}
-	writeSkillUsageArtifact(name, dir, skillUsage)
-	fmt.Fprintf(os.Stderr, "ward container: wrote redacted view for %s -> %s\n", name, dir)
+	fmt.Fprintf(os.Stderr, "ward container: wrote secret-safe artifacts for %s -> %s\n", name, dir)
+	return nil
 }
 
 // dockerLogsCombined captures `docker logs <name>` with stdout+stderr merged into
@@ -417,12 +414,17 @@ func (r *Runner) dockerLogsCombined(ctx context.Context, name string) []byte {
 	return buf.Bytes()
 }
 
-// drainTranscript `docker cp`s the transcript tree out as a tar and returns the
-// concatenated jsonl. An absent tree (goose/opencode/unknown) returns nil.
-func (r *Runner) drainTranscript(ctx context.Context, name string) []byte {
+type drainedTranscript struct {
+	Body  []byte
+	Files []string
+}
+
+// drainTranscriptArchive pulls the transcript into memory and retains only the
+// container paths needed to overwrite the raw JSONL files after a safe drain.
+func (r *Runner) drainTranscriptArchive(ctx context.Context, name string) drainedTranscript {
 	tree := r.containerTranscriptTree(ctx, name)
 	if strings.TrimSpace(tree) == "" {
-		return nil
+		return drainedTranscript{}
 	}
 	// `docker cp <c>:<path> -` writes a tar of <path> to stdout. The trailing
 	// stderr ("no such file") is discarded; an empty/garbage tar yields nil.
@@ -431,9 +433,47 @@ func (r *Runner) drainTranscript(ctx context.Context, name string) []byte {
 	out, err := r.dockerCapture(ctx, "cp", name+":"+tree, "-")
 	r.Runner.Stderr = prevErr
 	if err != nil || len(out) == 0 {
+		return drainedTranscript{}
+	}
+	body, relativeFiles := extractTranscriptArchiveFromTar(out)
+	files := make([]string, 0, len(relativeFiles))
+	for _, file := range relativeFiles {
+		files = append(files, path.Join(tree, file))
+	}
+	return drainedTranscript{Body: body, Files: files}
+}
+
+func (r *Runner) drainTranscript(ctx context.Context, name string) []byte {
+	return r.drainTranscriptArchive(ctx, name).Body
+}
+
+func (r *Runner) scrubContainerTranscripts(ctx context.Context, name string, files []string) error {
+	if len(files) == 0 {
 		return nil
 	}
-	return extractTranscriptFromTar(out)
+	dir, err := ensureLaunchStagingDir()
+	if err != nil {
+		return err
+	}
+	empty, err := os.CreateTemp(dir, "ward-empty-transcript-*")
+	if err != nil {
+		return err
+	}
+	emptyPath := empty.Name()
+	defer func() { _ = os.Remove(emptyPath) }()
+	if err := empty.Chmod(0o600); err != nil {
+		_ = empty.Close()
+		return err
+	}
+	if err := empty.Close(); err != nil {
+		return err
+	}
+	for _, file := range files {
+		if err := r.dockerExec(ctx, "cp", emptyPath, name+":"+file); err != nil {
+			return fmt.Errorf("overwrite %s: %w", file, err)
+		}
+	}
+	return nil
 }
 
 func containerModeFromContainerName(name string) containerMode {
@@ -453,8 +493,14 @@ func containerModeFromContainerName(name string) containerMode {
 // extractTranscriptFromTar concatenates the *.jsonl members of a tar stream in
 // archive order. Pure, so the tar walk is unit-testable without docker.
 func extractTranscriptFromTar(tarBytes []byte) []byte {
+	body, _ := extractTranscriptArchiveFromTar(tarBytes)
+	return body
+}
+
+func extractTranscriptArchiveFromTar(tarBytes []byte) ([]byte, []string) {
 	tr := tar.NewReader(bytes.NewReader(tarBytes))
 	var out bytes.Buffer
+	var files []string
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -463,9 +509,11 @@ func extractTranscriptFromTar(tarBytes []byte) []byte {
 		if err != nil {
 			break
 		}
-		if hdr.Typeflag != tar.TypeReg || !strings.HasSuffix(hdr.Name, ".jsonl") {
+		name, ok := transcriptArchiveMemberName(hdr)
+		if !ok {
 			continue
 		}
+		files = append(files, name)
 		if _, cerr := io.Copy(&out, tr); cerr != nil { // #nosec G110 -- bounded by the tar member size
 			break
 		}
@@ -473,7 +521,24 @@ func extractTranscriptFromTar(tarBytes []byte) []byte {
 			out.WriteByte('\n')
 		}
 	}
-	return out.Bytes()
+	return out.Bytes(), files
+}
+
+func transcriptArchiveMemberName(hdr *tar.Header) (string, bool) {
+	if hdr.Typeflag != tar.TypeReg || !strings.HasSuffix(hdr.Name, ".jsonl") {
+		return "", false
+	}
+	name := path.Clean(strings.TrimPrefix(hdr.Name, "./"))
+	parts := strings.SplitN(name, "/", 2)
+	if len(parts) == 2 {
+		name = parts[1]
+	} else {
+		name = path.Base(name)
+	}
+	if name == "." || name == "" || strings.HasPrefix(name, "../") {
+		return "", false
+	}
+	return name, true
 }
 
 // runMeta is the small, secret-free record drained alongside console + transcript:
@@ -533,6 +598,12 @@ func parseReapLaunched(console string) bool {
 // inspectContainerEnv reads the container's Config.Env and returns ONLY the
 // allowlisted WARD_* dims (never the --env-file secrets that also live there).
 func (r *Runner) inspectContainerEnv(ctx context.Context, name string) map[string]string {
+	return pickMetaEnvMap(r.inspectContainerEnvAll(ctx, name), metaEnvAllow)
+}
+
+// inspectContainerEnvAll retains the container environment only in memory for
+// exact-value redaction. Persistence uses the strict meta allowlist above.
+func (r *Runner) inspectContainerEnvAll(ctx context.Context, name string) map[string]string {
 	prevErr := r.Runner.Stderr
 	r.Runner.Stderr = io.Discard
 	out, err := r.dockerCapture(ctx, "inspect", "--format", "{{json .Config.Env}}", name)
@@ -544,7 +615,14 @@ func (r *Runner) inspectContainerEnv(ctx context.Context, name string) map[strin
 	if jerr := json.Unmarshal(bytes.TrimSpace(out), &env); jerr != nil {
 		return map[string]string{}
 	}
-	return pickMetaEnv(env, metaEnvAllow)
+	outMap := make(map[string]string, len(env))
+	for _, entry := range env {
+		key, value, ok := strings.Cut(entry, "=")
+		if ok {
+			outMap[key] = value
+		}
+	}
+	return outMap
 }
 
 // dockerContainerState is the inspect-time Docker state subset used for the OOM
@@ -693,7 +771,7 @@ func writeBytesAtomic(path string, data []byte) error {
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	if err := tmp.Chmod(0o644); err != nil {
+	if err := tmp.Chmod(0o600); err != nil {
 		_ = tmp.Close()
 		return err
 	}
@@ -843,15 +921,25 @@ func parseReapReason(meta runMeta, console string, signals runSummarySignals) st
 // pickMetaEnv selects only allowlisted keys from a docker `KEY=VALUE` env slice.
 // The allowlist is the security boundary: co-resident secrets never match.
 func pickMetaEnv(env, allow []string) map[string]string {
+	all := make(map[string]string, len(env))
+	for _, entry := range env {
+		key, value, ok := strings.Cut(entry, "=")
+		if ok {
+			all[key] = value
+		}
+	}
+	return pickMetaEnvMap(all, allow)
+}
+
+func pickMetaEnvMap(env map[string]string, allow []string) map[string]string {
 	want := make(map[string]bool, len(allow))
 	for _, k := range allow {
 		want[k] = true
 	}
 	out := make(map[string]string, len(allow))
-	for _, kv := range env {
-		k, v, ok := strings.Cut(kv, "=")
-		if ok && want[k] {
-			out[k] = v
+	for key, value := range env {
+		if want[key] {
+			out[key] = value
 		}
 	}
 	return out

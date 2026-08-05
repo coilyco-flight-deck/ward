@@ -19,18 +19,32 @@ This page is the durable anchor for the agent log and envelope schema.
 
 ## Drain artifact contract
 
-Each completed log drain writes one run directory under
-`~/.ward/agent-logs/<container>/`:
+Each completed log drain writes one secret-safe run directory under
+`~/.ward/agent-logs-redacted/<container>/`:
 
-- `console.log`
-- `transcript.jsonl` when the harness produced a transcript
+- `console.log`, sanitized before the atomic write
+- `transcript.jsonl` when the harness produced safe tool envelopes
 - `meta.json`
 - `skill-usage.json` when the transcript contains observed skill use
 
-The parallel `~/.ward/agent-logs-redacted/<container>/` view contains
-`console.redacted.log`, `transcript.redacted.jsonl` when redacted tool
-envelopes are available, the same secret-free `meta.json`, and the same
-`skill-usage.json` when present.
+There is no parallel raw archive or privileged raw-log escape hatch. The
+redactor combines built-in secret shapes, exact nonempty values for credentials
+Ward injected, and operator-local `agent.redaction` rules. It runs before Ward
+persists or renders console output, stdout, stderr, broker logs, metadata error
+fields, failure summaries, and structured tool envelopes. Body-shaped tool
+arguments and tool-result bodies are dropped instead of retained.
+
+After a safe drain, Ward overwrites harness JSONL transcripts inside a retained
+exited container. A sanitization or overwrite failure leaves the container for
+explicit recovery and does not mark the run drained.
+
+The residual boundary is the running process: an agent and its harness-owned
+transient session files necessarily see credential material before safe drain.
+Ward guarantees only artifacts it persists and logs it renders.
+
+Ward does not automatically delete or retroactively sanitize historical raw
+archives under `~/.ward/agent-logs/`. `ward doctor` warns with that exact path
+when such archives remain.
 
 `skill-usage.json` schema version 1 carries only stable run dimensions:
 `run_id`, `container`, `role`, `harness`, `repo`, `issue_ref`, `workflow`, and

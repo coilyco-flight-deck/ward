@@ -102,7 +102,7 @@ func dispatchRequestFingerprint(req dispatchBrokerRequest) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func acceptDispatchLaunch(req dispatchBrokerRequest) (dispatchArtifactPaths, *os.File, string, bool, error) {
+func acceptDispatchLaunch(req dispatchBrokerRequest) (dispatchArtifactPaths, *dispatchArtifactLog, string, bool, error) {
 	if !dispatchRequestIDPattern.MatchString(req.RequestID) {
 		return dispatchArtifactPaths{}, nil, "", false, fmt.Errorf("dispatch broker: invalid request id %q", req.RequestID)
 	}
@@ -381,7 +381,7 @@ func (r *Runner) resumeDispatchJournal(ctx context.Context, path string, journal
 	if err := updateDispatchJournal(path, dispatchPhaseRecovering, containerID, dispatchOutcomeInProgress, nil); err != nil {
 		return err
 	}
-	logf, err := os.OpenFile(journal.Paths.ConsolePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304 -- persisted Ward path
+	logf, err := openDispatchArtifactLog(journal.Paths.ConsolePath)
 	if err != nil {
 		return err
 	}

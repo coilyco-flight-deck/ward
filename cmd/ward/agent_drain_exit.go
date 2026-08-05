@@ -29,7 +29,7 @@ func containerDrainExitCommand() *cli.Command {
 		ArgsUsage: "<container>",
 		Description: `drain-exit is the ward#510 earliest-point drain. Launch spawns it detached for
 each fire-and-forget run; it blocks on ` + "`docker wait <container>`" + ` and, the
-moment the container exits, drains it to ~/.ward/agent-logs/<container>/ (or the
+moment the container exits, drains it to ~/.ward/agent-logs-redacted/<container>/ (or the
 resolved sink). Idempotent with the later keep-10 sweep. Not invoked by hand.`,
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()

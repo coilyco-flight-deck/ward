@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -33,6 +36,138 @@ func TestRedactSecretsLeavesBenignText(t *testing.T) {
 	in := "git push origin HEAD:main && echo done"
 	if got := redactSecrets(in); got != in {
 		t.Errorf("redactSecrets mangled benign text: %q -> %q", in, got)
+	}
+}
+
+func TestRedactSecretsScrubsCredentialHeadersAndResponses(t *testing.T) {
+	for _, tc := range []struct {
+		input  string
+		secret string
+	}{
+		{"Authorization: Bearer arbitrary-unshaped-value", "arbitrary-unshaped-value"},
+		{"Proxy-Authorization=Basic c3ludGhldGljOnNlY3JldA==", "c3ludGhldGljOnNlY3JldA=="},
+		{"password=not-a-token-shaped-credential", "not-a-token-shaped-credential"},
+		{"access_token=plain-opaque-value", "plain-opaque-value"},
+	} {
+		got := redactSecrets(tc.input)
+		if strings.Contains(got, tc.secret) || !strings.Contains(got, redactionPlaceholder) {
+			t.Fatalf("credential field was not redacted: %q", got)
+		}
+	}
+}
+
+func TestConfiguredSecretRedactorCoversInjectedConfiguredAndPatternValues(t *testing.T) {
+	writeTestWardGlobalConfig(t, `
+agent:
+  redaction:
+    env-names:
+      - PRIVATE_SERVICE_TOKEN
+    patterns:
+      - 'tenant-secret-[0-9]+'
+`)
+	t.Setenv("PRIVATE_SERVICE_TOKEN", "operator-local-exact-value")
+	r, err := configuredSecretRedactor(map[string]string{
+		"FORGEJO_TOKEN": "synthetic-forgejo-value",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := "Authorization: token synthetic-forgejo-value\nPRIVATE_SERVICE_TOKEN=operator-local-exact-value\ntenant-secret-42\nsha256:1234567890abcdef"
+	got := r.redact(input)
+	for _, secret := range []string{"synthetic-forgejo-value", "operator-local-exact-value", "tenant-secret-42"} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("configured redactor leaked %q in %q", secret, got)
+		}
+	}
+	if strings.Count(got, redactionPlaceholder) != 3 {
+		t.Fatalf("redaction markers = %d, want 3 in %q", strings.Count(got, redactionPlaceholder), got)
+	}
+	if !strings.Contains(got, "sha256:1234567890abcdef") {
+		t.Fatalf("ordinary hash was mangled: %q", got)
+	}
+}
+
+func TestRuntimeConfigRejectsInvalidRedactionInputs(t *testing.T) {
+	for _, body := range []string{
+		"agent:\n  redaction:\n    env-names: ['NOT VALID']\n",
+		"agent:\n  redaction:\n    patterns: ['[unterminated']\n",
+	} {
+		writeTestWardGlobalConfig(t, body)
+		if _, err := currentSmartDefaultsWithError(); err == nil || !strings.Contains(err.Error(), "agent.redaction") {
+			t.Fatalf("currentSmartDefaultsWithError() = %v, want agent.redaction error", err)
+		}
+	}
+}
+
+func TestRedactingLineWriterCatchesCredentialSplitAcrossWrites(t *testing.T) {
+	secret := "synthetic-split-credential"
+	r, err := newSecretRedactor([]string{secret}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	w := &redactingLineWriter{target: &out, redactor: r}
+	_, _ = w.Write([]byte("Authorization: token synthetic-split-"))
+	_, _ = w.Write([]byte("credential\nnext line"))
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), secret) || !strings.Contains(out.String(), redactionPlaceholder) {
+		t.Fatalf("split credential was not redacted: %q", out.String())
+	}
+}
+
+func TestDispatchArtifactLogRedactsSplitInjectedCredential(t *testing.T) {
+	writeTestWardGlobalConfig(t, "")
+	secret := "synthetic-dispatch-credential"
+	t.Setenv("FORGEJO_TOKEN", secret)
+	path := filepath.Join(t.TempDir(), "console.log")
+	logf, err := openDispatchArtifactLog(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = logf.Write([]byte("credential=synthetic-dispatch-"))
+	_, _ = logf.Write([]byte("credential\n"))
+	if err := logf.Close(); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), secret) || !strings.Contains(string(body), redactionPlaceholder) {
+		t.Fatalf("dispatch archive leaked split credential: %q", body)
+	}
+}
+
+func TestDispatchArtifactLogRejectsInvalidRedactionPattern(t *testing.T) {
+	writeTestWardGlobalConfig(t, "agent:\n  redaction:\n    patterns: ['[unterminated']\n")
+	path := filepath.Join(t.TempDir(), "console.log")
+	if _, err := openDispatchArtifactLog(path); err == nil || !strings.Contains(err.Error(), "agent.redaction") {
+		t.Fatalf("openDispatchArtifactLog() = %v, want agent.redaction error", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("invalid redaction config created an artifact; stat err = %v", err)
+	}
+}
+
+func TestRedactJSONStringsCoversNestedMetadata(t *testing.T) {
+	secret := "synthetic-metadata-credential"
+	r, err := newSecretRedactor([]string{secret}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := map[string]any{
+		"error":  "failed with " + secret,
+		"nested": []any{map[string]any{"path": "/tmp/" + secret}},
+	}
+	var output map[string]any
+	if err := redactJSONStrings(input, &output, r); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(output)
+	if strings.Contains(string(body), secret) || strings.Count(string(body), redactionPlaceholder) != 2 {
+		t.Fatalf("nested JSON was not fully redacted: %s", body)
 	}
 }
 

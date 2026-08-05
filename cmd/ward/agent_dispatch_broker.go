@@ -289,7 +289,7 @@ func dispatchRefLock(ref string) *sync.Mutex {
 	return m.(*sync.Mutex)
 }
 
-// dispatchLogsSubdir is the per-host dir under ~/.ward/agent-logs (agentLogsDir)
+// dispatchLogsSubdir is the per-host dir under the secret-safe agentLogsDir
 // that groups one directory-backed artifact per forwarded request.
 const dispatchLogsSubdir = "dispatch"
 
@@ -543,7 +543,7 @@ func dispatchBrokerLaunchLogHint(req dispatchBrokerRequest) string {
 }
 
 //nolint:funlen,gocognit,gocyclo,cyclop // lifecycle branches
-func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, logf *os.File, restore func(), lock *sync.Mutex, started chan struct{}) {
+func (r *Runner) handleHostDispatchBrokerLaunch(ctx context.Context, req dispatchBrokerRequest, paths dispatchArtifactPaths, logf *dispatchArtifactLog, restore func(), lock *sync.Mutex, started chan struct{}) {
 	restored := false
 	finalized := false
 	resultErr := error(nil)
@@ -1424,12 +1424,25 @@ func selectSingleStopTarget(target string, names []string) (string, error) {
 
 // redirectStdioToLog swaps process os.Stdout/os.Stderr to logf for one served run (read
 // at run time by its newRunner + subprocesses), serialized by dispatchStdioMu (ward#389).
-func redirectStdioToLog(logf *os.File) func() {
+func redirectStdioToLog(logf io.Writer) func() {
 	dispatchStdioMu.Lock()
 	prevOut, prevErr := os.Stdout, os.Stderr
-	os.Stdout, os.Stderr = logf, logf
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		dispatchStdioMu.Unlock()
+		return func() {}
+	}
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(logf, reader)
+		_ = reader.Close()
+		close(done)
+	}()
+	os.Stdout, os.Stderr = writer, writer
 	return func() {
 		os.Stdout, os.Stderr = prevOut, prevErr
+		_ = writer.Close()
+		<-done
 		dispatchStdioMu.Unlock()
 	}
 }
@@ -1690,7 +1703,7 @@ func (r *Runner) resolveDispatchBrokerLogsSource(ctx context.Context, req dispat
 	if err != nil {
 		return agentLogSource{}, err
 	}
-	opts := agentLogsResolveOptions{Artifact: artifact, RedactedOnly: true}
+	opts := agentLogsResolveOptions{Artifact: artifact}
 	if ref, err := parseAgentIssueRef(req.Target); err == nil && ref.Owner != "" && ref.Repo != "" {
 		return r.resolveAgentLogsSourceForIssue(ctx, ref, req.Tail, req.Follow, opts)
 	}

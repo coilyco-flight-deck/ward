@@ -307,6 +307,10 @@ func TestAcceptedRequestIDLaunchesExactlyOnce(t *testing.T) {
 	launched := make(chan struct{}, 2)
 	release := make(chan struct{})
 	finished := make(chan struct{})
+	finalized := make(chan struct{})
+	originalRestoreHook := dispatchStdioRestoreHook
+	dispatchStdioRestoreHook = func() { close(finalized) }
+	t.Cleanup(func() { dispatchStdioRestoreHook = originalRestoreHook })
 	dispatchBrokerLaunch = func(_ context.Context, _ dispatchBrokerRequest) error {
 		launched <- struct{}{}
 		<-release
@@ -345,5 +349,10 @@ func TestAcceptedRequestIDLaunchesExactlyOnce(t *testing.T) {
 	case <-finished:
 	case <-time.After(2 * time.Second):
 		t.Fatal("accepted launch did not finish")
+	}
+	select {
+	case <-finalized:
+	case <-time.After(2 * time.Second):
+		t.Fatal("accepted launch artifact was not finalized")
 	}
 }

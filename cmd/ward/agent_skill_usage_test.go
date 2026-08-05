@@ -100,7 +100,7 @@ func TestExtractSkillUsageEventsFromCodexTranscript(t *testing.T) {
 	}
 }
 
-func TestSkillUsageArtifactWrittenToBothDrainViewsAndRemovedWhenEmpty(t *testing.T) {
+func TestSkillUsageArtifactWrittenToSafeArchiveAndRemovedWhenEmpty(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
 	name := "engineer-codex-ward-873"
@@ -126,33 +126,25 @@ func TestSkillUsageArtifactWrittenToBothDrainViewsAndRemovedWhenEmpty(t *testing
 	meta.Summary.Artifacts.SkillUsage = filepath.Join(rawDir, drainSkillUsageFile)
 
 	r := &Runner{}
-	r.writeDiskArtifacts(name, rawDir, nil, transcript, meta, usage)
-	r.writeRedactedArtifacts(name, nil, transcript, meta, usage)
+	if err := r.writeDiskArtifacts(name, rawDir, nil, transcript, meta, usage); err != nil {
+		t.Fatal(err)
+	}
 
 	rawPath := filepath.Join(rawDir, drainSkillUsageFile)
-	redactedPath := filepath.Join(agentLogsRedactedDir(), name, drainSkillUsageFile)
 	rawArtifact, err := os.ReadFile(rawPath)
 	if err != nil {
 		t.Fatalf("read raw skill usage: %v", err)
-	}
-	redactedArtifact, err := os.ReadFile(redactedPath)
-	if err != nil {
-		t.Fatalf("read redacted skill usage: %v", err)
-	}
-	if string(rawArtifact) != string(redactedArtifact) {
-		t.Fatalf("raw and redacted skill-usage artifacts differ:\nraw: %s\nredacted: %s", rawArtifact, redactedArtifact)
 	}
 	if strings.Contains(string(rawArtifact), "cat /workspace") || strings.Contains(string(rawArtifact), "ghp_") {
 		t.Fatalf("skill-usage artifact copied command/body content: %s", rawArtifact)
 	}
 
 	meta.Summary.Artifacts.SkillUsage = ""
-	r.writeDiskArtifacts(name, rawDir, nil, nil, meta, nil)
-	r.writeRedactedArtifacts(name, nil, nil, meta, nil)
-	for _, path := range []string{rawPath, redactedPath} {
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Fatalf("empty usage must leave no artifact at %s; stat err = %v", path, err)
-		}
+	if err := r.writeDiskArtifacts(name, rawDir, nil, nil, meta, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(rawPath); !os.IsNotExist(err) {
+		t.Fatalf("empty usage must leave no artifact at %s; stat err = %v", rawPath, err)
 	}
 }
 

@@ -49,7 +49,7 @@ func TestReapEnvContainerCorrelation(t *testing.T) {
 // TestReapEnvLogFlushLine covers the container-visible teardown contract: the
 // reaper names the durable log archive path, or says none is configured.
 func TestReapEnvLogFlushLine(t *testing.T) {
-	if got, want := (reapEnv{Container: "engineer-codex-ward-693"}).reapLogFlushLine(), "ward container reap: logs flushed to ~/.ward/agent-logs/engineer-codex-ward-693"; got != want {
+	if got, want := (reapEnv{Container: "engineer-codex-ward-693"}).reapLogFlushLine(), "ward container reap: logs flushed to ~/.ward/agent-logs-redacted/engineer-codex-ward-693"; got != want {
 		t.Fatalf("reapLogFlushLine() = %q, want %q", got, want)
 	}
 	if got, want := (reapEnv{}).reapLogFlushLine(), "ward container reap: no durable log flush configured"; got != want {
@@ -81,7 +81,7 @@ func TestRunContainerReapAnnouncesLogArchive(t *testing.T) {
 			t.Fatalf("runContainerReap: %v", err)
 		}
 	})
-	if !strings.Contains(stderr, "ward container reap: logs flushed to ~/.ward/agent-logs/engineer-codex-ward-693") {
+	if !strings.Contains(stderr, "ward container reap: logs flushed to ~/.ward/agent-logs-redacted/engineer-codex-ward-693") {
 		t.Fatalf("stderr missing archive destination:\n%s", stderr)
 	}
 	if !strings.Contains(stderr, "WARD-REAP: nothing to reap") {

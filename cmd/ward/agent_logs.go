@@ -46,8 +46,7 @@ const (
 )
 
 type agentLogsResolveOptions struct {
-	Artifact     agentLogArtifact
-	RedactedOnly bool
+	Artifact agentLogArtifact
 }
 
 func parseAgentLogArtifact(s string) (agentLogArtifact, error) {
@@ -190,8 +189,8 @@ func agentLogsCommand() *cli.Command {
 director surface is attached, or host-side otherwise. It resolves the target the same
 way ` + "`ward agent stop`" + ` does: issue ref or container name. When a live engineer
 container is running it prefers ` + "`docker logs`" + `, and when an exited container has a
-completed archive it prefers the drained host archive at ~/.ward/agent-logs/<container>/.
-Use --artifact to read console, transcript, meta, friction, or the redacted dispatch
+completed archive it prefers the drained secret-safe host archive at ~/.ward/agent-logs-redacted/<container>/.
+Use --artifact to read console, transcript, meta, friction, or the secret-safe dispatch
 wrapper. With no target, it discovers the current Ward director Compose
 project and prints the last 100 lines for every container in that group. The chosen
 source is printed before the body streams.
@@ -341,25 +340,25 @@ func (r *Runner) resolveAgentLogsSource(ctx context.Context, target string, tail
 func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIssueRef, tail int, follow bool, opts agentLogsResolveOptions) (agentLogSource, error) {
 	switch opts.artifact() {
 	case agentLogArtifactConsole:
-		return r.resolveAgentConsoleSourceForIssue(ctx, ref, tail, follow, opts)
+		return r.resolveAgentConsoleSourceForIssue(ctx, ref, tail, follow)
 	case agentLogArtifactTranscript:
-		return archivedTranscriptSourceByIssue(ref, tail, follow, opts)
+		return archivedTranscriptSourceByIssue(ref, tail, follow)
 	case agentLogArtifactMeta:
-		return findArchivedAgentArtifactSourceByIssue(ref, tail, follow, opts, agentLogArtifactMeta)
+		return findArchivedAgentArtifactSourceByIssue(ref, tail, follow, agentLogArtifactMeta)
 	case agentLogArtifactFriction:
-		return r.frictionReportSourceForIssue(ref, opts)
+		return r.frictionReportSourceForIssue(ref)
 	case agentLogArtifactDispatch:
-		return dispatchArtifactSourceForRef(ref, tail, follow, true)
+		return dispatchArtifactSourceForRef(ref, tail, follow)
 	default:
 		return agentLogSource{}, fmt.Errorf("unknown artifact %q", opts.artifact())
 	}
 }
 
-func (r *Runner) resolveAgentConsoleSourceForIssue(ctx context.Context, ref agentIssueRef, tail int, follow bool, opts agentLogsResolveOptions) (agentLogSource, error) {
+func (r *Runner) resolveAgentConsoleSourceForIssue(ctx context.Context, ref agentIssueRef, tail int, follow bool) (agentLogSource, error) {
 	if names := r.allAgentContainersForIssue(ctx, ref); len(names) > 0 {
-		return r.resolveAgentConsoleSourceForContainers(ctx, ref, names, tail, follow, opts)
+		return r.resolveAgentConsoleSourceForContainers(ctx, ref, names, tail, follow)
 	}
-	if src, err := findArchivedAgentArtifactSourceByIssue(ref, tail, follow, opts, agentLogArtifactConsole); err != nil {
+	if src, err := findArchivedAgentArtifactSourceByIssue(ref, tail, follow, agentLogArtifactConsole); err != nil {
 		return agentLogSource{}, err
 	} else if src.Kind != "" {
 		if follow {
@@ -367,7 +366,7 @@ func (r *Runner) resolveAgentConsoleSourceForIssue(ctx context.Context, ref agen
 		}
 		return src, nil
 	}
-	if src, err := dispatchArtifactSourceForRef(ref, tail, follow, opts.RedactedOnly); err != nil {
+	if src, err := dispatchArtifactSourceForRef(ref, tail, follow); err != nil {
 		return agentLogSource{}, err
 	} else if src.Kind != "" {
 		return src, nil
@@ -375,7 +374,7 @@ func (r *Runner) resolveAgentConsoleSourceForIssue(ctx context.Context, ref agen
 	return agentLogSource{}, fmt.Errorf("dispatch broker: no agent log source matches %q", ref.String())
 }
 
-func (r *Runner) resolveAgentConsoleSourceForContainers(ctx context.Context, ref agentIssueRef, names []string, tail int, follow bool, opts agentLogsResolveOptions) (agentLogSource, error) {
+func (r *Runner) resolveAgentConsoleSourceForContainers(ctx context.Context, ref agentIssueRef, names []string, tail int, follow bool) (agentLogSource, error) {
 	live, terminal := r.partitionAgentLogContainers(ctx, names)
 	if len(live) > 0 {
 		name, err := selectSingleLogTarget("read", ref.String(), live)
@@ -384,7 +383,7 @@ func (r *Runner) resolveAgentConsoleSourceForContainers(ctx context.Context, ref
 		}
 		return r.dockerAgentLogSource(ctx, name, ref, tail, follow), nil
 	}
-	src, err := findArchivedAgentArtifactSourceByIssue(ref, tail, follow, opts, agentLogArtifactConsole)
+	src, err := findArchivedAgentArtifactSourceByIssue(ref, tail, follow, agentLogArtifactConsole)
 	if err != nil || src.Kind != "" {
 		return src, err
 	}
@@ -408,7 +407,7 @@ func (r *Runner) resolveAgentLogsSourceForName(ctx context.Context, name string,
 	if r.containerPresent(ctx, name) && r.containerLogDockerPreferred(ctx, name) {
 		return r.resolveAgentLogsSourceForRunningName(ctx, name, tail, follow)
 	}
-	if src, err := r.resolveArchivedAgentLogSourceForName(name, tail, follow, opts); err != nil {
+	if src, err := r.resolveArchivedAgentLogSourceForName(name, tail, follow); err != nil {
 		return agentLogSource{}, err
 	} else if src.Kind != "" {
 		return src, nil
@@ -429,13 +428,13 @@ func (r *Runner) resolveAgentNamedArtifactSource(name string, tail int, follow b
 	case agentLogArtifactConsole:
 		return agentLogSource{}, fmt.Errorf("console artifact should resolve through the console path")
 	case agentLogArtifactTranscript:
-		return archivedTranscriptSourceByName(name, tail, follow, opts)
+		return archivedTranscriptSourceByName(name, tail, follow)
 	case agentLogArtifactMeta:
-		return findArchivedAgentArtifactSourceByName(name, tail, follow, opts, agentLogArtifactMeta)
+		return findArchivedAgentArtifactSourceByName(name, tail, follow, agentLogArtifactMeta)
 	case agentLogArtifactFriction:
-		return r.frictionReportSourceForName(name, opts)
+		return r.frictionReportSourceForName(name)
 	case agentLogArtifactDispatch:
-		return r.resolveDispatchArtifactSourceForName(name, tail, follow, true)
+		return r.resolveDispatchArtifactSourceForName(name, tail, follow)
 	default:
 		return agentLogSource{}, fmt.Errorf("unknown artifact %q", opts.artifact())
 	}
@@ -567,8 +566,8 @@ func selectSingleLogTarget(action, target string, names []string) (string, error
 	}
 }
 
-func (r *Runner) resolveArchivedAgentLogSourceForName(name string, tail int, follow bool, opts agentLogsResolveOptions) (agentLogSource, error) {
-	return findArchivedAgentArtifactSourceByName(name, tail, follow, opts, agentLogArtifactConsole)
+func (r *Runner) resolveArchivedAgentLogSourceForName(name string, tail int, follow bool) (agentLogSource, error) {
+	return findArchivedAgentArtifactSourceByName(name, tail, follow, agentLogArtifactConsole)
 }
 
 func (r *Runner) partitionAgentLogContainers(ctx context.Context, names []string) (live, terminal []string) {
@@ -595,22 +594,22 @@ func (r *Runner) containerLogDockerPreferred(ctx context.Context, name string) b
 	}
 }
 
-func findArchivedAgentArtifactSourceByIssue(ref agentIssueRef, tail int, follow bool, opts agentLogsResolveOptions, artifact agentLogArtifact) (agentLogSource, error) {
-	rawName, redactedName, label, err := archivedAgentArtifactFile(artifact)
+func findArchivedAgentArtifactSourceByIssue(ref agentIssueRef, tail int, follow bool, artifact agentLogArtifact) (agentLogSource, error) {
+	canonicalName, legacySafeName, label, err := archivedAgentArtifactFile(artifact)
 	if err != nil {
 		return agentLogSource{}, err
 	}
-	if !opts.RedactedOnly {
-		if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsDir(), rawName, label); err != nil {
-			return agentLogSource{}, err
-		} else if src.Kind != "" {
-			if follow {
-				return agentLogSource{}, fmt.Errorf("ward agent logs: --follow requires a live docker container for %s", ref)
-			}
-			return src, nil
+	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsDir(), canonicalName, label); err != nil {
+		return agentLogSource{}, err
+	} else if src.Kind != "" {
+		if follow {
+			return agentLogSource{}, fmt.Errorf("ward agent logs: --follow requires a live docker container for %s", ref)
 		}
+		return src, nil
 	}
-	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsRedactedDir(), redactedName, label); err != nil {
+	// Compatibility read for safe archives written before #1582. Both names live
+	// in the one canonical safe root. The retired raw root is never consulted.
+	if src, err := findArchivedAgentLogSourceByIssue(ref, tail, follow, agentLogsDir(), legacySafeName, label); err != nil {
 		return agentLogSource{}, err
 	} else if src.Kind != "" {
 		if follow {
@@ -621,22 +620,20 @@ func findArchivedAgentArtifactSourceByIssue(ref agentIssueRef, tail int, follow 
 	return agentLogSource{}, nil
 }
 
-func findArchivedAgentArtifactSourceByName(name string, tail int, follow bool, opts agentLogsResolveOptions, artifact agentLogArtifact) (agentLogSource, error) {
-	rawName, redactedName, label, err := archivedAgentArtifactFile(artifact)
+func findArchivedAgentArtifactSourceByName(name string, tail int, follow bool, artifact agentLogArtifact) (agentLogSource, error) {
+	canonicalName, legacySafeName, label, err := archivedAgentArtifactFile(artifact)
 	if err != nil {
 		return agentLogSource{}, err
 	}
-	if !opts.RedactedOnly {
-		if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsDir(), rawName, label); err != nil {
-			return agentLogSource{}, err
-		} else if src.Kind != "" {
-			if follow {
-				return agentLogSource{}, fmt.Errorf("ward agent logs: --follow requires a live docker container for %q", name)
-			}
-			return src, nil
+	if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsDir(), canonicalName, label); err != nil {
+		return agentLogSource{}, err
+	} else if src.Kind != "" {
+		if follow {
+			return agentLogSource{}, fmt.Errorf("ward agent logs: --follow requires a live docker container for %q", name)
 		}
+		return src, nil
 	}
-	if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsRedactedDir(), redactedName, label); err != nil {
+	if src, err := findArchivedAgentLogSourceByName(name, tail, follow, agentLogsDir(), legacySafeName, label); err != nil {
 		return agentLogSource{}, err
 	} else if src.Kind != "" {
 		if follow {
@@ -647,12 +644,12 @@ func findArchivedAgentArtifactSourceByName(name string, tail int, follow bool, o
 	return agentLogSource{}, nil
 }
 
-func archivedTranscriptSourceByIssue(ref agentIssueRef, tail int, follow bool, opts agentLogsResolveOptions) (agentLogSource, error) {
-	src, err := findArchivedAgentArtifactSourceByIssue(ref, tail, follow, opts, agentLogArtifactTranscript)
+func archivedTranscriptSourceByIssue(ref agentIssueRef, tail int, follow bool) (agentLogSource, error) {
+	src, err := findArchivedAgentArtifactSourceByIssue(ref, tail, follow, agentLogArtifactTranscript)
 	if err != nil || src.Kind != "" {
 		return src, err
 	}
-	metaSrc, err := findArchivedAgentArtifactSourceByIssue(ref, 0, false, opts, agentLogArtifactMeta)
+	metaSrc, err := findArchivedAgentArtifactSourceByIssue(ref, 0, false, agentLogArtifactMeta)
 	if err != nil || metaSrc.Kind == "" {
 		return agentLogSource{}, err
 	}
@@ -663,12 +660,12 @@ func archivedTranscriptSourceByIssue(ref agentIssueRef, tail int, follow bool, o
 	return transcriptUnavailableSource(meta, tail), nil
 }
 
-func archivedTranscriptSourceByName(name string, tail int, follow bool, opts agentLogsResolveOptions) (agentLogSource, error) {
-	src, err := findArchivedAgentArtifactSourceByName(name, tail, follow, opts, agentLogArtifactTranscript)
+func archivedTranscriptSourceByName(name string, tail int, follow bool) (agentLogSource, error) {
+	src, err := findArchivedAgentArtifactSourceByName(name, tail, follow, agentLogArtifactTranscript)
 	if err != nil || src.Kind != "" {
 		return src, err
 	}
-	metaSrc, err := findArchivedAgentArtifactSourceByName(name, 0, false, opts, agentLogArtifactMeta)
+	metaSrc, err := findArchivedAgentArtifactSourceByName(name, 0, false, agentLogArtifactMeta)
 	if err != nil || metaSrc.Kind == "" {
 		return agentLogSource{}, err
 	}
@@ -693,7 +690,7 @@ func transcriptUnavailableSource(meta runMeta, tail int) agentLogSource {
 	return agentLogSource{Kind: agentLogSourceInline, Label: "transcript summary", Body: body, Tail: tail}
 }
 
-func archivedAgentArtifactFile(artifact agentLogArtifact) (rawName, redactedName, label string, err error) {
+func archivedAgentArtifactFile(artifact agentLogArtifact) (canonicalName, legacySafeName, label string, err error) {
 	switch artifact {
 	case agentLogArtifactConsole:
 		return drainConsoleFile, drainConsoleRedactedFile, "archive path", nil
@@ -708,13 +705,12 @@ func archivedAgentArtifactFile(artifact agentLogArtifact) (rawName, redactedName
 	}
 }
 
-func (r *Runner) resolveDispatchArtifactSourceForName(name string, tail int, follow bool, redactedOnly ...bool) (agentLogSource, error) {
+func (r *Runner) resolveDispatchArtifactSourceForName(name string, tail int, follow bool) (agentLogSource, error) {
 	role := dispatchArtifactIndexableRole(name)
 	if role == "" {
 		return agentLogSource{}, nil
 	}
-	redacted := len(redactedOnly) > 0 && redactedOnly[0]
-	paths, ok, err := latestDispatchArtifactPathsForRoleWithRedaction(role, redacted)
+	paths, ok, err := latestDispatchArtifactPathsForRole(role)
 	if err != nil {
 		return agentLogSource{}, err
 	}
@@ -726,9 +722,6 @@ func (r *Runner) resolveDispatchArtifactSourceForName(name string, tail int, fol
 	}
 	meta, _ := readDispatchArtifactMeta(paths.MetaPath)
 	label := "dispatch log path"
-	if redacted {
-		label = "dispatch redacted path"
-	}
 	return agentLogSource{Kind: agentLogSourceFile, Label: label, Path: paths.ConsolePath, ArchiveMeta: runMeta{Container: meta.RequestID, Repo: meta.Repo, Issue: meta.Issue, Driver: meta.Harness, Branch: meta.Ref, Outcome: meta.Outcome}, Tail: tail, Follow: follow}, nil
 }
 
@@ -765,6 +758,10 @@ func (r *Runner) streamAgentLogsGroup(ctx context.Context, group agentLogGroupSo
 }
 
 func (r *Runner) streamDockerAgentLogsSource(ctx context.Context, source agentLogSource, w io.Writer) error {
+	redactor, err := configuredSecretRedactor(r.inspectContainerEnvAll(ctx, source.Container))
+	if err != nil {
+		return fmt.Errorf("ward agent logs: build secret-safe redactor: %w", err)
+	}
 	argv := []string{"logs"}
 	if source.Tail > 0 {
 		argv = append(argv, "--tail", strconv.Itoa(source.Tail))
@@ -774,9 +771,11 @@ func (r *Runner) streamDockerAgentLogsSource(ctx context.Context, source agentLo
 	}
 	argv = append(argv, source.Container)
 	if source.Follow {
+		safe := &redactingLineWriter{target: w, redactor: redactor}
 		prevOut, prevErr := r.Runner.Stdout, r.Runner.Stderr
-		r.Runner.Stdout, r.Runner.Stderr = w, w
+		r.Runner.Stdout, r.Runner.Stderr = safe, safe
 		defer func() {
+			_ = safe.Flush()
 			r.Runner.Stdout, r.Runner.Stderr = prevOut, prevErr
 		}()
 		return r.dockerExec(ctx, argv...)
@@ -788,7 +787,7 @@ func (r *Runner) streamDockerAgentLogsSource(ctx context.Context, source agentLo
 	if len(bytes.TrimSpace(out)) == 0 {
 		return r.streamEmptyDockerAgentLogsSource(ctx, source, w)
 	}
-	_, err = w.Write(out)
+	_, err = w.Write(redactConsoleWith(out, redactor))
 	return err
 }
 
@@ -803,11 +802,20 @@ func (r *Runner) streamEmptyDockerAgentLogsSource(ctx context.Context, source ag
 		r.writeEmptyLiveAgentLogStatus(w, source, tree, timedOut)
 		return nil
 	}
+	redactor, err := configuredSecretRedactor(r.inspectContainerEnvAll(ctx, source.Container))
+	if err != nil {
+		return fmt.Errorf("ward agent logs: build secret-safe redactor: %w", err)
+	}
+	transcript = redactedTranscriptWith(transcript, redactor)
+	if len(transcript) == 0 {
+		r.writeEmptyLiveAgentLogStatus(w, source, tree, timedOut)
+		return nil
+	}
 	if source.Tail > 0 {
 		transcript = tailBytes(transcript, source.Tail)
 	}
 	_, _ = fmt.Fprintf(w, "ward agent logs: %s had no readable bytes; using live transcript tree from %s\n", source.String(), tree)
-	_, err := w.Write(transcript)
+	_, err = w.Write(transcript)
 	return err
 }
 
@@ -1070,13 +1078,13 @@ type frictionReport struct {
 	Events            []frictionEvent `json:"events"`
 }
 
-func (r *Runner) frictionReportSourceForIssue(ref agentIssueRef, opts agentLogsResolveOptions) (agentLogSource, error) {
-	metaSrc, err := findArchivedAgentArtifactSourceByIssue(ref, 0, false, opts, agentLogArtifactMeta)
+func (r *Runner) frictionReportSourceForIssue(ref agentIssueRef) (agentLogSource, error) {
+	metaSrc, err := findArchivedAgentArtifactSourceByIssue(ref, 0, false, agentLogArtifactMeta)
 	if err != nil {
 		return agentLogSource{}, err
 	}
-	meta, events := runMetaAndFrictionFromSource(metaSrc, opts)
-	paths, dispatchMeta, dispatchEvents, _ := dispatchFrictionForRef(ref, opts.RedactedOnly)
+	meta, events := runMetaAndFrictionFromSource(metaSrc)
+	paths, dispatchMeta, dispatchEvents, _ := dispatchFrictionForRef(ref)
 	if meta.Container == "" && dispatchMeta.RequestID == "" {
 		return agentLogSource{}, fmt.Errorf("dispatch broker: no agent friction source matches %q", ref.String())
 	}
@@ -1100,12 +1108,12 @@ func (r *Runner) frictionReportSourceForIssue(ref agentIssueRef, opts agentLogsR
 	return agentLogSource{Kind: agentLogSourceInline, Label: label, Body: body}, nil
 }
 
-func (r *Runner) frictionReportSourceForName(name string, opts agentLogsResolveOptions) (agentLogSource, error) {
-	metaSrc, err := findArchivedAgentArtifactSourceByName(name, 0, false, opts, agentLogArtifactMeta)
+func (r *Runner) frictionReportSourceForName(name string) (agentLogSource, error) {
+	metaSrc, err := findArchivedAgentArtifactSourceByName(name, 0, false, agentLogArtifactMeta)
 	if err != nil {
 		return agentLogSource{}, err
 	}
-	meta, events := runMetaAndFrictionFromSource(metaSrc, opts)
+	meta, events := runMetaAndFrictionFromSource(metaSrc)
 	if meta.Container == "" {
 		return agentLogSource{}, fmt.Errorf("dispatch broker: no agent friction source matches %q", name)
 	}
@@ -1118,7 +1126,7 @@ func (r *Runner) frictionReportSourceForName(name string, opts agentLogsResolveO
 	return agentLogSource{Kind: agentLogSourceInline, Label: "friction report", Body: body}, nil
 }
 
-func runMetaAndFrictionFromSource(src agentLogSource, opts agentLogsResolveOptions) (runMeta, []frictionEvent) {
+func runMetaAndFrictionFromSource(src agentLogSource) (runMeta, []frictionEvent) {
 	if src.Kind == "" || strings.TrimSpace(src.Path) == "" {
 		return runMeta{}, nil
 	}
@@ -1128,7 +1136,7 @@ func runMetaAndFrictionFromSource(src agentLogSource, opts agentLogsResolveOptio
 	}
 	events := append([]frictionEvent(nil), meta.Friction...)
 	if len(events) == 0 {
-		if console := archivedConsoleBesideMeta(src.Path, opts.RedactedOnly); console != "" {
+		if console := archivedConsoleBesideMeta(src.Path); console != "" {
 			if b, err := os.ReadFile(console); err == nil { // #nosec G304 -- path is derived from a selected ward archive meta path
 				events = collectFrictionEvents(meta, string(b))
 			}
@@ -1137,25 +1145,26 @@ func runMetaAndFrictionFromSource(src agentLogSource, opts agentLogsResolveOptio
 	return meta, events
 }
 
-func archivedConsoleBesideMeta(metaPath string, redactedOnly bool) string {
+func archivedConsoleBesideMeta(metaPath string) string {
 	dir := filepath.Dir(metaPath)
-	if redactedOnly || strings.Contains(filepath.ToSlash(dir), "/"+agentLogsRedactedSubdir+"/") {
-		return filepath.Join(dir, drainConsoleRedactedFile)
+	canonical := filepath.Join(dir, drainConsoleFile)
+	if _, err := os.Stat(canonical); err == nil {
+		return canonical
 	}
-	return filepath.Join(dir, drainConsoleFile)
+	return filepath.Join(dir, drainConsoleRedactedFile)
 }
 
-func dispatchFrictionForRef(ref agentIssueRef, redactedOnly bool) (dispatchArtifactPaths, dispatchArtifactMeta, []frictionEvent, bool) {
-	paths, ok, err := latestDispatchArtifactPathsForRefWithRedaction(ref, redactedOnly)
+func dispatchFrictionForRef(ref agentIssueRef) (dispatchArtifactPaths, dispatchArtifactMeta, []frictionEvent, bool) {
+	paths, ok, err := latestDispatchArtifactPathsForRef(ref)
 	if err != nil || !ok {
 		return dispatchArtifactPaths{}, dispatchArtifactMeta{}, nil, false
 	}
-	metaPath := firstNonEmpty(paths.RedactedMeta, paths.MetaPath)
+	metaPath := paths.MetaPath
 	if metaPath == "" {
 		metaPath = filepath.Join(paths.Dir, dispatchArtifactMetaFile)
 	}
 	meta, _ := readDispatchArtifactMeta(metaPath)
-	consolePath := firstNonEmpty(paths.RedactedPath, paths.ConsolePath)
+	consolePath := paths.ConsolePath
 	var console string
 	if b, err := os.ReadFile(consolePath); err == nil { // #nosec G304 -- path is derived from a selected ward dispatch artifact
 		console = string(b)
@@ -1195,11 +1204,7 @@ func readRunMeta(path string) (runMeta, bool) {
 // latestArchivedAgentRunMetaForIssue resolves the newest drained readable-agent run
 // for an issue so callers can tell when a reservation has already been superseded.
 func latestArchivedAgentRunMetaForIssue(ref agentIssueRef) (runMeta, bool, error) {
-	meta, ok, err := latestArchivedAgentRunMetaIn(agentLogsDir(), ref)
-	if err != nil || ok {
-		return meta, ok, err
-	}
-	return latestArchivedAgentRunMetaIn(agentLogsRedactedDir(), ref)
+	return latestArchivedAgentRunMetaIn(agentLogsDir(), ref)
 }
 
 func latestArchivedAgentRunMetaIn(root string, ref agentIssueRef) (runMeta, bool, error) {
@@ -1261,54 +1266,34 @@ func latestDispatchConsolePathForRef(ref agentIssueRef) (string, bool, error) {
 // latestDispatchArtifactPathsForRef resolves the newest broker dispatch artifact
 // directory for an issue ref.
 func latestDispatchArtifactPathsForRef(ref agentIssueRef) (dispatchArtifactPaths, bool, error) {
-	return latestDispatchArtifactPathsForRefWithRedaction(ref, false)
-}
-
-func latestDispatchArtifactPathsForRefWithRedaction(ref agentIssueRef, redactedOnly bool) (dispatchArtifactPaths, bool, error) {
-	if redactedOnly {
-		return latestDispatchArtifactPathsIn(agentLogsRedactedDir(), dispatchArtifactRedactedConsole, func(meta dispatchArtifactMeta, _ string) bool {
-			return meta.Ref == ref.String() || (meta.Repo == ref.repoSlug() && meta.Issue == strconv.Itoa(ref.Number))
-		})
-	}
 	paths, ok, err := latestDispatchArtifactPathsIn(agentLogsDir(), dispatchArtifactConsoleFile, func(meta dispatchArtifactMeta, _ string) bool {
 		return meta.Ref == ref.String() || (meta.Repo == ref.repoSlug() && meta.Issue == strconv.Itoa(ref.Number))
 	})
 	if err != nil || ok {
 		return paths, ok, err
 	}
-	return latestDispatchArtifactPathsIn(agentLogsRedactedDir(), dispatchArtifactRedactedConsole, func(meta dispatchArtifactMeta, _ string) bool {
+	return latestDispatchArtifactPathsIn(agentLogsDir(), dispatchArtifactRedactedConsole, func(meta dispatchArtifactMeta, _ string) bool {
 		return meta.Ref == ref.String() || (meta.Repo == ref.repoSlug() && meta.Issue == strconv.Itoa(ref.Number))
 	})
 }
 
-func latestDispatchArtifactPathsForRoleWithRedaction(role string, redactedOnly bool) (dispatchArtifactPaths, bool, error) {
+func latestDispatchArtifactPathsForRole(role string) (dispatchArtifactPaths, bool, error) {
 	role = strings.TrimSpace(role)
-	if redactedOnly {
-		return latestDispatchArtifactPathsIn(agentLogsRedactedDir(), dispatchArtifactRedactedConsole, func(meta dispatchArtifactMeta, _ string) bool {
-			return meta.Role == role || meta.RequesterRole == role
-		})
-	}
 	paths, ok, err := latestDispatchArtifactPathsIn(agentLogsDir(), dispatchArtifactConsoleFile, func(meta dispatchArtifactMeta, _ string) bool {
 		return meta.Role == role || meta.RequesterRole == role
 	})
 	if err != nil || ok {
 		return paths, ok, err
 	}
-	return latestDispatchArtifactPathsIn(agentLogsRedactedDir(), dispatchArtifactRedactedConsole, func(meta dispatchArtifactMeta, _ string) bool {
+	return latestDispatchArtifactPathsIn(agentLogsDir(), dispatchArtifactRedactedConsole, func(meta dispatchArtifactMeta, _ string) bool {
 		return meta.Role == role || meta.RequesterRole == role
 	})
 }
 
-func dispatchArtifactSourceForRef(ref agentIssueRef, tail int, follow bool, redactedOnly bool) (agentLogSource, error) {
-	paths, ok, err := latestDispatchArtifactPathsForRefWithRedaction(ref, true)
+func dispatchArtifactSourceForRef(ref agentIssueRef, tail int, follow bool) (agentLogSource, error) {
+	paths, ok, err := latestDispatchArtifactPathsForRef(ref)
 	if err != nil {
 		return agentLogSource{}, err
-	}
-	if !ok && !redactedOnly {
-		paths, ok, err = latestDispatchArtifactPathsForRefWithRedaction(ref, false)
-		if err != nil {
-			return agentLogSource{}, err
-		}
 	}
 	if !ok {
 		return agentLogSource{}, nil
@@ -1316,15 +1301,15 @@ func dispatchArtifactSourceForRef(ref agentIssueRef, tail int, follow bool, reda
 	if follow {
 		return agentLogSource{}, fmt.Errorf("ward agent logs: --follow requires a live docker container for %s", ref)
 	}
-	metaPath := firstNonEmpty(paths.RedactedMeta, paths.MetaPath)
+	metaPath := paths.MetaPath
 	if metaPath == "" {
 		metaPath = filepath.Join(paths.Dir, dispatchArtifactMetaFile)
 	}
 	meta, _ := readDispatchArtifactMeta(metaPath)
 	return agentLogSource{
 		Kind:  agentLogSourceFile,
-		Label: "dispatch redacted path",
-		Path:  firstNonEmpty(paths.RedactedPath, paths.ConsolePath),
+		Label: "dispatch log path",
+		Path:  paths.ConsolePath,
 		ArchiveMeta: runMeta{
 			Container: meta.RequestID,
 			Repo:      meta.Repo,
@@ -1373,9 +1358,13 @@ func latestDispatchArtifactPathsInDirs(root, consoleName string, pred func(dispa
 		if !ok || !pred(meta, base) {
 			continue
 		}
+		consolePath := filepath.Join(base, consoleName)
+		if _, err := os.Stat(consolePath); err != nil {
+			continue
+		}
 		paths := dispatchArtifactPaths{
 			Dir:         base,
-			ConsolePath: filepath.Join(base, consoleName),
+			ConsolePath: consolePath,
 			MetaPath:    filepath.Join(base, dispatchArtifactMetaFile),
 			SummaryPath: filepath.Join(base, dispatchArtifactSummaryFile),
 		}

@@ -280,15 +280,16 @@ func roleFromContainerName(name string) string {
 
 // writeSkillUsageArtifact atomically writes observed usage and removes any stale
 // artifact when a deterministic run directory is reused without skill events.
-func writeSkillUsageArtifact(container, dir string, usage *skillUsageArtifact) {
+func writeSkillUsageArtifact(container, dir string, usage *skillUsageArtifact) error {
 	artifactPath := filepath.Join(dir, drainSkillUsageFile)
 	if usage == nil || len(usage.Skills) == 0 {
 		if err := os.Remove(artifactPath); err != nil && !os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "ward container: drain %s: remove stale %s: %v\n", container, drainSkillUsageFile, err)
+			return fmt.Errorf("ward container: drain %s: remove stale %s: %w", container, drainSkillUsageFile, err)
 		}
-		return
+		return nil
 	}
 	if err := writeJSONAtomic(artifactPath, usage); err != nil {
-		fmt.Fprintf(os.Stderr, "ward container: drain %s: write %s: %v\n", container, drainSkillUsageFile, err)
+		return fmt.Errorf("ward container: drain %s: write %s: %w", container, drainSkillUsageFile, err)
 	}
+	return nil
 }

@@ -150,7 +150,7 @@ func smartDefaultsGuard(surface string) cli.BeforeFunc {
 }
 
 func loadOperatorPreferences() (operatorPreferences, error) {
-	cfg, err := loadWardGlobalConfig()
+	cfg, err := loadWardGlobalConfigWithRedactionValidation()
 	if err != nil {
 		return operatorPreferences{}, err
 	}

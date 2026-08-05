@@ -18,6 +18,7 @@ type doctorCheck struct {
 type doctorReport struct {
 	sourceSummary string
 	checks        []doctorCheck
+	warnings      []string
 }
 
 func (r *doctorReport) add(name string, err error) {
@@ -63,6 +64,12 @@ func runDoctor(ctx context.Context) (doctorReport, error) {
 
 	allowPlaceholders := strings.TrimSpace(os.Getenv(doctorAllowPlaceholdersEnv)) != ""
 	report.sourceSummary = "typed defaults + YAML overrides"
+	if hasDirectoryEntries(historicalRawAgentLogsDir()) {
+		report.warnings = append(report.warnings, fmt.Sprintf(
+			"historical raw agent archives remain at %s; Ward does not read, migrate, sanitize, or delete them",
+			historicalRawAgentLogsDir(),
+		))
+	}
 
 	defs, err := currentSmartDefaultsWithError()
 	if err != nil {
@@ -95,6 +102,9 @@ func runDoctor(ctx context.Context) (doctorReport, error) {
 
 func printDoctorReport(report doctorReport) {
 	_, _ = fmt.Fprintf(os.Stdout, "ward doctor: source=%s\n", report.sourceSummary)
+	for _, warning := range report.warnings {
+		_, _ = fmt.Fprintf(os.Stdout, "WARN %s\n", warning)
+	}
 	for _, check := range report.checks {
 		if check.err != nil {
 			_, _ = fmt.Fprintf(os.Stdout, "FAIL %s: %v\n", check.name, check.err)
@@ -107,6 +117,11 @@ func printDoctorReport(report doctorReport) {
 		return
 	}
 	_, _ = fmt.Fprintln(os.Stdout, "ward doctor: all checks passed")
+}
+
+func hasDirectoryEntries(path string) bool {
+	entries, err := os.ReadDir(path)
+	return err == nil && len(entries) > 0
 }
 
 const doctorAllowPlaceholdersEnv = "WARD_DOCTOR_ALLOW_PLACEHOLDERS"

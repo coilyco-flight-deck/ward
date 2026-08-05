@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
@@ -21,18 +23,14 @@ const (
 	dispatchArtifactSummaryFile     = "summary.md"
 )
 
-// dispatchArtifactPaths describes the raw and redacted artifact trees for one
+// dispatchArtifactPaths describes the one secret-safe artifact tree for a
 // broker dispatch request.
 type dispatchArtifactPaths struct {
 	RequestID     string
 	Dir           string
-	RedactedDir   string
 	ConsolePath   string
-	RedactedPath  string
 	MetaPath      string
-	RedactedMeta  string
 	SummaryPath   string
-	RedactedSumm  string
 	CreatedAt     time.Time
 	RequesterRole string
 	RequesterMode containerMode
@@ -79,17 +77,12 @@ func newDispatchArtifactPaths(req dispatchBrokerRequest, now time.Time, requestI
 	}
 	name := fmt.Sprintf("%s-%s", requestID, slug)
 	dir := filepath.Join(agentLogsDir(), dispatchArtifactsSubdir, name)
-	redactedDir := filepath.Join(agentLogsRedactedDir(), dispatchArtifactsSubdir, name)
 	return dispatchArtifactPaths{
 		RequestID:     requestID,
 		Dir:           dir,
-		RedactedDir:   redactedDir,
 		ConsolePath:   filepath.Join(dir, dispatchArtifactConsoleFile),
-		RedactedPath:  filepath.Join(redactedDir, dispatchArtifactRedactedConsole),
 		MetaPath:      filepath.Join(dir, dispatchArtifactMetaFile),
-		RedactedMeta:  filepath.Join(redactedDir, dispatchArtifactMetaFile),
 		SummaryPath:   filepath.Join(dir, dispatchArtifactSummaryFile),
-		RedactedSumm:  filepath.Join(redactedDir, dispatchArtifactSummaryFile),
 		CreatedAt:     now.UTC(),
 		RequesterRole: requesterRole,
 		RequesterMode: requesterMode,
@@ -102,15 +95,68 @@ func newDispatchArtifactPaths(req dispatchBrokerRequest, now time.Time, requestI
 	}
 }
 
-func openDispatchArtifact(req dispatchBrokerRequest, now time.Time, requestID string) (dispatchArtifactPaths, *os.File, error) {
+type dispatchArtifactLog struct {
+	mu       sync.Mutex
+	file     *os.File
+	redactor secretRedactor
+	pending  []byte
+	err      error
+}
+
+func (l *dispatchArtifactLog) Write(body []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.err != nil {
+		return 0, l.err
+	}
+	l.pending = append(l.pending, body...)
+	for {
+		idx := bytes.IndexByte(l.pending, '\n')
+		if idx < 0 {
+			break
+		}
+		line := l.redactor.redact(string(l.pending[:idx+1]))
+		if _, err := l.file.WriteString(line); err != nil {
+			l.err = err
+			return 0, err
+		}
+		l.pending = l.pending[idx+1:]
+	}
+	return len(body), nil
+}
+
+func (l *dispatchArtifactLog) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.pending) > 0 && l.err == nil {
+		_, l.err = l.file.WriteString(l.redactor.redact(string(l.pending)))
+		l.pending = nil
+	}
+	closeErr := l.file.Close()
+	if l.err != nil {
+		return l.err
+	}
+	return closeErr
+}
+
+func openDispatchArtifactLog(path string) (*dispatchArtifactLog, error) {
+	redactor, err := configuredSecretRedactor(nil)
+	if err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304 -- Ward-derived safe archive path
+	if err != nil {
+		return nil, err
+	}
+	return &dispatchArtifactLog{file: file, redactor: redactor}, nil
+}
+
+func openDispatchArtifact(req dispatchBrokerRequest, now time.Time, requestID string) (dispatchArtifactPaths, *dispatchArtifactLog, error) {
 	paths := newDispatchArtifactPaths(req, now, requestID)
 	if err := os.MkdirAll(paths.Dir, 0o755); err != nil {
 		return dispatchArtifactPaths{}, nil, err
 	}
-	if err := os.MkdirAll(paths.RedactedDir, 0o755); err != nil {
-		return dispatchArtifactPaths{}, nil, err
-	}
-	logf, err := os.OpenFile(paths.ConsolePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644) // #nosec G304 -- ward-derived path under ~/.ward
+	logf, err := openDispatchArtifactLog(paths.ConsolePath)
 	if err != nil {
 		return dispatchArtifactPaths{}, nil, err
 	}
@@ -135,9 +181,7 @@ func writeDispatchArtifactInitial(paths dispatchArtifactPaths, req dispatchBroke
 		RedactedArgv:  redactDispatchBrokerArgv(req.Argv),
 	}
 	writeDispatchArtifactJSON(paths.MetaPath, meta)
-	writeDispatchArtifactJSON(paths.RedactedMeta, meta)
 	writeDispatchArtifactSummary(paths.SummaryPath, summarizeDispatchArtifact(meta, ""))
-	writeDispatchArtifactSummary(paths.RedactedSumm, summarizeDispatchArtifact(meta, ""))
 }
 
 func finalizeDispatchArtifact(paths dispatchArtifactPaths, req dispatchBrokerRequest, logPath string, launchErr error) {
@@ -162,26 +206,34 @@ func finalizeDispatchArtifact(paths dispatchArtifactPaths, req dispatchBrokerReq
 	}
 	if launchErr != nil {
 		meta.ErrorClass = dispatchArtifactErrorClass(launchErr)
-		meta.Error = redactSecrets(firstLine(launchErr.Error()))
+		redactor, _ := configuredSecretRedactor(nil)
+		meta.Error = redactor.redact(firstLine(launchErr.Error()))
 	}
 	tail := dispatchArtifactTail(logPath)
-	if body, err := os.ReadFile(logPath); err == nil {
-		_ = os.WriteFile(paths.RedactedPath, []byte(redactSecrets(string(body))), 0o644) // #nosec G306 -- ward-derived path under ~/.ward
-	}
 	writeDispatchArtifactJSON(paths.MetaPath, meta)
-	writeDispatchArtifactJSON(paths.RedactedMeta, meta)
 	writeDispatchArtifactSummary(paths.SummaryPath, summarizeDispatchArtifact(meta, tail))
-	writeDispatchArtifactSummary(paths.RedactedSumm, summarizeDispatchArtifact(meta, tail))
 }
 
 func writeDispatchArtifactJSON(path string, meta dispatchArtifactMeta) {
-	if data, err := json.MarshalIndent(meta, "", "  "); err == nil {
-		_ = os.WriteFile(path, append(data, '\n'), 0o644) // #nosec G306 -- ward-derived path under ~/.ward
+	redactor, err := configuredSecretRedactor(nil)
+	if err != nil {
+		return
+	}
+	var safe dispatchArtifactMeta
+	if err := redactJSONStrings(meta, &safe, redactor); err != nil {
+		return
+	}
+	if data, err := json.MarshalIndent(safe, "", "  "); err == nil {
+		_ = os.WriteFile(path, append(data, '\n'), 0o600) // #nosec G306 -- ward-derived path under ~/.ward
 	}
 }
 
 func writeDispatchArtifactSummary(path, summary string) {
-	_ = os.WriteFile(path, []byte(summary), 0o644) // #nosec G306 -- ward-derived path under ~/.ward
+	redactor, err := configuredSecretRedactor(nil)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(path, []byte(redactor.redact(summary)), 0o600) // #nosec G306 -- ward-derived path under ~/.ward
 }
 
 func summarizeDispatchArtifact(meta dispatchArtifactMeta, tail string) string {
@@ -243,7 +295,8 @@ func dispatchArtifactTail(path string) string {
 	if err != nil {
 		return ""
 	}
-	return redactSecrets(string(tailBytes(b, 200)))
+	redactor, _ := configuredSecretRedactor(nil)
+	return redactor.redact(string(tailBytes(b, 200)))
 }
 
 func dispatchArtifactOutcome(err error) string {
@@ -344,7 +397,7 @@ func newDispatchBrokerRequestID() string {
 
 // openDispatchLog preserves the old test seam while the artifact now lives in a
 // directory-backed dispatch tree.
-func openDispatchLog(req dispatchBrokerRequest, now time.Time) (*os.File, string, error) {
+func openDispatchLog(req dispatchBrokerRequest, now time.Time) (*dispatchArtifactLog, string, error) {
 	paths, logf, err := openDispatchArtifact(req, now, newDispatchBrokerRequestID())
 	if err != nil {
 		return nil, "", err

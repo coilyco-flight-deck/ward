@@ -175,7 +175,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	// It also mounts the Docker socket so it can reap engineers (ward#1001).
 	agentLogs := ""
 	if mountSurfaceExtras {
-		agentLogs = agentLogsRedactedDir()
+		agentLogs = agentLogsDir()
 	}
 	// The per-container machine id rides the ward.machine label. Director surface
 	// containers use a short dictatable id suffix instead of the machine id.
