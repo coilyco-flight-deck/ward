@@ -29,8 +29,8 @@ const forgejoListLimit = "50"
 
 type issueComment = contracts.IssueComment
 
-// repoBrief is one row of an owner's repo list - the fields the task-route survey
-// and the substrate catalog read: canonical full_name, description, topics.
+// repoBrief is one row of an owner's repo list - the fields task-route surveys and
+// director org discovery read: canonical identity, description, topics, and state.
 type repoBrief struct {
 	Name        string   `json:"name"`
 	FullName    string   `json:"full_name"`

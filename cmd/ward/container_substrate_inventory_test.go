@@ -67,69 +67,56 @@ func TestSubstrateInventoryBlock(t *testing.T) {
 	}
 }
 
-func TestRenderSubstrateInventoryWithCatalog(t *testing.T) {
+func TestRenderSubstrateInventoryUsesLocalDescriptionsOnly(t *testing.T) {
 	dest := t.TempDir()
-	writeRepo(t, dest, "sample-platform", "# infra\n\nREADME tagline, should be overridden.\n")
-	writeRepo(t, dest, "ward", "# ward\n\nREADME tagline for ward.\n")
-	// A mounted repo with no catalog entry falls back to its README tagline.
-	writeRepo(t, dest, "orphan", "# orphan\n\nOnly a README here.\n")
-
-	catalog := map[string]catalogEntry{
-		"sample-platform": {
-			FullName:    "coilyco-flight-deck/sample-platform",
-			Description: "k3s cluster and systemd units",
-			Topics:      []string{"k3s", "homelab"},
-			MountPath:   "/substrate/sample-platform",
-		},
-		// ward has an entry but no description: falls back to README, keeps full_name.
-		"ward": {FullName: "coilyco-flight-deck/ward", Topics: []string{"agents"}},
+	writeRepo(t, dest, "alpha", "# alpha\n\nREADME owns this description.\n")
+	writeRepo(t, dest, "beta", "")
+	if err := os.WriteFile(filepath.Join(dest, "beta", "AGENTS.md"), []byte("# beta\n\nAGENTS owns this description.\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
+	writeRepo(t, dest, "gamma", "")
+	if err := os.MkdirAll(filepath.Join(dest, "gamma", "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "gamma", "docs", "FEATURES.md"), []byte("# gamma\n\nFEATURES owns this description.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeRepo(t, dest, "omega", "")
 
-	block := renderSubstrateInventory(dest, catalog)
+	// A stale generated artifact is inert, whether left beside the mounts or in
+	// the configured seed. Inventory derives solely from mounted directories.
+	stale := `{"schema":1,"repos":[{"full_name":"remote/alpha","description":"remote description"}]}`
+	if err := os.WriteFile(filepath.Join(dest, "substrate-catalog.json"), []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seed := t.TempDir()
+	if err := os.WriteFile(filepath.Join(seed, "substrate-catalog.json"), []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WARD_SUBSTRATE_SEED", seed)
+
+	block := substrateInventoryBlock(dest)
 	for _, want := range []string{
-		"- **" + filepath.Join(dest, "sample-platform") + "** (coilyco-flight-deck/sample-platform) - k3s cluster and systemd units [topics: k3s, homelab]",
-		"- **" + filepath.Join(dest, "ward") + "** (coilyco-flight-deck/ward) - README tagline for ward. [topics: agents]",
-		"- **" + filepath.Join(dest, "orphan") + "** - Only a README here.",
+		"- **" + filepath.Join(dest, "alpha") + "** - README owns this description.",
+		"- **" + filepath.Join(dest, "beta") + "** - AGENTS owns this description.",
+		"- **" + filepath.Join(dest, "gamma") + "** - FEATURES owns this description.",
+		"- **" + filepath.Join(dest, "omega") + "**",
 	} {
 		if !strings.Contains(block, want) {
 			t.Errorf("block missing %q\n---\n%s", want, block)
 		}
 	}
-	// The overridden repo must show the catalog description, not the README tagline.
-	if strings.Contains(block, "should be overridden") {
-		t.Errorf("README tagline leaked past the catalog description:\n%s", block)
+	if strings.Contains(block, "remote description") || strings.Contains(block, "substrate-catalog.json") {
+		t.Errorf("stale catalog affected the local inventory:\n%s", block)
 	}
-}
-
-func TestReadCatalogIndex(t *testing.T) {
-	dir := t.TempDir()
-	// A missing file yields a nil index (best-effort), not a panic.
-	if idx := readCatalogIndex(filepath.Join(dir, "absent.json")); idx != nil {
-		t.Errorf("absent catalog: want nil index, got %v", idx)
-	}
-	// Malformed JSON also yields nil, never a failure.
-	bad := filepath.Join(dir, "bad.json")
-	if err := os.WriteFile(bad, []byte("{not json"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if idx := readCatalogIndex(bad); idx != nil {
-		t.Errorf("malformed catalog: want nil index, got %v", idx)
-	}
-	// A well-formed catalog indexes by the full_name's last segment.
-	good := filepath.Join(dir, "substrate-catalog.json")
-	cat := substrateCatalog{Schema: 1, Repos: []catalogEntry{
-		{FullName: "coilyco-flight-deck/sample-platform", Description: "d"},
-	}}
-	data, err := renderSubstrateCatalog(cat)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(good, data, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	idx := readCatalogIndex(good)
-	if e, ok := idx["sample-platform"]; !ok || e.Description != "d" {
-		t.Errorf("index[sample-platform] = %+v, ok=%v", e, ok)
+	// os.ReadDir is name-sorted, and inventory preserves that order.
+	last := -1
+	for _, name := range []string{"alpha", "beta", "gamma", "omega"} {
+		pos := strings.Index(block, filepath.Join(dest, name))
+		if pos <= last {
+			t.Errorf("inventory is not stable name order at %s:\n%s", name, block)
+		}
+		last = pos
 	}
 }
 
