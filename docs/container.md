@@ -16,6 +16,9 @@ The container subsystem is the box that makes the agent half real.
 - Read-only substrate checkouts can be mounted beside it.
 - Host launch assets and the short-lived credential env-file share a hidden,
   platform-correct staging root with an operator-local override.
+- Engineer and QA env files carry the separate `WARD_FORGEJO_GIT_TOKEN` value
+  as in-container `FORGEJO_TOKEN` for Git only. Their tracker API reads and
+  typed writes use the role-bound dispatch broker capability.
 - The container is the wall that carries the feature from start to merge.
 
 ## What the box does

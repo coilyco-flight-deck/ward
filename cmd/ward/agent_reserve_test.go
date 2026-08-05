@@ -284,21 +284,21 @@ func TestFreshReservationComment(t *testing.T) {
 	// A fresh marker comment is a conflict and names its author.
 	who, held := freshReservationComment([]issueComment{
 		mk("just a normal comment", time.Minute, "someone"),
-		mk(reserved, 30*time.Minute, "coilysiren"),
+		mk(reserved, 30*time.Minute, machineComment("").User.Login),
 	}, now, ttl)
 	if !held {
 		t.Fatal("want a held reservation, got none")
 	}
-	if !strings.Contains(who, "coilysiren") {
+	if !strings.Contains(who, machineComment("").User.Login) {
 		t.Errorf("conflict description should name the author; got %q", who)
 	}
 
 	// A stale marker is ignored.
-	if _, held := freshReservationComment([]issueComment{mk(reserved, 3*time.Hour, "coilysiren")}, now, ttl); held {
+	if _, held := freshReservationComment([]issueComment{mk(reserved, 3*time.Hour, machineComment("").User.Login)}, now, ttl); held {
 		t.Error("a stale reservation marker must not block")
 	}
 	// The TTL is honored: under a tighter window the 30-min-old marker is stale.
-	if _, held := freshReservationComment([]issueComment{mk(reserved, 30*time.Minute, "coilysiren")}, now, 10*time.Minute); held {
+	if _, held := freshReservationComment([]issueComment{mk(reserved, 30*time.Minute, machineComment("").User.Login)}, now, 10*time.Minute); held {
 		t.Error("a marker older than a tighter TTL must not block")
 	}
 	// No marker, no conflict.
@@ -484,7 +484,7 @@ func TestReleaseRemoteReservation(t *testing.T) {
 	t.Run("posts release and unlocks", func(t *testing.T) {
 		f := &fakeLockForge{
 			listComments: []issueComment{
-				{ID: 42, Body: reservationCommentBody(modeClaude, "engineer-claude-ward-570", "host", time.Now().Add(-time.Minute), "", nil), CreatedAt: time.Now().Add(-time.Minute)},
+				machineCommentID(42, reservationCommentBody(modeClaude, "engineer-claude-ward-570", "host", time.Now().Add(-time.Minute), "", nil), time.Now().Add(-time.Minute)),
 			},
 		}
 		out := captureTestStderr(t, func() {
@@ -894,9 +894,9 @@ func TestWinningReservationClaim(t *testing.T) {
 func TestReservationClaims(t *testing.T) {
 	now := time.Now().UTC()
 	ttl := agentReservationTTL()
-	a := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-a", now.Add(-time.Minute), "", nil), CreatedAt: now.Add(-time.Minute)}
-	b := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-b", now.Add(-30*time.Second), "", nil), CreatedAt: now.Add(-30 * time.Second)}
-	stale := issueComment{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-c", now.Add(-3*time.Hour), "", nil), CreatedAt: now.Add(-3 * time.Hour)}
+	a := machineComment(reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-a", now.Add(-time.Minute), "", nil), now.Add(-time.Minute))
+	b := machineComment(reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-b", now.Add(-30*time.Second), "", nil), now.Add(-30*time.Second))
+	stale := machineComment(reservationCommentBody(modeClaude, "engineer-claude-ward-600", "host-c", now.Add(-3*time.Hour), "", nil), now.Add(-3*time.Hour))
 	chat := issueComment{Body: "just a human comment", CreatedAt: now}
 	claims := reservationClaims([]issueComment{a, b, stale, chat}, now, ttl)
 	if len(claims) != 2 {
@@ -907,12 +907,12 @@ func TestReservationClaims(t *testing.T) {
 		t.Errorf("reservationClaims identities = %v, want the host-a/host-b pair", got)
 	}
 	// A release stamped at/after the latest claim retracts every claim.
-	rel := issueComment{Body: reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-600", nil), CreatedAt: now}
+	rel := machineComment(reservationReleaseCommentBody(modeClaude, "engineer-claude-ward-600", nil), now)
 	if c := reservationClaims([]issueComment{a, b, rel}, now, ttl); len(c) != 0 {
 		t.Errorf("a release at/after the claims left %d live, want 0", len(c))
 	}
 	// A terminal outcome at/after the claims retracts them like a release (ward#1149).
-	oc := issueComment{Body: "WARD-OUTCOME: merge-ready", CreatedAt: now}
+	oc := machineComment("WARD-OUTCOME: merge-ready", now)
 	if c := reservationClaims([]issueComment{a, b, oc}, now, ttl); len(c) != 0 {
 		t.Errorf("a terminal outcome at/after the claims left %d live, want 0", len(c))
 	}
@@ -930,8 +930,8 @@ func TestReservationRecheckLost(t *testing.T) {
 	reservationRecheckSleep = func(time.Duration) {}
 	defer func() { reservationRecheckDelay, reservationRecheckSleep = origDelay, origSleep }()
 
-	ourComment := issueComment{Body: reservationCommentBody(modeClaude, container, hostname(), now, "", nil), CreatedAt: now}
-	rival := issueComment{Body: reservationCommentBody(modeClaude, container, "rival-host", now.Add(-2*time.Second), "", nil), CreatedAt: now.Add(-2 * time.Second)}
+	ourComment := machineComment(reservationCommentBody(modeClaude, container, hostname(), now, "", nil), now)
+	rival := machineComment(reservationCommentBody(modeClaude, container, "rival-host", now.Add(-2*time.Second), "", nil), now.Add(-2*time.Second))
 
 	t.Run("earlier rival wins -> we yield", func(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
@@ -947,7 +947,7 @@ func TestReservationRecheckLost(t *testing.T) {
 
 	t.Run("we are earliest -> proceed", func(t *testing.T) {
 		reservationRecheckDelay = func() time.Duration { return time.Millisecond }
-		later := issueComment{Body: reservationCommentBody(modeClaude, container, "rival-host", now.Add(2*time.Second), "", nil), CreatedAt: now.Add(2 * time.Second)}
+		later := machineComment(reservationCommentBody(modeClaude, container, "rival-host", now.Add(2*time.Second), "", nil), now.Add(2*time.Second))
 		f := &fakeLockForge{listComments: []issueComment{ourComment, later}}
 		if lost, _ := r.reservationRecheckLost(context.Background(), f, "label", ref, container, false); lost {
 			t.Errorf("earliest claim should proceed, got lost=true")

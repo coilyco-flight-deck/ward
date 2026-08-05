@@ -85,12 +85,16 @@ func containerDispatchBrokerCapabilityCommand() *cli.Command {
 		Name:      "dispatch-broker-capability",
 		Hidden:    true,
 		Usage:     "Mint a peer capability from inside the supervised broker service.",
-		ArgsUsage: "<agent-id>",
+		ArgsUsage: "<role> <agent-id>",
 		Action: func(_ context.Context, c *cli.Command) error {
 			if strings.TrimSpace(os.Getenv(envContainerService)) != dispatchBrokerService {
 				return fmt.Errorf("ward dispatch broker capability: available only inside the broker service")
 			}
-			agentID := strings.TrimSpace(c.Args().First())
+			role := strings.TrimSpace(c.Args().First())
+			agentID := strings.TrimSpace(c.Args().Get(1))
+			if !validComposedRole(role) {
+				return fmt.Errorf("ward dispatch broker capability: invalid role %q", role)
+			}
 			if !validDispatchAgentID(agentID) {
 				return fmt.Errorf("ward dispatch broker capability: invalid agent id %q", agentID)
 			}
@@ -98,7 +102,7 @@ func containerDispatchBrokerCapabilityCommand() *cli.Command {
 			if master == "" {
 				return fmt.Errorf("ward dispatch broker capability: %s is not set", envDispatchBrokerToken)
 			}
-			writef(agentCommandWriter(c), "%s\n", dispatchBrokerAgentCapability(master, agentID))
+			writef(agentCommandWriter(c), "%s\n", dispatchBrokerAgentCapability(master, agentID, role))
 			return nil
 		},
 	}
@@ -186,7 +190,7 @@ func admitHostMountedDispatchPeer(role, requestID, explicitID string) (dispatchB
 	}
 	return dispatchBrokerPeerAdmissionResponse{
 		ClusterID: clusterID, PeerID: req.AgentID, RequestID: requestID,
-		Capability: dispatchBrokerAgentCapability(master, req.AgentID),
+		Capability: dispatchBrokerAgentCapability(master, req.AgentID, req.Role),
 	}, nil
 }
 

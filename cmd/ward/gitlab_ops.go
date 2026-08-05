@@ -89,13 +89,16 @@ func (c *gitlabClient) GetIssue(ctx context.Context, owner, repo string, number 
 		return nil, fmt.Errorf("gitlab: get issue %s/%s#%d returned %s: %s", owner, repo, number, resp.Status, firstLine(string(data)))
 	}
 	var raw struct {
-		IID         int      `json:"iid"`
-		Title       string   `json:"title"`
-		Description string   `json:"description"`
-		State       string   `json:"state"`
-		WebURL      string   `json:"web_url"`
-		UpdatedAt   string   `json:"updated_at"`
-		Labels      []string `json:"labels"`
+		IID         int    `json:"iid"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		State       string `json:"state"`
+		WebURL      string `json:"web_url"`
+		UpdatedAt   string `json:"updated_at"`
+		Author      struct {
+			Username string `json:"username"`
+		} `json:"author"`
+		Labels []string `json:"labels"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("gitlab: parse issue %s/%s#%d: %w", owner, repo, number, err)
@@ -108,6 +111,7 @@ func (c *gitlabClient) GetIssue(ctx context.Context, owner, repo string, number 
 		URL:    raw.WebURL,
 		Labels: append([]string(nil), raw.Labels...),
 	}
+	issue.User.Login = raw.Author.Username
 	if t, err := time.Parse(time.RFC3339Nano, raw.UpdatedAt); err == nil {
 		issue.UpdatedAt = t
 	} else if t, err := time.Parse(time.RFC3339, raw.UpdatedAt); err == nil {
@@ -129,6 +133,7 @@ func (c *gitlabClient) ListIssueComments(ctx context.Context, owner, repo string
 		ID        int    `json:"id"`
 		Body      string `json:"body"`
 		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
 		Author    struct {
 			Username string `json:"username"`
 		} `json:"author"`
@@ -145,6 +150,7 @@ func (c *gitlabClient) ListIssueComments(ctx context.Context, owner, repo string
 		} else if t, err := time.Parse(time.RFC3339, rc.CreatedAt); err == nil {
 			ic.CreatedAt = t
 		}
+		ic.UpdatedAt = parseAnyRFC3339(rc.UpdatedAt)
 		out = append(out, ic)
 	}
 	return out, nil
@@ -163,6 +169,7 @@ func (c *gitlabClient) ListPullRequestComments(ctx context.Context, owner, repo 
 		ID        int    `json:"id"`
 		Body      string `json:"body"`
 		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
 		Author    struct {
 			Username string `json:"username"`
 		} `json:"author"`
@@ -179,6 +186,7 @@ func (c *gitlabClient) ListPullRequestComments(ctx context.Context, owner, repo 
 		} else if t, err := time.Parse(time.RFC3339, rc.CreatedAt); err == nil {
 			ic.CreatedAt = t
 		}
+		ic.UpdatedAt = parseAnyRFC3339(rc.UpdatedAt)
 		out = append(out, ic)
 	}
 	return out, nil
@@ -205,6 +213,9 @@ func (c *gitlabClient) GetPullRequestContext(ctx context.Context, owner, repo st
 		WorkInProgress      bool   `json:"work_in_progress"`
 		Draft               bool   `json:"draft"`
 		UpdatedAt           string `json:"updated_at"`
+		Author              struct {
+			Username string `json:"username"`
+		} `json:"author"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("gitlab: parse merge request %s/%s!%d: %w", owner, repo, number, err)
@@ -221,10 +232,11 @@ func (c *gitlabClient) GetPullRequestContext(ctx context.Context, owner, repo st
 	}
 	return &agentPullRequestContext{
 		State:        normalizeOpenState(raw.State),
-		Title:        strings.TrimSpace(raw.Title),
-		Body:         strings.TrimSpace(raw.Description),
+		Title:        raw.Title,
+		Body:         raw.Description,
 		URL:          strings.TrimSpace(raw.WebURL),
 		UpdatedAt:    parseAnyRFC3339(raw.UpdatedAt),
+		Author:       strings.TrimSpace(raw.Author.Username),
 		HeadRef:      strings.TrimSpace(raw.SourceBranch),
 		BaseRef:      strings.TrimSpace(raw.TargetBranch),
 		Mergeability: mergeability,

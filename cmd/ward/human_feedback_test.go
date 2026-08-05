@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -29,38 +27,16 @@ func TestWardAuthoredCommentNeedsStructuredMarkerByDefault(t *testing.T) {
 	}
 }
 
-func TestHumanFeedbackConfigExtendsAutomationAndIgnoredAuthors(t *testing.T) {
-	home := t.TempDir()
-	setTestHome(t, home)
-	cfgPath := filepath.Join(home, ".ward", "config.yaml")
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
-		t.Fatalf("mkdir config dir: %v", err)
-	}
-	if err := os.WriteFile(cfgPath, []byte(`agent:
-  human-feedback:
-    ignore-authors:
-      - repo-owner
-      - helper-bot
-    automation-markers:
-      - "custom-automation:"
-`), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	if !wardAuthoredComment(issueComment{
-		Body: "plain note",
-		User: struct {
-			Login string `json:"login"`
-		}{Login: "repo-owner"},
-	}) {
-		t.Fatalf("ignored author should count as automation")
-	}
-	if !wardAuthoredComment(issueComment{
-		Body: "custom-automation: synthesized acknowledgement",
-		User: struct {
-			Login string `json:"login"`
-		}{Login: "someone"},
-	}) {
-		t.Fatalf("configured automation marker should count as automation")
+func TestHumanFeedbackRejectsCustomAuthorAndMarkerBypasses(t *testing.T) {
+	t.Setenv(envTrustedCollaborators, "repo-owner")
+	t.Setenv(envAutomationActor, "ward-bot")
+	for _, comment := range []issueComment{
+		commentBy("helper-bot", "plain note"),
+		commentBy("someone", "custom-automation: synthesized acknowledgement"),
+	} {
+		if wardAuthoredComment(comment) {
+			t.Fatalf("comment %+v bypassed the fixed actor and marker policy", comment)
+		}
 	}
 }
 

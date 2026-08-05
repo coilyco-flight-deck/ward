@@ -1049,7 +1049,7 @@ func launchedClosedUnmergedPRCommentBody(env reapEnv, outcome backlogOutcome) st
 func reservationCommentAfter(comments []issueComment, at time.Time) bool {
 	for i := range comments {
 		c := &comments[i]
-		if strings.Contains(c.Body, agentReservationReleaseMarker) || !strings.Contains(c.Body, agentReservationMarker) {
+		if !trustedMachineComment(*c, recordKindReservation) {
 			continue
 		}
 		if c.CreatedAt.After(at) {
@@ -1128,6 +1128,9 @@ func latestBacklogOutcomeCommentAfter(comments []issueComment, afterAt time.Time
 	ok := false
 	for _, c := range comments {
 		if c.CreatedAt.Before(afterAt) {
+			continue
+		}
+		if !trustedMachineComment(c, recordKindOutcome) {
 			continue
 		}
 		if _, found := backlogOutcomeOfComment(c.Body); !found {

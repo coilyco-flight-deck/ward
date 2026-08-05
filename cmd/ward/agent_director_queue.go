@@ -364,15 +364,15 @@ func latestDirectorQueueSignal(comments []issueComment) directorQueueSignal {
 		switch {
 		// The needs-redispatch marker alone is the signal: a reservation-collision
 		// deferral carries it without a release marker (ward#1149).
-		case strings.Contains(c.Body, agentNeedsRedispatchMarker):
+		case trustedMachineComment(c, recordKindDispatch):
 			if c.CreatedAt.After(sig.At) {
 				sig = directorQueueSignal{Kind: directorQueueSignalRedispatch, At: c.CreatedAt, Comment: c}
 			}
-		case strings.Contains(c.Body, agentReservationMarker) && !strings.Contains(c.Body, agentReservationReleaseMarker):
+		case trustedMachineComment(c, recordKindReservation):
 			if c.CreatedAt.After(sig.At) {
 				sig = directorQueueSignal{Kind: directorQueueSignalReservation, At: c.CreatedAt, Comment: c}
 			}
-		default:
+		case trustedMachineComment(c, recordKindOutcome):
 			if outcome, ok := backlogOutcomeOfComment(c.Body); ok && c.CreatedAt.After(sig.At) {
 				sig = directorQueueSignal{Kind: directorQueueSignalOutcome, At: c.CreatedAt, Comment: c, Outcome: &outcome}
 			}

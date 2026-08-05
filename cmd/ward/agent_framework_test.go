@@ -37,12 +37,12 @@ func TestAgentFrameworkGenericBrokerLaunchBindsRoleAndAgentID(t *testing.T) {
 
 func TestAgentFrameworkBrokerCallerCapabilityStampsAgentIdentity(t *testing.T) {
 	const master = "master-capability"
-	capability := dispatchBrokerAgentCapability(master, "critic.one")
-	identity, ok := authenticateDispatchBrokerCaller(capability, master, "director")
-	if !ok || identity != "critic.one" {
-		t.Fatalf("authenticate child = %q, %t", identity, ok)
+	capability := dispatchBrokerAgentCapability(master, "critic.one", "critic")
+	identity, role, ok := authenticateDispatchBrokerCaller(capability, master, "director", roleDirector)
+	if !ok || identity != "critic.one" || role != "critic" {
+		t.Fatalf("authenticate child = %q, %q, %t", identity, role, ok)
 	}
-	if _, ok := authenticateDispatchBrokerCaller(capability+"x", master, "director"); ok {
+	if _, _, ok := authenticateDispatchBrokerCaller(capability+"x", master, "director", roleDirector); ok {
 		t.Fatal("accepted modified capability")
 	}
 }

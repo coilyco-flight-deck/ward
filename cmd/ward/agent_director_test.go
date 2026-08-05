@@ -1050,6 +1050,7 @@ func TestDirectorIssueScopeUsesOnlyTheReferencedIssue(t *testing.T) {
 				"number": 5, "title": "target issue", "body": "body", "state": "open",
 				"html_url": "https://forgejo.example/coilyco-flight-deck/ward/issues/5",
 				"labels":   []map[string]any{{"name": "P0"}, {"name": "headless"}},
+				"user":     map[string]any{"login": "repo-owner"},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/5/comments":
 			_ = json.NewEncoder(w).Encode([]map[string]any{})
@@ -1122,6 +1123,7 @@ func TestIssueScopedDirectorRefreshStaysOnOneIssue(t *testing.T) {
 				"number": 5, "title": "target issue", "body": "body", "state": "open",
 				"html_url": "https://forgejo.example/coilyco-flight-deck/ward/issues/5",
 				"labels":   []map[string]any{{"name": "P0"}, {"name": "headless"}},
+				"user":     map[string]any{"login": "repo-owner"},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/coilyco-flight-deck/ward/issues/5/comments":
 			_ = json.NewEncoder(w).Encode([]map[string]any{})
@@ -1301,6 +1303,7 @@ func TestResolveDirectorIssueRefFailsClosedAndDoesNotWiden(t *testing.T) {
 					_ = json.NewEncoder(w).Encode(map[string]any{
 						"number": 6, "title": "target issue", "body": "body", "state": tc.state,
 						"html_url": "https://forgejo.example/coilyco-flight-deck/ward/issues/6",
+						"user":     map[string]any{"login": "repo-owner"},
 						"labels": func() []map[string]any {
 							out := make([]map[string]any, 0, len(tc.labels))
 							for _, l := range tc.labels {
@@ -1507,6 +1510,11 @@ func TestParseBacklogOutcome(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			for i := range c.comments {
+				if _, _, attempted := fixedWardRecordKind(c.comments[i].Body); attempted {
+					c.comments[i].User.Login = machineComment("").User.Login
+				}
+			}
 			got := parseBacklogOutcome(c.comments)
 			if c.wantNil {
 				if got != nil {
@@ -1579,7 +1587,7 @@ func TestReconcileNoOutcome(t *testing.T) {
 		return ts
 	}
 	dispatched := at("2026-07-04T04:39:45Z")
-	release := issueComment{Body: agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\nrun never started", CreatedAt: at("2026-07-04T04:39:52Z")}
+	release := machineComment(agentReservationReleaseMarker+"\n"+agentNeedsRedispatchMarker+"\nrun never started", at("2026-07-04T04:39:52Z"))
 	chatter := issueComment{Body: "just a comment", CreatedAt: at("2026-07-04T04:40:00Z")}
 
 	// No release marker: the agent launched and vanished - stays terminal failed.
@@ -1596,7 +1604,7 @@ func TestReconcileNoOutcome(t *testing.T) {
 
 	// A release stamped BEFORE this dispatch is a stale marker from a prior attempt, not
 	// this run's death: it must not re-queue a run that actually launched.
-	stale := issueComment{Body: agentReservationReleaseMarker, CreatedAt: at("2026-07-04T04:00:00Z")}
+	stale := machineComment(agentReservationReleaseMarker, at("2026-07-04T04:00:00Z"))
 	if state, _, _ := reconcileNoOutcome([]issueComment{stale}, dispatched, 0); state != "failed" {
 		t.Fatalf("stale release: got %s, want failed", state)
 	}
@@ -1617,7 +1625,7 @@ func TestPrelaunchDeathRelease(t *testing.T) {
 		return ts
 	}
 	rel := func(ts string) issueComment {
-		return issueComment{Body: agentReservationReleaseMarker, CreatedAt: at(ts)}
+		return machineComment(agentReservationReleaseMarker, at(ts))
 	}
 	if prelaunchDeathRelease([]issueComment{{Body: "no marker", CreatedAt: at("2026-07-04T05:00:00Z")}}, at("2026-07-04T04:00:00Z")) {
 		t.Error("a thread with no release marker is not a pre-launch death")
@@ -1659,10 +1667,10 @@ func TestBacklogLaneCountsAndPicks(t *testing.T) {
 
 func TestBacklogReservationState(t *testing.T) {
 	now := time.Date(2026, 7, 10, 9, 0, 0, 0, time.UTC)
-	fresh := issueComment{Body: agentReservationMarker + "\nreserved", CreatedAt: now.Add(-10 * time.Minute)}
-	stale := issueComment{Body: agentReservationMarker + "\nreserved", CreatedAt: now.Add(-2 * time.Hour)}
-	released := issueComment{Body: agentReservationMarker + "\nreserved", CreatedAt: now.Add(-2 * time.Hour)}
-	release := issueComment{Body: agentReservationReleaseMarker, CreatedAt: now.Add(-time.Minute)}
+	fresh := machineComment(agentReservationMarker+"\nreserved", now.Add(-10*time.Minute))
+	stale := machineComment(agentReservationMarker+"\nreserved", now.Add(-2*time.Hour))
+	released := machineComment(agentReservationMarker+"\nreserved", now.Add(-2*time.Hour))
+	release := machineComment(agentReservationReleaseMarker, now.Add(-time.Minute))
 
 	if got := backlogReservationState([]issueComment{fresh}, now, time.Hour); got != backlogReservationWaitingReaper {
 		t.Fatalf("fresh reservation = %q, want %q", got, backlogReservationWaitingReaper)
@@ -1711,11 +1719,8 @@ func TestBacklogSweepNeedsRedispatch(t *testing.T) {
 	now := time.Date(2026, 7, 13, 9, 0, 0, 0, time.UTC)
 	r := &Runner{}
 	tr := targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}
-	marker := issueComment{
-		Body:      agentReservationReleaseMarker + "\n" + agentNeedsRedispatchMarker + "\nWARD-DISPATCH: failed ❌",
-		CreatedAt: now.Add(-time.Minute),
-	}
-	outcome := issueComment{Body: "WARD-OUTCOME: merge-ready", CreatedAt: now.Add(-30 * time.Minute)}
+	marker := machineComment(agentReservationReleaseMarker+"\n"+agentNeedsRedispatchMarker+"\nWARD-DISPATCH: failed ❌", now.Add(-time.Minute))
+	outcome := machineComment("WARD-OUTCOME: merge-ready", now.Add(-30*time.Minute))
 
 	e := &backlogEntry{
 		Num: 927, Kind: backlogKindIssue, Lane: "headless", State: "merge-ready",
@@ -1735,7 +1740,7 @@ func TestBacklogSweepNeedsRedispatch(t *testing.T) {
 	}
 
 	// A newer outcome means the marker was handled: no re-queue.
-	handled := issueComment{Body: "WARD-OUTCOME: merge-ready", CreatedAt: now}
+	handled := machineComment("WARD-OUTCOME: merge-ready", now)
 	e2 := &backlogEntry{Num: 928, Kind: backlogKindIssue, Lane: "headless", State: "merge-ready"}
 	if r.backlogSweepNeedsRedispatch(context.Background(), "coilyco-flight-deck/ward", tr, e2, []issueComment{marker, handled}) {
 		t.Fatal("sweep re-queued a marker an outcome already superseded")

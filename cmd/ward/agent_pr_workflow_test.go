@@ -188,7 +188,7 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 				additions = f.prAdditions
 				deletions = f.prDeletions
 			}
-			body := `{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"` + state + `","head":{"sha":"` + headSHA + `","ref":"` + headRef + `"},"base":{"ref":"` + baseRef + `"}`
+			body := `{"number":7,"title":"t","body":` + jsonString(f.prBody) + `,"state":"` + state + `","user":{"login":"repo-owner"},"head":{"sha":"` + headSHA + `","ref":"` + headRef + `"},"base":{"ref":"` + baseRef + `"}`
 			if !f.updatedAt.IsZero() {
 				body += `,"updated_at":` + jsonString(f.updatedAt.UTC().Format(time.RFC3339))
 			}
@@ -296,7 +296,7 @@ func (f *prWorkflowFakeForge) server(t *testing.T) *httptest.Server {
 		}
 		switch r.Method {
 		case http.MethodGet:
-			body := `{"number":` + strconv.Itoa(num) + `,"title":"t","body":"closes #` + strconv.Itoa(num) + `","state":"open","html_url":"https://f/issues/` + strconv.Itoa(num) + `"`
+			body := `{"number":` + strconv.Itoa(num) + `,"title":"t","body":"closes #` + strconv.Itoa(num) + `","state":"open","html_url":"https://f/issues/` + strconv.Itoa(num) + `","user":{"login":"repo-owner"}`
 			if !f.updatedAt.IsZero() {
 				body += `,"updated_at":` + jsonString(f.updatedAt.UTC().Format(time.RFC3339))
 			}
@@ -688,11 +688,13 @@ func TestPRWorkflowRecoverReportHighlightsMergedOpenLinkedIssue(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/7":
-			_, _ = w.Write([]byte(`{"number":7,"title":"repair branch","body":"closes #6\n","state":"closed","head":{"sha":"headsha","ref":"issue-7"},"base":{"ref":"main"}}`))
+			_, _ = w.Write([]byte(`{"number":7,"title":"repair branch","body":"closes #6\n","state":"closed","user":{"login":"repo-owner"},"head":{"sha":"headsha","ref":"issue-7"},"base":{"ref":"main"}}`))
+		case "/api/v1/repos/coilyco-flight-deck/ward/issues/7/comments", "/api/v1/repos/coilyco-flight-deck/ward/issues/6/comments":
+			_, _ = w.Write([]byte(`[]`))
 		case "/api/v1/repos/coilyco-flight-deck/ward/pulls/7/merge":
 			w.WriteHeader(http.StatusNoContent)
 		case "/api/v1/repos/coilyco-flight-deck/ward/issues/6":
-			_, _ = w.Write([]byte(`{"number":6,"title":"carried issue","body":"body","state":"open","html_url":"https://f/issues/6"}`))
+			_, _ = w.Write([]byte(`{"number":6,"title":"carried issue","body":"body","state":"open","html_url":"https://f/issues/6","user":{"login":"repo-owner"}}`))
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}

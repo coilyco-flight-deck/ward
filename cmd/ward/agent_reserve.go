@@ -644,10 +644,14 @@ func reservationRetractedAt(comments []issueComment) time.Time {
 	var released time.Time
 	for i := range comments {
 		c := &comments[i]
-		retracts := strings.Contains(c.Body, agentReservationReleaseMarker)
+		admission := classifyActorComment(*c)
+		retracts := admission.Class == actorClassTrustedMachine && admission.RecordKind == recordKindReservationRelease
 		if !retracts {
-			if o, ok := backlogOutcomeOfComment(c.Body); ok && terminalReservationOutcome(o.Status) {
-				retracts = true
+			if admission.Class == actorClassTrustedMachine && admission.RecordKind == recordKindOutcome {
+				o, ok := backlogOutcomeOfComment(c.Body)
+				if ok && terminalReservationOutcome(o.Status) {
+					retracts = true
+				}
 			}
 		}
 		if retracts && c.CreatedAt.After(released) {
@@ -664,10 +668,7 @@ func freshReservationComment(comments []issueComment, now time.Time, ttl time.Du
 	released := reservationRetractedAt(comments)
 	for i := range comments {
 		c := &comments[i]
-		if strings.Contains(c.Body, agentReservationReleaseMarker) {
-			continue
-		}
-		if !strings.Contains(c.Body, agentReservationMarker) {
+		if !trustedMachineComment(*c, recordKindReservation) {
 			continue
 		}
 		if !reservationFresh(c.CreatedAt, now, ttl) {
@@ -739,7 +740,7 @@ func reservationClaims(comments []issueComment, now time.Time, ttl time.Duration
 	var claims []reservationClaim
 	for i := range comments {
 		c := &comments[i]
-		if strings.Contains(c.Body, agentReservationReleaseMarker) || !strings.Contains(c.Body, agentReservationMarker) {
+		if !trustedMachineComment(*c, recordKindReservation) {
 			continue
 		}
 		if !reservationFresh(c.CreatedAt, now, ttl) {

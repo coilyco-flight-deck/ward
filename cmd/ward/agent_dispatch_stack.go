@@ -311,6 +311,11 @@ func (r *Runner) runDirectorStack(ctx context.Context, plan upPlan, stack direct
 	if err := appendLaunchEnvSecret(directorEnvFile, envDispatchBrokerToken, token); err != nil {
 		return fmt.Errorf("ward director stack: write director broker capability: %w", err)
 	}
+	if gitToken := strings.TrimSpace(os.Getenv(envForgejoGitToken)); gitToken != "" {
+		if err := appendLaunchEnvSecret(brokerEnvFile, envForgejoGitToken, gitToken); err != nil {
+			return fmt.Errorf("ward director stack: write Git-only child credential: %w", err)
+		}
+	}
 	envBody, err := os.ReadFile(brokerEnvFile) // #nosec G304 -- Ward-owned launch env path
 	if err != nil {
 		return fmt.Errorf("ward director stack: read launch environment: %w", err)

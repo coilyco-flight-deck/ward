@@ -4,11 +4,23 @@ The current Compose director uses its privileged sibling broker for native
 Forgejo operations.
 
 - Only the broker service receives `FORGEJO_TOKEN`.
+- The broker also receives deployment-owned `WARD_FORGEJO_GIT_TOKEN` only so it
+  can seed engineer and QA containers for Git push. Ward rejects a missing Git
+  token and rejects it when it equals the broad token.
 - The director service receives its selected harness credential and the
   per-stack broker capability in a separate env file. Its container
   environment and projected home contain no transferable Forgejo credential.
 - Ward's native Forgejo client sends bounded request data to the broker. It
   never asks the broker to return the token.
+- Engineer and QA capabilities bind both agent ID and role in the HMAC. Those
+  roles can use the raw Forgejo action only for fixed reads. Writes use typed
+  tracker operations carrying a fixed record kind.
+- QA may mint only QA records. Engineer mutations are limited to Ward's
+  reservation, release, outcome, preflight, review, route, and dispatch record
+  families plus the corresponding issue or pull-request lifecycle operations.
+  Approval is a separate master-director action.
+- Before a typed write or approval, the broker verifies that its authenticated
+  Forgejo login exactly matches `WARD_AUTOMATION_ACTOR`.
 - The broker rechecks the director role, the exact native route allowlist, the
   owner prefix, the repository shape, request size, query keys, and response
   size before or during every request.

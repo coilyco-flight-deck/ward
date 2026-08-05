@@ -59,7 +59,10 @@ func (c *githubClient) GetIssue(ctx context.Context, owner, repo string, number 
 		State     string `json:"state"`
 		HTMLURL   string `json:"html_url"`
 		UpdatedAt string `json:"updated_at"`
-		Labels    []struct {
+		User      struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Labels []struct {
 			Name string `json:"name"`
 		} `json:"labels"`
 	}
@@ -74,6 +77,7 @@ func (c *githubClient) GetIssue(ctx context.Context, owner, repo string, number 
 		URL:    raw.HTMLURL,
 		Labels: nil,
 	}
+	issue.User.Login = raw.User.Login
 	if t, err := time.Parse(time.RFC3339, raw.UpdatedAt); err == nil {
 		issue.UpdatedAt = t
 	}
@@ -91,6 +95,7 @@ type ghComment struct {
 	ID        int    `json:"id"`
 	Body      string `json:"body"`
 	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 	User      struct {
 		Login string `json:"login"`
 	} `json:"user"`
@@ -121,6 +126,9 @@ func ghCommentsToIssueComments(raw []ghComment) []issueComment {
 		if t, err := time.Parse(time.RFC3339, rc.CreatedAt); err == nil {
 			ic.CreatedAt = t
 		}
+		if t, err := time.Parse(time.RFC3339, rc.UpdatedAt); err == nil {
+			ic.UpdatedAt = t
+		}
 		out = append(out, ic)
 	}
 	return out
@@ -142,8 +150,11 @@ func (c *githubClient) GetPullRequestContext(ctx context.Context, owner, repo st
 		State     string `json:"state"`
 		HTMLURL   string `json:"html_url"`
 		UpdatedAt string `json:"updated_at"`
-		Draft     bool   `json:"draft"`
-		Mergeable any    `json:"mergeable"`
+		User      struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Draft     bool `json:"draft"`
+		Mergeable any  `json:"mergeable"`
 		Head      struct {
 			SHA string `json:"sha"`
 			Ref string `json:"ref"`
@@ -172,10 +183,11 @@ func (c *githubClient) GetPullRequestContext(ctx context.Context, owner, repo st
 	}
 	return &agentPullRequestContext{
 		State:        strings.TrimSpace(raw.State),
-		Title:        strings.TrimSpace(raw.Title),
-		Body:         strings.TrimSpace(raw.Body),
+		Title:        raw.Title,
+		Body:         raw.Body,
 		URL:          strings.TrimSpace(raw.HTMLURL),
 		UpdatedAt:    parseAnyRFC3339(raw.UpdatedAt),
+		Author:       strings.TrimSpace(raw.User.Login),
 		HeadSHA:      strings.TrimSpace(raw.Head.SHA),
 		HeadRef:      strings.TrimSpace(raw.Head.Ref),
 		BaseRef:      strings.TrimSpace(raw.Base.Ref),

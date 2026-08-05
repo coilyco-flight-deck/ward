@@ -231,6 +231,9 @@ func dispatchHealthActiveIssueFilter(ctx context.Context, cl Tracker) dispatchHe
 
 func dispatchHealthIssueHasDoneOutcome(comments []issueComment) bool {
 	for _, c := range comments {
+		if !trustedMachineComment(c, recordKindOutcome) {
+			continue
+		}
 		outcome, ok := backlogOutcomeOfComment(c.Body)
 		if !ok {
 			continue

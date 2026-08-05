@@ -241,8 +241,9 @@ func validateDispatchBrokerForgejo(req dispatchBrokerRequest) error {
 }
 
 func validateDispatchBrokerForgejoEnvelope(req dispatchBrokerRequest) error {
-	if strings.TrimSpace(req.Role) != roleDirector {
-		return fmt.Errorf("dispatch broker: forgejo action requires role %q, got %q", roleDirector, req.Role)
+	role := strings.TrimSpace(req.Role)
+	if !rawForgejoRoleAllowed(role) {
+		return fmt.Errorf("dispatch broker: forgejo action rejects role %q", req.Role)
 	}
 	if len(req.Argv) != 0 || strings.TrimSpace(req.Target) != "" {
 		return fmt.Errorf("dispatch broker: forgejo action accepts no launch argv or free-form target")
@@ -251,13 +252,28 @@ func validateDispatchBrokerForgejoEnvelope(req dispatchBrokerRequest) error {
 		return fmt.Errorf("dispatch broker: forgejo action requires a native request")
 	}
 	call := req.Forgejo
+	if !rawForgejoMethodAllowed(role, call.Method) {
+		return fmt.Errorf("dispatch broker: role %q may use the raw Forgejo action only for reads", role)
+	}
 	if len(call.Body) > nativeForgejoRequestBodyLimit {
 		return fmt.Errorf("dispatch broker: forgejo request body exceeds %d bytes", nativeForgejoRequestBodyLimit)
 	}
-	if call.Accept != "" && call.Accept != "application/json" && call.Accept != "text/plain" {
+	if !nativeForgejoAcceptAllowed(call.Accept) {
 		return fmt.Errorf("dispatch broker: forgejo accept %q is not allowed", call.Accept)
 	}
 	return validateNativeForgejoQuery(call.Query)
+}
+
+func rawForgejoRoleAllowed(role string) bool {
+	return role == roleDirector || role == roleEngineer || role == roleQA
+}
+
+func rawForgejoMethodAllowed(role, method string) bool {
+	return role == roleDirector || method == http.MethodGet || method == http.MethodHead
+}
+
+func nativeForgejoAcceptAllowed(accept string) bool {
+	return accept == "" || accept == "application/json" || accept == "text/plain"
 }
 
 func validateNativeForgejoQuery(query map[string][]string) error {
@@ -377,8 +393,10 @@ func positiveDecimal(value string) bool {
 }
 
 func nativeForgejoBrokerEnabled() bool {
-	return os.Getenv("WARD_READONLY") == "1" &&
-		strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)) != ""
+	role := strings.TrimSpace(os.Getenv("WARD_ROLE"))
+	return strings.TrimSpace(os.Getenv(envDispatchBrokerAddr)) != "" &&
+		strings.TrimSpace(os.Getenv(envDispatchBrokerToken)) != "" &&
+		(os.Getenv("WARD_READONLY") == "1" || role == roleEngineer || role == roleQA)
 }
 
 func nativeForgejoHTTPClient() *http.Client {

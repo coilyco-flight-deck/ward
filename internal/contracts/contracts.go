@@ -28,6 +28,9 @@ type Issue struct {
 	URL       string    `json:"html_url"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Labels    []string
+	User      struct {
+		Login string `json:"login"`
+	} `json:"user"`
 }
 
 // IssueComment is one row of an issue thread.
@@ -35,6 +38,7 @@ type IssueComment struct {
 	ID        int       `json:"id"`
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 	User      struct {
 		Login string `json:"login"`
 	} `json:"user"`
@@ -112,7 +116,10 @@ type PullRequest struct {
 	Deletions int       `json:"deletions"`
 	HTMLURL   string    `json:"html_url"`
 	UpdatedAt time.Time `json:"updated_at"`
-	Head      struct {
+	User      struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	Head struct {
 		SHA string `json:"sha"`
 		Ref string `json:"ref"`
 	} `json:"head"`

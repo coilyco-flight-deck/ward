@@ -88,9 +88,9 @@ func TestDispatchHealthReportFlagsPartialLaunch(t *testing.T) {
 
 func TestDispatchHealthSkipsClosedCompletedIssueRefs(t *testing.T) {
 	comments := []issueComment{
-		{Body: "WARD-WORKFLOW: blocked 🛑\n\n<details><summary>details</summary>\n\nstalled\n\n</details>"},
-		{Body: "WARD-WORKFLOW: done ✅\n\n<details><summary>details</summary>\n\nlanded on main\n\n</details>"},
-		{Body: "WARD-WORKFLOW: failed ❌\n\n<details><summary>details</summary>\n\nfalse salvage noise\n\n</details>"},
+		machineComment("WARD-WORKFLOW: blocked 🛑\n\n<details><summary>details</summary>\n\nstalled\n\n</details>"),
+		machineComment("WARD-WORKFLOW: done ✅\n\n<details><summary>details</summary>\n\nlanded on main\n\n</details>"),
+		machineComment("WARD-WORKFLOW: failed ❌\n\n<details><summary>details</summary>\n\nfalse salvage noise\n\n</details>"),
 	}
 	if !dispatchHealthIssueHasDoneOutcome(comments) {
 		t.Fatal("done marker should win over older or newer blocked/salvage noise")

@@ -692,19 +692,12 @@ func TestPreflightPrompt(t *testing.T) {
 }
 
 func TestPreflightComments(t *testing.T) {
-	author := func(login string) struct {
-		Login string `json:"login"`
-	} {
-		return struct {
-			Login string `json:"login"`
-		}{Login: login}
-	}
 	comments := []issueComment{
-		{Body: "real human question", User: author("coilysiren")},
-		{Body: "reservation ping " + agentReservationMarker, User: author("ward-bot")},
-		{Body: "stale verdict\n" + preflightNoGoMarker, User: author("ward-bot")},
-		{Body: "  ", User: author("coilysiren")},
-		{Body: "my decision: option A", User: author("coilysiren")},
+		commentBy("coilysiren", "real human question"),
+		machineComment(agentReservationMarker + "\nreservation ping"),
+		machineComment(preflightNoGoMarker + "\nstale verdict"),
+		commentBy("coilysiren", "  "),
+		commentBy("coilysiren", "my decision: option A"),
 	}
 	got := preflightComments(comments)
 	for _, want := range []string{"real human question", "my decision: option A", "coilysiren"} {

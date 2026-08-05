@@ -549,7 +549,7 @@ func TestPostLaunchedNoOutcomeComment(t *testing.T) {
 	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
 	fc := &fakeNoOutcomeTracker{
 		comments: []issueComment{
-			{Body: "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nold\n\n</details>", CreatedAt: upAt.Add(-time.Minute)},
+			machineComment("WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nold\n\n</details>", upAt.Add(-time.Minute)),
 			{Body: "noise", CreatedAt: upAt.Add(time.Minute)},
 		},
 	}
@@ -587,10 +587,12 @@ func TestReleaseReservationIfTerminalOutcomeComment(t *testing.T) {
 		{name: "submitted url", body: "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", wantVisible: "WARD-WORKFLOW: reservation-released", wantRunFinished: "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			reservation := machineComment(reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(-2*time.Minute), "", nil), upAt.Add(-2*time.Minute))
+			reservation.ID = 99
 			fc := &fakeTerminalOutcomeTracker{
 				comments: []issueComment{
-					{ID: 99, Body: reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(-2*time.Minute), "", nil), CreatedAt: upAt.Add(-2 * time.Minute)},
-					{Body: tc.body, CreatedAt: upAt.Add(time.Minute)},
+					reservation,
+					machineComment(tc.body, upAt.Add(time.Minute)),
 				},
 				postAt: upAt.Add(2 * time.Minute),
 			}
@@ -632,8 +634,8 @@ func TestReleaseReservationIfSubmittedPRClosedUnmergedCommentsFailure(t *testing
 	fc := &fakeClosedUnmergedPRTracker{
 		fakeTerminalOutcomeTracker: &fakeTerminalOutcomeTracker{
 			comments: []issueComment{
-				{Body: reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(-2*time.Minute), "", nil), CreatedAt: upAt.Add(-2 * time.Minute)},
-				{Body: "WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
+				machineComment(reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(-2*time.Minute), "", nil), upAt.Add(-2*time.Minute)),
+				machineComment("WARD-WORKFLOW: https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1042\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", upAt.Add(time.Minute)),
 			},
 			postAt: upAt.Add(2 * time.Minute),
 		},
@@ -674,8 +676,8 @@ func TestReleaseReservationSkipsWhenNewerReservationHolds(t *testing.T) {
 	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
 	fc := &fakeTerminalOutcomeTracker{
 		comments: []issueComment{
-			{Body: "WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
-			{Body: reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(2*time.Minute), "", nil), CreatedAt: upAt.Add(2 * time.Minute)},
+			machineComment("WARD-OUTCOME: merge-ready\n\n<details><summary>details</summary>\n\nfinished\n\n</details>", upAt.Add(time.Minute)),
+			machineComment(reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", upAt.Add(2*time.Minute), "", nil), upAt.Add(2*time.Minute)),
 		},
 		postAt: upAt.Add(3 * time.Minute),
 	}
@@ -704,18 +706,9 @@ func TestBlockedOutcomeReleaseClearsRedispatchHold(t *testing.T) {
 	w := resolvedWork{
 		Ref: agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1042},
 		Comments: []issueComment{
-			{
-				Body:      reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", now.Add(-2*time.Minute), "", nil),
-				CreatedAt: now.Add(-2 * time.Minute),
-			},
-			{
-				Body:      "WARD-OUTCOME: blocked 🛑\n\n<details><summary>details</summary>\n\nreview gate blocked fail-closed\n\n</details>",
-				CreatedAt: now.Add(-time.Minute),
-			},
-			{
-				Body:      terminalReservationReleaseCommentBody(modeGoose, "engineer-goose-ward-1042", backlogOutcome{Status: "blocked", Text: "review gate blocked fail-closed"}),
-				CreatedAt: now,
-			},
+			machineComment(reservationCommentBody(modeGoose, "engineer-goose-ward-1042", "box", now.Add(-2*time.Minute), "", nil), now.Add(-2*time.Minute)),
+			machineComment("WARD-OUTCOME: blocked 🛑\n\n<details><summary>details</summary>\n\nreview gate blocked fail-closed\n\n</details>", now.Add(-time.Minute)),
+			machineComment(terminalReservationReleaseCommentBody(modeGoose, "engineer-goose-ward-1042", backlogOutcome{Status: "blocked", Text: "review gate blocked fail-closed"}), now),
 		},
 	}
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
@@ -728,7 +721,7 @@ func TestPostLaunchedNoOutcomeCommentSkipsWhenOutcomeExists(t *testing.T) {
 	upAt := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
 	fc := &fakeNoOutcomeTracker{
 		comments: []issueComment{
-			{Body: "WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nlatest\n\n</details>", CreatedAt: upAt.Add(time.Minute)},
+			machineComment("WARD-OUTCOME: done ✅\n\n<details><summary>details</summary>\n\nlatest\n\n</details>", upAt.Add(time.Minute)),
 		},
 	}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Issue: 697, Launched: true, Mode: "goose", Container: "engineer-goose-ward-697"}
@@ -1033,7 +1026,7 @@ func TestReapTargetTreeDoneOutcomeSuppressesEmptySalvageWhenMainHasCloseRef(t *t
 	prev := listReapIssueComments
 	listReapIssueComments = func(context.Context, *Runner, reapEnv) ([]issueComment, error) {
 		return []issueComment{
-			{Body: "WARD-WORKFLOW: done ✅\n\n<details><summary>details</summary>\n\nPushed main with closes #1605.\n\n</details>", CreatedAt: upAt.Add(20 * time.Minute)},
+			machineComment("WARD-WORKFLOW: done ✅\n\n<details><summary>details</summary>\n\nPushed main with closes #1605.\n\n</details>", upAt.Add(20*time.Minute)),
 		}, nil
 	}
 	t.Cleanup(func() { listReapIssueComments = prev })

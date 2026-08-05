@@ -83,25 +83,18 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 		return err
 	}
 
-	issue, err := r.fetchIssueByForge(ctx, label, ref.Forge, mode, ref.Owner, ref.Repo, ref.Number)
+	issue, title, admitted, err := r.resolveQAActorContent(ctx, c, mode, ref, label)
 	if err != nil {
-		return fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
+		return err
 	}
-	if err := validateVerificationFixtureTarget(c, ref, issue); err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
-	title := strings.TrimSpace(issue.Title)
-	comments, cerr := r.fetchIssueComments(ctx, ref)
-	if cerr != nil {
-		fmt.Fprintf(os.Stderr, "%s: note: could not read comments on %s (%v); QA will inspect the issue body only\n", label, ref, cerr)
-	}
+	comments := admitted.Comments
 
 	qaCtx, err := r.resolveQALaunchContext(ctx, c, ref, issue, comments, family, label)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	prompt = qaInspectionPrompt(prompt, verificationFixtureRequested(c))
-	research := qaResearchPrompt(ref, title, issue.Body, comments, prompt, level, qaCtx)
+	research := qaResearchPrompt(ref, title, admitted.Target.Body, comments, prompt, level, qaCtx)
 	research += agentRunBudgetNote(roleQA)
 
 	if c.Bool("print") {
@@ -127,6 +120,30 @@ func (r *Runner) runAgentQA(ctx context.Context, c *cli.Command, mode containerM
 	}
 	fmt.Fprintf(os.Stderr, "%s: posted a QA verdict on %s - %s\n", label, ref, ref.url())
 	return nil
+}
+
+func (r *Runner) resolveQAActorContent(ctx context.Context, c *cli.Command, mode containerMode, ref agentIssueRef, label string) (*Issue, string, admittedActorContent, error) {
+	issue, err := r.fetchIssueByForge(ctx, label, ref.Forge, mode, ref.Owner, ref.Repo, ref.Number)
+	if err != nil {
+		return nil, "", admittedActorContent{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, err)
+	}
+	if err := validateVerificationFixtureTarget(c, ref, issue); err != nil {
+		return nil, "", admittedActorContent{}, fmt.Errorf("%s: %w", label, err)
+	}
+	title := strings.TrimSpace(issue.Title)
+	comments, cerr := r.fetchIssueComments(ctx, ref)
+	if cerr != nil {
+		return nil, "", admittedActorContent{}, fmt.Errorf("%s: read complete comment thread on %s for actor admission: %w", label, ref, cerr)
+	}
+	target, err := approvalTargetFromIssue(ref, issue)
+	if err != nil {
+		return nil, "", admittedActorContent{}, fmt.Errorf("%s: %w", label, err)
+	}
+	admitted, err := admitActorContent(target, comments, loadActorAuthorityPolicy())
+	if err != nil {
+		return nil, "", admittedActorContent{}, fmt.Errorf("%s: %w", label, err)
+	}
+	return issue, title, admitted, nil
 }
 
 func (r *Runner) resolveQALaunchContext(
@@ -264,7 +281,7 @@ func (r *Runner) captureQAResearch(ctx context.Context, c *cli.Command, mode con
 	}
 
 	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, plan.Role, launchCreds)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
 	}
@@ -542,17 +559,30 @@ func (r *Runner) findLinkedPullRequest(ctx context.Context, ref agentIssueRef, _
 		return nil, false, err
 	}
 	for _, pr := range prs {
-		linked, ok := directorLinkedIssueNumber(ref.Owner, ref.Repo, pr.Body)
-		if !ok || linked != ref.Number {
-			continue
-		}
-		wf, ok := directorPRWorkflowMarker(pr.Body)
-		if !ok || wf != string(workflowPullRequestAndMerge) {
-			continue
-		}
 		full, err := cl.GetPullRequest(ctx, ref.Owner, ref.Repo, pr.Number)
 		if err != nil {
 			return nil, false, err
+		}
+		prRef := agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: pr.Number, MergeRequest: true}
+		comments, err := cl.ListIssueComments(ctx, ref.Owner, ref.Repo, pr.Number)
+		if err != nil {
+			continue
+		}
+		target, err := approvalTargetFromForgejoPR(prRef, full)
+		if err != nil {
+			continue
+		}
+		admitted, err := admitActorContent(target, comments, loadActorAuthorityPolicy())
+		if err != nil {
+			continue
+		}
+		linked, ok := directorLinkedIssueNumber(ref.Owner, ref.Repo, admitted.Target.Body)
+		if !ok || linked != ref.Number {
+			continue
+		}
+		wf, ok := directorPRWorkflowMarker(admitted.Target.Body)
+		if !ok || wf != string(workflowPullRequestAndMerge) {
+			continue
 		}
 		if strings.TrimSpace(full.Head.SHA) == "" {
 			return nil, false, fmt.Errorf("forgejo: pull request %s/%s#%d omitted head sha", ref.Owner, ref.Repo, pr.Number)

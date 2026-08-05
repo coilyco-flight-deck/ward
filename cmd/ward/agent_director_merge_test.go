@@ -887,18 +887,15 @@ func TestDirectorMergeConflictReasonFromComments(t *testing.T) {
 		t.Fatalf("stale reason = %q, want stale worker classification", stale)
 	}
 
-	blocked := directorMergeConflictReasonFromComments(pr, []issueComment{{
-		Body: strings.Join([]string{
-			"WARD-OUTCOME: blocked 🛑",
-			"",
-			"<details><summary>details</summary>",
-			"",
-			"workflow: pull-request-and-merge; review summary: review gate skipped by ~/.ward/config.yaml default",
-			"",
-			"</details>",
-		}, "\n"),
-		CreatedAt: now.Add(-time.Minute),
-	}}, now)
+	blocked := directorMergeConflictReasonFromComments(pr, []issueComment{machineComment(strings.Join([]string{
+		"WARD-OUTCOME: blocked 🛑",
+		"",
+		"<details><summary>details</summary>",
+		"",
+		"workflow: pull-request-and-merge; review summary: review gate skipped by ~/.ward/config.yaml default",
+		"",
+		"</details>",
+	}, "\n"), now.Add(-time.Minute))}, now)
 	if !strings.Contains(blocked, "linked issue is blocked") || !strings.Contains(blocked, "review gate skipped by ~/.ward/config.yaml default") {
 		t.Fatalf("blocked reason = %q, want review-blocked classification", blocked)
 	}

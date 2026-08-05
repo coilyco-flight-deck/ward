@@ -1839,7 +1839,7 @@ func TestCommentFailedDispatch(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 689}
 	f := &fakeLockForge{
 		listComments: []issueComment{
-			{ID: 11, Body: reservationCommentBody(modeCodex, "engineer-codex-ward-689", "host", time.Now().Add(-time.Minute), "", nil), CreatedAt: time.Now().Add(-time.Minute)},
+			machineCommentID(11, reservationCommentBody(modeCodex, "engineer-codex-ward-689", "host", time.Now().Add(-time.Minute), "", nil), time.Now().Add(-time.Minute)),
 		},
 	}
 	req := dispatchBrokerRequest{
@@ -1892,7 +1892,7 @@ func TestCommentFailedDispatchSkipsStopOnDockerNameConflict(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 689}
 	f := &fakeLockForge{
 		listComments: []issueComment{
-			{ID: 11, Body: reservationCommentBody(modeCodex, "engineer-codex-ward-689", "host", time.Now().Add(-time.Minute), "", nil), CreatedAt: time.Now().Add(-time.Minute)},
+			machineCommentID(11, reservationCommentBody(modeCodex, "engineer-codex-ward-689", "host", time.Now().Add(-time.Minute), "", nil), time.Now().Add(-time.Minute)),
 		},
 	}
 	req := dispatchBrokerRequest{
@@ -1966,7 +1966,7 @@ func TestCommentDeferredDispatch(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 902}
 	f := &fakeLockForge{
 		listComments: []issueComment{
-			{ID: 21, Body: dispatchLaunchDeferredCommentBody(modeCodex, "engineer-codex-ward-902", dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"}}, "/tmp/ward/dispatch.log", newEngineerCapacityError("ward agent engineer --harness codex", 10, 10)), CreatedAt: time.Now().Add(-time.Minute)},
+			machineCommentID(21, dispatchLaunchDeferredCommentBody(modeCodex, "engineer-codex-ward-902", dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"}}, "/tmp/ward/dispatch.log", newEngineerCapacityError("ward agent engineer --harness codex", 10, 10)), time.Now().Add(-time.Minute)),
 		},
 	}
 	req := dispatchBrokerRequest{
@@ -2078,7 +2078,7 @@ func TestCommentDeferredReleaseAssetsDispatch(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 903}
 	f := &fakeLockForge{
 		listComments: []issueComment{
-			{ID: 31, Body: dispatchLaunchReleaseAssetsDeferredCommentBody(modeCodex, "engineer-codex-ward-903", dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"}}, "/tmp/ward/dispatch.log", newReleaseAssetsNotReadyError("v0.544.0", "ward-linux-arm64", "Not Found")), CreatedAt: time.Now().Add(-time.Minute)},
+			machineCommentID(31, dispatchLaunchReleaseAssetsDeferredCommentBody(modeCodex, "engineer-codex-ward-903", dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", ref.String(), "--harness", "codex", "--skip-preflight"}}, "/tmp/ward/dispatch.log", newReleaseAssetsNotReadyError("v0.544.0", "ward-linux-arm64", "Not Found")), time.Now().Add(-time.Minute)),
 		},
 	}
 	req := dispatchBrokerRequest{

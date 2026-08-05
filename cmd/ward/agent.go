@@ -815,6 +815,9 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// flags is a self-describe verb, not a startup role: it prints the
 			// command flag tree in docs/agent-flags.md.
 			agentFlagsCommand(),
+			// approval-plan is the read-only half of external-content admission. It
+			// emits exact canonical content for a trusted collaborator to authorize.
+			agentApprovalPlanCommand(),
 			// reap is a maintenance verb, not a startup role: the host-side
 			// idle-killer for wedged engineer containers (#376). docs/agent-reap.md.
 			agentReapCommand(),
@@ -948,14 +951,17 @@ func overrideReservation(c *cli.Command) bool {
 // resolvedWork bundles resolveAgentWork's output: ref, title, body, comment thread
 // (ward#154), the --details note (ward#167), and the seeded prompt.
 type resolvedWork struct {
-	Ref        agentIssueRef
-	Title      string
-	Body       string
-	Comments   []issueComment
-	Details    string
-	Seed       string
-	Branch     string
-	ReviewGate bool
+	Ref      agentIssueRef
+	Title    string
+	Body     string
+	Comments []issueComment
+	// PromptComments is the actor-admitted subset safe to place in model input.
+	// Comments remains the complete thread for reservations and workflow state.
+	PromptComments []issueComment
+	Details        string
+	Seed           string
+	Branch         string
+	ReviewGate     bool
 	// ExtraRepos are the --repo grants the run also clones writable (ward#230);
 	// the pre-flight must hear about them or it false-NO-GOs cross-repo work (ward#266).
 	ExtraRepos []targetRepo
@@ -972,6 +978,7 @@ type agentPullRequestContext struct {
 	Body         string
 	URL          string
 	UpdatedAt    time.Time
+	Author       string
 	HeadSHA      string
 	HeadRef      string
 	BaseRef      string
@@ -1097,7 +1104,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	var body string
 	details := strings.TrimSpace(c.String("details"))
 	var comments []issueComment
-	var cerr error
+	var promptComments []issueComment
 	branch := ""
 	carryRef := ref
 	if ref.MergeRequest { //nolint:nestif
@@ -1129,8 +1136,25 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		title = strings.TrimSpace(pr.Title)
 		body = strings.TrimSpace(pr.Body)
 		comments = prComments
+		admittedPR, aerr := admitActorContent(approvalTargetFromPRContext(ref, pr), prComments, loadActorAuthorityPolicy())
+		if aerr != nil {
+			return resolvedWork{}, fmt.Errorf("%s: %w", label, aerr)
+		}
+		promptComments = admittedPR.Comments
 		branch = strings.TrimSpace(pr.HeadRef)
-		details = joinNonEmptyBlocks(engineerPRDetails(pr, comments, prLinkedIssue, prLinkedComments), details)
+		if prLinkedIssue != nil {
+			linkedRef := agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: prLinkedIssue.Number, Forge: ref.Forge, Tracker: ref.trackerOrDefault()}
+			linkedTarget, terr := approvalTargetFromIssue(linkedRef, prLinkedIssue)
+			if terr != nil {
+				return resolvedWork{}, fmt.Errorf("%s: %w", label, terr)
+			}
+			admittedLinked, aerr := admitActorContent(linkedTarget, prLinkedComments, loadActorAuthorityPolicy())
+			if aerr != nil {
+				return resolvedWork{}, fmt.Errorf("%s: linked issue %s: %w", label, linkedRef, aerr)
+			}
+			prLinkedComments = admittedLinked.Comments
+		}
+		details = joinNonEmptyBlocks(engineerPRDetails(pr, promptComments, prLinkedIssue, prLinkedComments), details)
 		if prLinkedIssue != nil && prLinkedIssue.Number > 0 {
 			carryRef = agentIssueRef{
 				Owner:   ref.Owner,
@@ -1165,12 +1189,21 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		}
 		title = strings.TrimSpace(issue.Title)
 		body = strings.TrimSpace(issue.Body)
-		// Fetch comments so the pre-flight sees decisions made there, not just the
-		// body (ward#154); degrade to a body-only read on failure (the prior behavior).
-		comments, cerr = r.fetchIssueComments(ctx, ref)
-		if cerr != nil {
-			writef(os.Stderr, "%s: note: could not read comments on %s (%v); pre-flight reads the body only\n", label, ref, cerr)
+		// Actor admission needs the complete thread to prove that no later input
+		// invalidated an approval snapshot. A partial thread cannot be safe input.
+		comments, err = r.fetchIssueComments(ctx, ref)
+		if err != nil {
+			return resolvedWork{}, fmt.Errorf("%s: read complete comment thread on %s for actor admission: %w", label, ref, err)
 		}
+		target, terr := approvalTargetFromIssue(ref, issue)
+		if terr != nil {
+			return resolvedWork{}, fmt.Errorf("%s: %w", label, terr)
+		}
+		admitted, aerr := admitActorContent(target, comments, loadActorAuthorityPolicy())
+		if aerr != nil {
+			return resolvedWork{}, fmt.Errorf("%s: %w", label, aerr)
+		}
+		promptComments = admitted.Comments
 	}
 	// Resolve the --repo grants now so the pre-flight sees these repos too (ward#266,
 	// ward#280; extraRepoGrant reads --repo, the --with-repo alias gone in ward#362).
@@ -1186,14 +1219,14 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	}
 	seedBody := body
 	if !ref.MergeRequest {
-		seedBody = issueBodyWithComments(body, comments)
+		seedBody = issueBodyWithComments(body, promptComments)
 	}
 	seed := agentSeedPromptWorkflowWithCarry(ref, carryRef, title, seedBody, details, true, extra, wf, reviewGate, reviewSkip)
 	if mode == modeGoose {
 		seed += gooseLandingClause(carryRef)
 	}
 	seed += agentRunBudgetNote(roleEngineer)
-	return resolvedWork{Ref: ref, Title: title, Body: seedBody, Comments: comments, Details: details, Seed: seed, Branch: branch, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate}, nil
+	return resolvedWork{Ref: ref, Title: title, Body: seedBody, Comments: comments, PromptComments: promptComments, Details: details, Seed: seed, Branch: branch, ExtraRepos: extra, Workflow: wf, ReviewGate: reviewGate}, nil
 }
 
 func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode containerMode, ref agentIssueRef) (agentPullRequestContext, []issueComment, *Issue, []issueComment, error) {
@@ -1211,7 +1244,7 @@ func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode container
 	}
 	comments, err := prc.ListPullRequestComments(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
-		writef(os.Stderr, "%s: note: could not read pull request comments on %s (%v); continuing with the PR body only\n", agentCmdline(mode, "engineer"), ref, err)
+		return agentPullRequestContext{}, nil, nil, nil, fmt.Errorf("read complete pull request comments for actor admission: %w", err)
 	}
 	var linkedIssue *Issue
 	var linkedComments []issueComment
@@ -1219,12 +1252,11 @@ func (r *Runner) resolveAgentPullRequestWork(ctx context.Context, mode container
 		linkedRef := agentIssueRef{Owner: ref.Owner, Repo: ref.Repo, Number: linkedNum, Forge: ref.Forge, Tracker: ref.trackerOrDefault()}
 		linkedIssue, err = r.fetchIssueByForge(ctx, agentCmdline(mode, "engineer"), ref.Forge, mode, linkedRef.Owner, linkedRef.Repo, linkedRef.Number)
 		if err != nil {
-			writef(os.Stderr, "%s: note: could not resolve linked issue %s (%v); continuing without linked issue context\n", agentCmdline(mode, "engineer"), linkedRef, err)
-		} else {
-			linkedComments, err = r.fetchIssueComments(ctx, linkedRef)
-			if err != nil {
-				writef(os.Stderr, "%s: note: could not read linked issue comments on %s (%v); continuing without them\n", agentCmdline(mode, "engineer"), linkedRef, err)
-			}
+			return agentPullRequestContext{}, nil, nil, nil, fmt.Errorf("resolve linked issue %s for actor admission: %w", linkedRef, err)
+		}
+		linkedComments, err = r.fetchIssueComments(ctx, linkedRef)
+		if err != nil {
+			return agentPullRequestContext{}, nil, nil, nil, fmt.Errorf("read complete linked issue comments on %s for actor admission: %w", linkedRef, err)
 		}
 	}
 	if fc, ok := cl.(*forgejoClient); ok {
@@ -1648,8 +1680,7 @@ func preflightPrompt(ref agentIssueRef, title, body, details string, comments []
 // ward's own bookkeeping (reservation pings, NO-GO verdicts) or empty (ward#154).
 func preflightStripsComment(c issueComment) bool {
 	return strings.TrimSpace(c.Body) == "" ||
-		strings.Contains(c.Body, agentReservationMarker) ||
-		strings.Contains(c.Body, preflightNoGoMarker)
+		trustedMachineComment(c, recordKindReservation, recordKindPreflight)
 }
 
 // preflightComments renders the human comment thread (oldest first) for the
@@ -1718,7 +1749,7 @@ func (r *Runner) captureWithStdin(ctx context.Context, stdin, bin string, argv .
 func (r *Runner) runPreflight(ctx context.Context, mode containerMode, surface string, w resolvedWork) (bool, string, preflightOutcome, error) {
 	label := agentCmdline(mode, surface)
 	bin := lookupAgent(mode).Record().Binary
-	argv, stdin, ok := hostOneShot(mode, preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.Comments, w.ExtraRepos))
+	argv, stdin, ok := hostOneShot(mode, preflightPrompt(w.Ref, w.Title, w.Body, w.Details, w.PromptComments, w.ExtraRepos))
 	// No host one-shot (none wired, or a local-model harness barred from the
 	// unsandboxed host read; ward#162) or no binary: proceed to the isolated run.
 	if !ok || !hostHasBinary(bin) {
@@ -2433,7 +2464,7 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		logDispatchDecision(os.Stderr, "host", "credentials", "resolving launch credentials for mode=%s forge=%s", mode, plan.Forge)
 	}
 	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, plan.Role, launchCreds)
 	if err != nil {
 		if decisionLog {
 			logDispatchDecision(os.Stderr, "host", "env-file", "failed: %s", firstLine(err.Error()))

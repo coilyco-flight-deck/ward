@@ -120,8 +120,8 @@ func TestLatestQAVerdictCommentMatchesCurrentHead(t *testing.T) {
 		RunIdentity:    "ward-qa-2",
 	}, qaVerdict{Verdict: "fail", Summary: "stale verdict"})
 	meta, ok := latestQAVerdictComment([]issueComment{
-		{Body: current, CreatedAt: mustParseTime(t, "2026-07-09T00:00:00Z")},
-		{Body: stale, CreatedAt: mustParseTime(t, "2026-07-09T01:00:00Z")},
+		machineComment(current, mustParseTime(t, "2026-07-09T00:00:00Z")),
+		machineComment(stale, mustParseTime(t, "2026-07-09T01:00:00Z")),
 	}, "coilyco-flight-deck/ward#844", "coilyco-flight-deck/ward#729", "abc123")
 	if !ok {
 		t.Fatal("latestQAVerdictComment should recognize the current-head verdict")

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -347,8 +348,27 @@ func (r *Runner) resolveForgejoToken(ctx context.Context, target broker.Target, 
 	return "", fmt.Errorf("ward container: resolve Forgejo token: set FORGEJO_TOKEN or launch through a credential broker")
 }
 
-func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg forge, creds []agentsapi.EnvLine) (path string, cleanup func(), err error) {
-	token, err := r.resolveForgejoToken(ctx, target, fg)
+const envForgejoGitToken = "WARD_FORGEJO_GIT_TOKEN" //nolint:gosec // Environment-variable name, not a credential value.
+
+func (r *Runner) resolveContainerToken(ctx context.Context, target broker.Target, fg forge, role string) (string, error) {
+	if role == roleEngineer || role == roleQA {
+		if fg != forgeForgejo {
+			return "", fmt.Errorf("ward container: %s launch for %s is unsupported until that forge has a role-authenticated tracker broker; Ward cannot prove a Git-only credential boundary", role, fg)
+		}
+		token := strings.TrimSpace(os.Getenv(envForgejoGitToken))
+		if token == "" {
+			return "", fmt.Errorf("ward container: %s launch requires the deployment-supplied %s Git-only credential; broad FORGEJO_TOKEN fallback is unsupported", role, envForgejoGitToken)
+		}
+		if broad := strings.TrimSpace(os.Getenv("FORGEJO_TOKEN")); broad != "" && subtle.ConstantTimeCompare([]byte(token), []byte(broad)) == 1 {
+			return "", fmt.Errorf("ward container: %s must differ from broad FORGEJO_TOKEN; refusing an unproven tracker-mutation credential", envForgejoGitToken)
+		}
+		return token, nil
+	}
+	return r.resolveForgejoToken(ctx, target, fg)
+}
+
+func (r *Runner) writeTokenEnvFile(ctx context.Context, target broker.Target, fg forge, role string, creds []agentsapi.EnvLine) (path string, cleanup func(), err error) {
+	token, err := r.resolveContainerToken(ctx, target, fg, role)
 	if err != nil {
 		return "", func() {}, err
 	}

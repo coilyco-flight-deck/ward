@@ -132,7 +132,7 @@ func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode conta
 		return err
 	}
 	launchCreds := r.resolveLaunchCreds(ctx, &plan, mode)
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, plan.Role, launchCreds)
 	if err != nil {
 		return fmt.Errorf("ward agent run: %w", err)
 	}
@@ -344,6 +344,7 @@ func (r *Runner) maybeAttachRunningDispatchBroker(ctx context.Context, plan *upP
 		"/usr/local/bin/ward",
 		"container",
 		"dispatch-broker-capability",
+		plan.Role,
 		plan.AgentID,
 	)
 	if err != nil {

@@ -264,6 +264,7 @@ func (r *Runner) triageRepo(ctx context.Context, label, repo string, cl *forgejo
 		fmt.Fprintf(os.Stderr, "%s: note: cannot triage %s (%v); leaving labels unchanged.\n", label, repo, err)
 		return
 	}
+	issues = actorAdmittedTriageIssues(ctx, label, owner, name, cl, issues)
 	cands := collectTriageCandidates(issues)
 	if len(cands) == 0 {
 		fmt.Fprintf(os.Stderr, "%s: triage - %s already fully labeled (%d open); nothing to do.\n", label, repo, len(issues))
@@ -276,6 +277,36 @@ func (r *Runner) triageRepo(ctx context.Context, label, repo string, cl *forgejo
 	}
 	tiers := assignTriageTiers(cands, verdicts)
 	r.triageWriteLabels(ctx, label, repo, cl, cands, verdicts, tiers)
+}
+
+func actorAdmittedTriageIssues(ctx context.Context, label, owner, repo string, cl *forgejoClient, issues []backlogIssue) []backlogIssue {
+	admitted := make([]backlogIssue, 0, len(issues))
+	policy := loadActorAuthorityPolicy()
+	for _, issue := range issues {
+		comments, err := cl.ListIssueComments(ctx, owner, repo, issue.Number)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: note: actor admission could not read complete comments on %s/%s#%d (%v); leaving it untriaged.\n", label, owner, repo, issue.Number, err)
+			continue
+		}
+		ref := agentIssueRef{Owner: owner, Repo: repo, Number: issue.Number}
+		target := approvalTargetSnapshot{
+			Kind:   approvalTargetIssue,
+			Ref:    ref.String(),
+			State:  "open",
+			Author: issue.Author,
+			Title:  issue.Title,
+			Body:   issue.Body,
+		}
+		content, err := admitActorContent(target, comments, policy)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: note: actor admission refused %s (%v); leaving it untriaged.\n", label, ref, err)
+			continue
+		}
+		issue.Title = content.Target.Title
+		issue.Body = content.Target.Body
+		admitted = append(admitted, issue)
+	}
+	return admitted
 }
 
 // triageJudge runs the batched judgment one-shot and parses its verdicts; ok=false on an

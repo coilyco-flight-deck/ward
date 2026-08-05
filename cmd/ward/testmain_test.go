@@ -10,6 +10,9 @@ import (
 // TestMain neutralizes compatibility env before tests run. Tests use t.Setenv
 // when they prove that stale operator config cannot affect native policy.
 func TestMain(m *testing.M) {
+	os.Setenv(envTrustedCollaborators, "repo-owner")
+	os.Setenv(envAutomationActor, forgeForgejo.gitPushUser())
+	os.Setenv(envForgejoGitToken, "synthetic-git-only-token")
 	for _, k := range []string{
 		"WARD_CONFIG_REF", "WARD_CONFIG_TTL",
 		envAgentImage, envAgentTag,

@@ -540,7 +540,7 @@ func TestActiveEngineerLaunchCountIgnoresLaunchIntents(t *testing.T) {
 			Title:    "reserved issue",
 			Body:     "body",
 			Labels:   []string{"P0", "headless"},
-			Comments: []issueComment{{Body: reservationCommentBody(modeClaude, "engineer-claude-ward-884", "box", now.Add(-time.Minute), "", nil), CreatedAt: now.Add(-time.Minute)}},
+			Comments: []issueComment{machineComment(reservationCommentBody(modeClaude, "engineer-claude-ward-884", "box", now.Add(-time.Minute), "", nil), now.Add(-time.Minute))},
 		},
 	}
 	srv := issueThreadAuthorityServer(t, rows)

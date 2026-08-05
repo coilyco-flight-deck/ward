@@ -142,6 +142,11 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			for i := range tc.comments {
+				if _, _, attempted := fixedWardRecordKind(tc.comments[i].Body); attempted {
+					tc.comments[i].User.Login = machineComment("").User.Login
+				}
+			}
 			issue := backlogIssue{Number: 1, Title: tc.name, Labels: []string{"P0"}}
 			if tc.kind == backlogKindPullRequest {
 				issue.Kind = backlogKindPullRequest
@@ -175,9 +180,9 @@ func TestDirectorQueueClassifiesRequestedStates(t *testing.T) {
 func TestLatestDirectorQueueSignalNeedsRedispatchAlone(t *testing.T) {
 	now := time.Date(2026, 7, 10, 9, 0, 0, 0, time.UTC)
 	comments := []issueComment{
-		{Body: agentReservationMarker + "\nWARD-RESERVATION: held 🔒", CreatedAt: now.Add(-time.Hour)},
-		{Body: "WARD-OUTCOME: merge-ready", CreatedAt: now.Add(-30 * time.Minute)},
-		{Body: agentNeedsRedispatchMarker + "\nWARD-DISPATCH: deferred ⏸", CreatedAt: now.Add(-time.Minute)},
+		machineComment(agentReservationMarker+"\nWARD-RESERVATION: held 🔒", now.Add(-time.Hour)),
+		machineComment("WARD-OUTCOME: merge-ready", now.Add(-30*time.Minute)),
+		machineComment(agentNeedsRedispatchMarker+"\nWARD-DISPATCH: deferred ⏸", now.Add(-time.Minute)),
 	}
 	sig := latestDirectorQueueSignal(comments)
 	if sig.Kind != directorQueueSignalRedispatch {
@@ -245,6 +250,14 @@ func TestRenderDirectorQueueStatusShowsNextActions(t *testing.T) {
 				CreatedAt: now.Add(-10 * time.Minute),
 			}},
 		},
+	}
+	for key, comments := range cl.comments {
+		for i := range comments {
+			if _, _, attempted := fixedWardRecordKind(comments[i].Body); attempted {
+				comments[i].User.Login = machineComment("").User.Login
+			}
+		}
+		cl.comments[key] = comments
 	}
 	out, err := renderDirectorQueueStatus(context.Background(), cl, []string{repo}, 50)
 	if err != nil {

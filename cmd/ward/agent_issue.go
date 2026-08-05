@@ -22,6 +22,7 @@ func agentIssueCommand() *cli.Command {
 		Usage: "File issues through the read-only director credential broker; launches nothing.",
 		Commands: []*cli.Command{
 			agentIssueCreateCommand(),
+			agentIssueApproveCommand(),
 		},
 	}
 }

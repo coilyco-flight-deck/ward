@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	osExec "os/exec"
 	"regexp"
@@ -151,6 +152,9 @@ const (
 	// dispatchActionForgejo carries one Ward-native Forgejo request from a
 	// credential-free director to the privileged broker (ward#1612).
 	dispatchActionForgejo = "forgejo"
+	// dispatchActionApproval verifies a trusted collaborator's immutable intent
+	// and posts the complete automation-authored approval snapshot (ward#1586).
+	dispatchActionApproval = "approval"
 	// dispatchActionMessageSend appends one authenticated peer message.
 	dispatchActionMessageSend = "message-send"
 	// dispatchActionMessageReceive returns messages addressed to the authenticated
@@ -221,6 +225,12 @@ type dispatchBrokerRequest struct {
 	// Forgejo carries the bounded Ward-native request for the forgejo action.
 	// It contains no authorization header or transferable credential.
 	Forgejo *nativeForgejoRequest `json:"forgejo,omitempty"`
+	// Tracker carries one typed agent-role mutation. The authenticated broker
+	// stamps the caller role and never accepts an arbitrary method or path.
+	Tracker *trackerMutationRequest `json:"tracker,omitempty"`
+	// TargetKind and IntentCommentID are the typed approval action payload.
+	TargetKind      string `json:"target_kind,omitempty"`
+	IntentCommentID int    `json:"intent_comment_id,omitempty"`
 	// BrokerID is stamped by the accepting service so only that Compose project
 	// reconciles the request after a restart.
 	BrokerID string `json:"broker_id,omitempty"`
@@ -231,9 +241,10 @@ type dispatchBrokerRequest struct {
 	After        string `json:"after,omitempty"`
 	// JournalPath, ResumeContainer, and Recovery are broker-local recovery state.
 	// They never cross the protocol or enter the token-stripped request journal.
-	JournalPath     string `json:"-"`
-	ResumeContainer string `json:"-"`
-	Recovery        bool   `json:"-"`
+	JournalPath       string `json:"-"`
+	ResumeContainer   string `json:"-"`
+	Recovery          bool   `json:"-"`
+	AuthenticatedRole string `json:"-"`
 }
 
 // dispatchAction normalizes the request's action, defaulting an empty value to
@@ -353,12 +364,13 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		return
 	}
 	masterCaller := subtle.ConstantTimeCompare([]byte(req.Token), []byte(token)) == 1
-	identity, ok := authenticateDispatchBrokerCaller(req.Token, token, requester)
+	identity, authenticatedRole, ok := authenticateDispatchBrokerCaller(req.Token, token, requester, os.Getenv("WARD_ROLE"))
 	if !ok {
 		writeDispatchBrokerAuthFailure(conn)
 		return
 	}
 	req.Requester = identity
+	req.AuthenticatedRole = authenticatedRole
 	req.BrokerID = strings.TrimSpace(os.Getenv(envDispatchBrokerID))
 	if !masterCaller && !dispatchBrokerChildActionAllowed(req) {
 		writeDispatchBrokerAuthFailure(conn)
@@ -389,11 +401,27 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		return
 	}
 	if dispatchAction(req.Action) == dispatchActionForgejo {
-		// The broker stamps authority from its own service environment. It does
-		// not trust a client-supplied role or requester (ward#1612).
-		req.Role = strings.TrimSpace(os.Getenv("WARD_ROLE"))
-		req.Requester = requester
+		if masterCaller {
+			// The master capability inherits authority from the service environment.
+			req.Role = authenticatedRole
+			req.Requester = requester
+		} else {
+			req.Role = authenticatedRole
+		}
 		r.runDispatchBrokerForgejo(ctx, conn, req)
+		return
+	}
+	if dispatchAction(req.Action) == dispatchActionTrackerMutation {
+		req.Role = authenticatedRole
+		r.runDispatchBrokerTrackerMutation(ctx, conn, req)
+		return
+	}
+	if dispatchAction(req.Action) == dispatchActionApproval {
+		// Only the master capability reaches this branch. The broker stamps the
+		// director role from its own environment before the typed verifier runs.
+		req.Role = authenticatedRole
+		req.Requester = requester
+		r.runDispatchBrokerApproval(ctx, conn, req)
 		return
 	}
 	if prWorkflowDispatchActions[dispatchAction(req.Action)] {
@@ -427,6 +455,10 @@ func dispatchBrokerChildActionAllowed(req dispatchBrokerRequest) bool {
 	switch dispatchAction(req.Action) {
 	case dispatchActionMessageSend, dispatchActionMessageReceive:
 		return true
+	case dispatchActionForgejo:
+		return req.Forgejo != nil && (req.Forgejo.Method == http.MethodGet || req.Forgejo.Method == http.MethodHead)
+	case dispatchActionTrackerMutation:
+		return true
 	case dispatchActionLaunch:
 		return req.Role != roleEngineer && req.Role != roleQA && len(req.Argv) > 0 && req.Argv[0] == "run"
 	default:
@@ -434,25 +466,31 @@ func dispatchBrokerChildActionAllowed(req dispatchBrokerRequest) bool {
 	}
 }
 
-func authenticateDispatchBrokerCaller(capability, master, masterIdentity string) (string, bool) {
+func authenticateDispatchBrokerCaller(capability, master, masterIdentity, masterRole string) (string, string, bool) {
 	if subtle.ConstantTimeCompare([]byte(capability), []byte(master)) == 1 {
-		return emptyDefault(strings.TrimSpace(masterIdentity), "director"), true
+		return emptyDefault(strings.TrimSpace(masterIdentity), "director"), emptyDefault(strings.TrimSpace(masterRole), roleDirector), true
 	}
-	agentID, _, ok := strings.Cut(capability, ":")
-	if !ok || !validDispatchAgentID(agentID) {
-		return "", false
+	parts := strings.Split(capability, ":")
+	if len(parts) != 3 {
+		return "", "", false
 	}
-	expected := dispatchBrokerAgentCapability(master, agentID)
+	agentID, role := parts[0], parts[1]
+	if !validDispatchAgentID(agentID) || !validComposedRole(role) {
+		return "", "", false
+	}
+	expected := dispatchBrokerAgentCapability(master, agentID, role)
 	if subtle.ConstantTimeCompare([]byte(capability), []byte(expected)) != 1 {
-		return "", false
+		return "", "", false
 	}
-	return agentID, true
+	return agentID, role, true
 }
 
-func dispatchBrokerAgentCapability(master, agentID string) string {
+func dispatchBrokerAgentCapability(master, agentID, role string) string {
 	mac := hmac.New(sha256.New, []byte(master))
 	_, _ = mac.Write([]byte(agentID))
-	return agentID + ":" + hex.EncodeToString(mac.Sum(nil))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write([]byte(role))
+	return agentID + ":" + role + ":" + hex.EncodeToString(mac.Sum(nil))
 }
 
 func writeDispatchBrokerResponse(conn net.Conn, err error) {
@@ -696,6 +734,7 @@ func runDispatchBrokerChild(ctx context.Context, req dispatchBrokerRequest, logf
 	cmd.Stderr = logf
 	env := removeEnvKeys(os.Environ(),
 		"WARD_READONLY",
+		"WARD_ROLE",
 		envDispatchBrokerAddr,
 		envDispatchBrokerToken,
 		envContainerService,
@@ -710,9 +749,13 @@ func runDispatchBrokerChild(ctx context.Context, req dispatchBrokerRequest, logf
 	)
 	agentID := dispatchBrokerLaunchAgentID(req)
 	if master := strings.TrimSpace(os.Getenv(envDispatchBrokerToken)); master != "" {
+		capability := dispatchBrokerAgentCapability(master, agentID, req.Role)
 		env = append(env,
+			"WARD_ROLE="+req.Role,
+			envDispatchBrokerAddr+"="+dispatchBrokerServiceAddress,
+			envDispatchBrokerToken+"="+capability,
 			envChildBrokerAddr+"="+dispatchBrokerServiceAddress,
-			envChildBrokerCapability+"="+dispatchBrokerAgentCapability(master, agentID),
+			envChildBrokerCapability+"="+capability,
 			envChildBrokerNetwork+"="+strings.TrimSpace(req.BrokerID)+"_default",
 			envChildAgentID+"="+agentID,
 		)
@@ -1485,6 +1528,10 @@ func validateDispatchBrokerRequest(req dispatchBrokerRequest) error {
 		return validateDispatchBrokerLogs(req)
 	case dispatchActionForgejo:
 		return validateDispatchBrokerForgejo(req)
+	case dispatchActionTrackerMutation:
+		return validateDispatchBrokerTrackerMutation(req)
+	case dispatchActionApproval:
+		return validateDispatchBrokerApproval(req)
 	case dispatchActionMessageSend:
 		return validateDispatchBrokerMessageSend(req)
 	case dispatchActionMessageReceive:

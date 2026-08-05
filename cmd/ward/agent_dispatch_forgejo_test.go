@@ -167,11 +167,11 @@ func TestPolicyBoundaryNativeForgejoBrokerClassifiesAuthNetworkAndPolicy(t *test
 		Action: dispatchActionForgejo,
 		Role:   roleEngineer,
 		Forgejo: &nativeForgejoRequest{
-			Method:   http.MethodGet,
-			Segments: []string{"repos", "coilyco-flight-deck", "ward"},
+			Method:   http.MethodPost,
+			Segments: []string{"repos", "coilyco-flight-deck", "ward", "issues", "1612", "comments"},
 		},
 	}
-	if err := validateDispatchBrokerForgejo(bad); err == nil || !strings.Contains(err.Error(), "requires role") {
+	if err := validateDispatchBrokerForgejo(bad); err == nil || !strings.Contains(err.Error(), "only for reads") {
 		t.Fatalf("policy result = %v", err)
 	}
 }
@@ -207,7 +207,7 @@ func TestPolicyBoundaryDispatchBrokerCapabilityFailureIsAuthNotNetwork(t *testin
 }
 
 func TestPolicyBoundaryDispatchBrokerStampsRoleFromBrokerService(t *testing.T) {
-	t.Setenv("WARD_ROLE", roleEngineer)
+	t.Setenv("WARD_ROLE", roleOps)
 	server, client := net.Pipe()
 	done := make(chan struct{})
 	go func() {
@@ -234,7 +234,7 @@ func TestPolicyBoundaryDispatchBrokerStampsRoleFromBrokerService(t *testing.T) {
 	_ = client.Close()
 	<-done
 	if resp.OK || resp.ErrorKind != nativeForgejoErrorPolicy ||
-		!strings.Contains(resp.Error, `requires role "director", got "engineer"`) {
+		!strings.Contains(resp.Error, `rejects role "ops"`) {
 		t.Fatalf("broker-owned role response = %#v", resp)
 	}
 }

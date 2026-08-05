@@ -89,6 +89,9 @@ func prWorkflowMergeExec(ctx context.Context, cl *forgejoClient, role, owner, re
 	if err != nil {
 		return "", err
 	}
+	if err := prWorkflowActorAdmissionGuard(ctx, cl, owner, repo, index, "pr merge"); err != nil {
+		return "", err
+	}
 	wf := prWorkflowMarkerMode(pr.Body)
 	if err := prWorkflowPermitted(role, wf, prOpMerge); err != nil {
 		return "", err
@@ -191,6 +194,9 @@ func prWorkflowClosePrepare(ctx context.Context, cl *forgejoClient, role, owner,
 	if err != nil {
 		return "", "", "", err
 	}
+	if err := prWorkflowActorAdmissionGuard(ctx, cl, owner, repo, index, "pr close"); err != nil {
+		return "", "", "", err
+	}
 	wf := prWorkflowMarkerMode(pr.Body)
 	if err := prWorkflowPermitted(role, wf, prOpClose); err != nil {
 		return "", "", "", err
@@ -249,25 +255,8 @@ func prWorkflowReopenExec(ctx context.Context, cl *forgejoClient, role, owner, r
 	if err != nil {
 		return "", err
 	}
-	wf := prWorkflowMarkerMode(pr.Body)
-	if err := prWorkflowPermitted(role, wf, prOpReopen); err != nil {
-		return "", err
-	}
-	if strings.ToLower(strings.TrimSpace(pr.State)) != "closed" {
-		return "", fmt.Errorf("pr reopen: %s/%s#%d is %s, not closed", owner, repo, index, pr.State)
-	}
-	merged, err := cl.PullRequestMerged(ctx, owner, repo, index)
+	wf, merged, head, err := validatePRReopenCandidate(ctx, cl, pr, role, owner, repo, index)
 	if err != nil {
-		return "", fmt.Errorf("pr reopen: %s/%s#%d: merged-state check failed: %w", owner, repo, index, err)
-	}
-	if merged {
-		return "", fmt.Errorf("pr reopen: %s/%s#%d is already merged", owner, repo, index)
-	}
-	head := pr.HeadSHA()
-	if head == "" {
-		return "", fmt.Errorf("pr reopen: %s/%s#%d did not expose a head SHA", owner, repo, index)
-	}
-	if err := prWorkflowHumanInterventionGuard(ctx, cl, owner, repo, index, pr.UpdatedAt, "pr reopen"); err != nil {
 		return "", err
 	}
 	if err := cl.ReopenPullRequest(ctx, owner, repo, index); err != nil {
@@ -287,9 +276,40 @@ func prWorkflowReopenExec(ctx context.Context, cl *forgejoClient, role, owner, r
 		owner, repo, index, role, wf.orDefault(), head, after.HeadSHA(), merged), nil
 }
 
+func validatePRReopenCandidate(ctx context.Context, cl *forgejoClient, pr *forgejoPullRequest, role, owner, repo string, index int) (workflowMode, bool, string, error) {
+	if err := prWorkflowActorAdmissionGuard(ctx, cl, owner, repo, index, "pr reopen"); err != nil {
+		return "", false, "", err
+	}
+	wf := prWorkflowMarkerMode(pr.Body)
+	if err := prWorkflowPermitted(role, wf, prOpReopen); err != nil {
+		return "", false, "", err
+	}
+	if strings.ToLower(strings.TrimSpace(pr.State)) != "closed" {
+		return "", false, "", fmt.Errorf("pr reopen: %s/%s#%d is %s, not closed", owner, repo, index, pr.State)
+	}
+	merged, err := cl.PullRequestMerged(ctx, owner, repo, index)
+	if err != nil {
+		return "", false, "", fmt.Errorf("pr reopen: %s/%s#%d: merged-state check failed: %w", owner, repo, index, err)
+	}
+	if merged {
+		return "", false, "", fmt.Errorf("pr reopen: %s/%s#%d is already merged", owner, repo, index)
+	}
+	head := pr.HeadSHA()
+	if head == "" {
+		return "", false, "", fmt.Errorf("pr reopen: %s/%s#%d did not expose a head SHA", owner, repo, index)
+	}
+	if err := prWorkflowHumanInterventionGuard(ctx, cl, owner, repo, index, pr.UpdatedAt, "pr reopen"); err != nil {
+		return "", false, "", err
+	}
+	return wf, merged, head, nil
+}
+
 func prWorkflowRecoverReport(ctx context.Context, cl *forgejoClient, role, owner, repo string, index int) (string, error) {
 	pr, err := cl.GetPullRequest(ctx, owner, repo, index)
 	if err != nil {
+		return "", err
+	}
+	if err := prWorkflowActorAdmissionGuard(ctx, cl, owner, repo, index, "pr recover"); err != nil {
 		return "", err
 	}
 	if err := prWorkflowPermitted(role, prWorkflowMarkerMode(pr.Body), prOpRecover); err != nil {

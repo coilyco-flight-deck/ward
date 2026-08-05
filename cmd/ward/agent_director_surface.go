@@ -93,7 +93,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 	} else {
 		launchCreds = r.resolveLaunchCreds(ctx, &plan, mode)
 	}
-	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, launchCreds)
+	envFile, cleanupEnv, err := r.writeTokenEnvFile(ctx, planDispatchTarget(plan), plan.Forge, plan.Role, launchCreds)
 	if err != nil {
 		return err
 	}

@@ -16,47 +16,38 @@ Inventory of what `ward` ships today.
 
 - **`ward agent`** - the guarded execution layer.
 - **`warded`** - the symlinked public face.
-- Typed harness adapters and three fixed workflow labels. Role metadata grants
-  no authority. Preferences use explicit inputs or YAML.
+- Typed harness adapters and fixed workflows. Role metadata grants no authority.
 - `ward agent director queue` / `status` - read-only queue view.
 - Read-only Forgejo issue-comment guard.
-- Reservation and dispatch comments clean up after release.
+- Reservation and dispatch comment cleanup.
 - Harness install hooks for claude, codex, goose, and opencode.
-- Context bundles bind role, agent, home, and verified repositories without authority.
-  Launches mount safe checkouts read-only at `/refs`. See [context-bundle.md](context-bundle.md).
+- Authority-free context bundles and read-only `/refs` mounts. See [context-bundle.md](context-bundle.md).
 - Tracker and forge adapters do not depend on AOSguard.
 - Launch-intent vs running-engineer split in list, dispatch-health, reap, and director.
 - Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
 - Open-PR backpressure gate.
 - Issue-scoped director dispatch.
-- Bounded director, engineer, and QA live-verification fixtures. See
-  [verification-fixtures.md](verification-fixtures.md).
+- Bounded director, engineer, and QA fixtures. See [verification-fixtures.md](verification-fixtures.md).
 - Compose broker with durable cluster/request IDs, restart recovery, sibling
-  launch, lifecycle status, and director Forgejo RPC. See
-  [agent-dispatch-lifecycle.md](agent-dispatch-lifecycle.md).
-- Broker-only clusters start outside Git and provide scoped lifecycle verbs. See
-  [agent-clusters.md](agent-clusters.md).
-- Generic peers provide broker-minted IDs, messages, roster labels, and a
-  repository-free context-bundle plan. See
+  launch, lifecycle status, and Forgejo RPC. See [agent-dispatch-lifecycle.md](agent-dispatch-lifecycle.md).
+- Broker-only clusters with scoped lifecycle verbs. See [agent-clusters.md](agent-clusters.md).
+- Generic peers with broker IDs, messages, roster labels, and context plans. See
   [agent-peer-collaboration.md](agent-peer-collaboration.md).
 - PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
 - PR close/reopen/recovery and repair classification.
-- One canonical secret-safe agent archive with configurable exact-value and RE2
-  redaction. See [agent-observability.md](agent-observability.md).
+- Secret-safe agent archives with exact-value and RE2 redaction. See [agent-observability.md](agent-observability.md).
 - Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.
-- `ward agent issue create` files a Forgejo issue through the read-only
-  director credential broker without dispatching an engineer.
+- `ward agent issue create` files through the director broker without dispatch.
+- Actor admission seals exact external snapshots. Agent tracker writes use
+  role-bound typed broker actions and Git-only credentials. See [agent-human-feedback.md](agent-human-feedback.md).
 - Dispatch-health, PR repair input, and logs artifact selector.
 
 ## Container surface
 
-- The ephemeral run box - see [container.md](container.md),
-  [container-contract.md](container-contract.md),
-  [container-lifecycle.md](container-lifecycle.md), and
-  [container-substrate.md](container-substrate.md).
+- The ephemeral run box. See [container.md](container.md),
+  [container-contract.md](container-contract.md), and [container-lifecycle.md](container-lifecycle.md).
 - Claude in Chrome browser computer-use is disabled for Claude Code containers.
-- Optional context bundles stay authority-free. Ward retains credentials,
-  permissions, mount modes, network, and launch authority.
+- Optional bundles stay authority-free. Ward retains credentials and launch authority.
 - Public demo image build. See [demo-image.md](demo-image.md).
 
 ## AOS policy and AOSguard boundary

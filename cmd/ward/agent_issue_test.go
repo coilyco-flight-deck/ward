@@ -106,6 +106,12 @@ func TestAgentCommandIncludesIssueCreate(t *testing.T) {
 	if commandNamed(issue.Commands, "create") == nil {
 		t.Fatal("ward agent issue missing create command")
 	}
+	if commandNamed(issue.Commands, "approve") == nil {
+		t.Fatal("ward agent issue missing approve command")
+	}
+	if commandNamed(agentCommand().Commands, "approval-plan") == nil {
+		t.Fatal("ward agent missing approval-plan command")
+	}
 }
 
 func writeIssueBodyFile(t *testing.T, body string) string {

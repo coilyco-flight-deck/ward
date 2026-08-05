@@ -67,7 +67,7 @@ func deleteTransientWorkflowComments(ctx context.Context, cl Tracker, ref agentI
 		return
 	}
 	for _, c := range comments {
-		if c.ID == 0 || !transientWorkflowComment(c.Body) {
+		if c.ID == 0 || !trustedMachineComment(c, recordKindDispatch, recordKindReservation, recordKindReservationRelease) || !transientWorkflowComment(c.Body) {
 			continue
 		}
 		if !cutoff.IsZero() && c.CreatedAt.After(cutoff) {

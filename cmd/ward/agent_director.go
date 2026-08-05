@@ -55,6 +55,7 @@ const (
 type backlogIssue struct {
 	Number int
 	Kind   string
+	Author string
 	Title  string
 	Body   string
 	Labels []string
@@ -463,12 +464,19 @@ func (r *Runner) resolveDirectorIssueRef(ctx context.Context, c *cli.Command, la
 	if err := validateDirectorIssueTarget(c, label, ref, issue); err != nil {
 		return agentIssueRef{}, err
 	}
-	if !directorBurndownRequested(c) {
-		return ref, nil
-	}
 	comments, cerr := r.fetchIssueComments(ctx, ref)
 	if cerr != nil {
 		return agentIssueRef{}, fmt.Errorf("%s: resolve issue %s comments: %w", label, ref, cerr)
+	}
+	target, terr := approvalTargetFromIssue(ref, issue)
+	if terr != nil {
+		return agentIssueRef{}, fmt.Errorf("%s: %w", label, terr)
+	}
+	if _, aerr := admitActorContent(target, comments, loadActorAuthorityPolicy()); aerr != nil {
+		return agentIssueRef{}, fmt.Errorf("%s: %w", label, aerr)
+	}
+	if !directorBurndownRequested(c) {
+		return ref, nil
 	}
 	if err := r.precheckReservation(ctx, label, resolvedWork{Ref: ref, Title: issue.Title, Body: issue.Body, Comments: comments}, false); err != nil {
 		return agentIssueRef{}, err
@@ -808,10 +816,6 @@ type wardGlobalConfig struct {
 		Review struct {
 			Skip []string `yaml:"skip"`
 		} `yaml:"review"`
-		HumanFeedback struct {
-			IgnoreAuthors     []string `yaml:"ignore-authors"`
-			AutomationMarkers []string `yaml:"automation-markers"`
-		} `yaml:"human-feedback"`
 	} `yaml:"agent"`
 	Container struct {
 		MemoryLimit string `yaml:"memory-limit"`
@@ -1160,6 +1164,9 @@ func latestBacklogOutcomeComment(comments []issueComment) (issueComment, bool) {
 	}
 	var hits []hit
 	for _, c := range comments {
+		if !trustedMachineComment(c, recordKindOutcome) {
+			continue
+		}
 		if _, ok := backlogOutcomeOfComment(c.Body); !ok {
 			continue
 		}
@@ -1204,6 +1211,9 @@ func latestQAVerdictComment(comments []issueComment, issueRef, prRef, headSHA st
 		return qaCommentMeta{}, false
 	}
 	for _, c := range comments {
+		if !trustedMachineComment(c, recordKindQA) {
+			continue
+		}
 		meta, ok := parseQAVerdictComment(c.Body)
 		if !ok {
 			continue
@@ -1535,7 +1545,7 @@ func backlogTierIndex(tier string) int {
 // reservation marker, fresh or stale.
 func backlogHasReservationComment(comments []issueComment) bool {
 	for _, c := range comments {
-		if strings.Contains(c.Body, agentReservationMarker) {
+		if trustedMachineComment(c, recordKindReservation) {
 			return true
 		}
 	}
@@ -1583,7 +1593,7 @@ func (r *Runner) backlogRefreshRepo(ctx context.Context, cl *forgejoClient, labe
 	}
 	issues := make([]backlogIssue, 0, len(rawIssues))
 	for _, ri := range rawIssues {
-		bi := backlogIssue{Number: ri.Number, Kind: backlogKindIssue, Title: ri.Title, Body: ri.Body, URL: ri.HTMLURL}
+		bi := backlogIssue{Number: ri.Number, Kind: backlogKindIssue, Author: ri.User.Login, Title: ri.Title, Body: ri.Body, URL: ri.HTMLURL}
 		for _, l := range ri.Labels {
 			if l.Name != "" {
 				bi.Labels = append(bi.Labels, l.Name)
@@ -1602,6 +1612,7 @@ func (r *Runner) backlogRefreshRepo(ctx context.Context, cl *forgejoClient, labe
 		prBacklog = append(prBacklog, backlogIssue{
 			Number: pr.Number,
 			Kind:   backlogKindPullRequest,
+			Author: pr.User.Login,
 			Title:  pr.Title,
 			Body:   pr.Body,
 			URL:    pr.HTMLURL,
@@ -2024,7 +2035,7 @@ func parseBacklogDispatchedAt(s string) time.Time {
 // at/after dispatchedAt - a pre-launch death, not a run that ran (ward#595/#264).
 func prelaunchDeathRelease(comments []issueComment, dispatchedAt time.Time) bool {
 	for _, c := range comments {
-		if strings.Contains(c.Body, agentReservationReleaseMarker) && !c.CreatedAt.Before(dispatchedAt) {
+		if trustedMachineComment(c, recordKindReservationRelease) && !c.CreatedAt.Before(dispatchedAt) {
 			return true
 		}
 	}

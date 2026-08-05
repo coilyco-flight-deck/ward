@@ -931,6 +931,13 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop,gocognit,f
 		"WARD_SUBSTRATE_MANIFEST": envOrBundleOr("WARD_SUBSTRATE_MANIFEST", topo.SubstrateManifest, containerSubstrateManifest),
 		"WARD_SUBSTRATE_TTL":      envOrBundleOr("WARD_SUBSTRATE_TTL", topo.SubstrateTTL, containerSubstrateTTL),
 	}
+	// Actor identities are deployment inputs, not repo configuration. They are
+	// non-secret and cross every container boundary unchanged (ward#1586).
+	for _, key := range []string{envTrustedCollaborators, envAutomationActor} {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			env[key] = value
+		}
+	}
 	if p.Repo.Owner != "" && p.Repo.Name != "" {
 		env["WARD_TARGET_REPO"] = p.Repo.slug()
 		env["WARD_TARGET_OWNER"] = p.Repo.Owner

@@ -53,6 +53,9 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 ## `ward agent message receive`
 
 - --after, --conversation, --json
+## `ward agent approval-plan`
+
+- --pr, --comment-id
 ## `ward agent reap`
 
 - --idle, --max-cpu, --interval, --dry-run
@@ -86,6 +89,9 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 ## `ward agent issue create`
 
 - --title, --body-file
+## `ward agent issue approve`
+
+- --pr, --intent-comment-id
 ## `ward agent dispatch-health`
 
 - --repo, --org, --limit, --max-parallel, --json, --line

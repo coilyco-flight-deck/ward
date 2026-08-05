@@ -527,6 +527,23 @@ func (c *forgejoClient) CreateIssue(ctx context.Context, owner, repo, title, bod
 		Number int `json:"number"`
 	}
 	body = c.mode.signBody(body)
+	if agentTrackerBrokerEnabled() {
+		kind := recordKindRoute
+		if strings.HasPrefix(strings.TrimSpace(title), salvageIssueTitlePrefix) {
+			kind = recordKindOutcome
+		}
+		result, err := sendAgentTrackerMutation(ctx, trackerMutationRequest{
+			Operation: trackerMutationCreateIssue, RecordKind: kind,
+			Target: owner + "/" + repo, Title: title, Body: body,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("forgejo: broker create issue in %s/%s: %w", owner, repo, err)
+		}
+		if result.Number <= 0 {
+			return 0, fmt.Errorf("forgejo: broker create issue in %s/%s omitted issue number", owner, repo)
+		}
+		return result.Number, nil
+	}
 	if _, err := c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "issues"}, nil, map[string]string{"title": title, "body": body}, true, &created); err != nil {
 		return 0, fmt.Errorf("forgejo: create issue in %s/%s: %w", owner, repo, err)
 	}
@@ -535,13 +552,36 @@ func (c *forgejoClient) CreateIssue(ctx context.Context, owner, repo, title, bod
 
 // commentIssue appends a signed comment to an existing issue.
 func (c *forgejoClient) CommentIssue(ctx context.Context, owner, repo string, number int, body string) error {
-	if _, err := c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "issues", strconv.Itoa(number), "comments"}, nil, map[string]string{"body": c.mode.signBody(body)}, true, nil); err != nil {
+	signed := c.mode.signBody(body)
+	if agentTrackerBrokerEnabled() {
+		kind, recognized, _ := fixedWardRecordKind(signed)
+		if !recognized {
+			return fmt.Errorf("forgejo: broker comment issue %s/%s#%d: body has no fixed Ward record kind", owner, repo, number)
+		}
+		if _, err := sendAgentTrackerMutation(ctx, trackerMutationRequest{
+			Operation: trackerMutationComment, RecordKind: kind,
+			Target: fmt.Sprintf("%s/%s#%d", owner, repo, number), Body: signed,
+		}); err != nil {
+			return fmt.Errorf("forgejo: broker comment issue %s/%s#%d: %w", owner, repo, number, err)
+		}
+		return nil
+	}
+	if _, err := c.doJSON(ctx, http.MethodPost, []string{"repos", owner, repo, "issues", strconv.Itoa(number), "comments"}, nil, map[string]string{"body": signed}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: comment issue %s/%s#%d: %w", owner, repo, number, err)
 	}
 	return nil
 }
 
 func (c *forgejoClient) DeleteIssueComment(ctx context.Context, owner, repo string, commentID int) error {
+	if agentTrackerBrokerEnabled() {
+		if _, err := sendAgentTrackerMutation(ctx, trackerMutationRequest{
+			Operation: trackerMutationDeleteComment, RecordKind: recordKindReservationRelease,
+			Target: owner + "/" + repo, CommentID: commentID,
+		}); err != nil {
+			return fmt.Errorf("forgejo: broker delete issue comment %s/%s#%d: %w", owner, repo, commentID, err)
+		}
+		return nil
+	}
 	if _, err := c.doJSON(ctx, http.MethodDelete, []string{"repos", owner, repo, "issues", "comments", strconv.Itoa(commentID)}, nil, nil, true, nil); err != nil {
 		return fmt.Errorf("forgejo: delete issue comment %s/%s#%d: %w", owner, repo, commentID, err)
 	}
@@ -551,6 +591,15 @@ func (c *forgejoClient) DeleteIssueComment(ctx context.Context, owner, repo stri
 // closeIssue flips an existing issue to the closed state (the fixed-body close
 // toggle), used by the task route flow to retire an intake record once linked.
 func (c *forgejoClient) CloseIssue(ctx context.Context, owner, repo string, number int) error {
+	if agentTrackerBrokerEnabled() {
+		if _, err := sendAgentTrackerMutation(ctx, trackerMutationRequest{
+			Operation: trackerMutationCloseIssue, RecordKind: recordKindRoute,
+			Target: fmt.Sprintf("%s/%s#%d", owner, repo, number),
+		}); err != nil {
+			return fmt.Errorf("forgejo: broker close issue %s/%s#%d: %w", owner, repo, number, err)
+		}
+		return nil
+	}
 	if _, err := c.doJSON(ctx, http.MethodPatch, []string{"repos", owner, repo, "issues", strconv.Itoa(number)}, nil, map[string]string{"state": "closed"}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: close issue %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -560,6 +609,15 @@ func (c *forgejoClient) CloseIssue(ctx context.Context, owner, repo string, numb
 // reopenIssue flips a closed issue back open (the fixed-body reopen toggle); the
 // reaper uses it to undo a `closes #N` when a granted repo failed to land (ward#291).
 func (c *forgejoClient) ReopenIssue(ctx context.Context, owner, repo string, number int) error {
+	if agentTrackerBrokerEnabled() {
+		if _, err := sendAgentTrackerMutation(ctx, trackerMutationRequest{
+			Operation: trackerMutationReopenIssue, RecordKind: recordKindOutcome,
+			Target: fmt.Sprintf("%s/%s#%d", owner, repo, number),
+		}); err != nil {
+			return fmt.Errorf("forgejo: broker reopen issue %s/%s#%d: %w", owner, repo, number, err)
+		}
+		return nil
+	}
 	if _, err := c.doJSON(ctx, http.MethodPatch, []string{"repos", owner, repo, "issues", strconv.Itoa(number)}, nil, map[string]string{"state": "open"}, true, nil); err != nil {
 		return fmt.Errorf("forgejo: reopen issue %s/%s#%d: %w", owner, repo, number, err)
 	}
@@ -591,6 +649,28 @@ func (c *forgejoClient) RepoPullRequestsEnabled(ctx context.Context, owner, repo
 }
 
 func (c *forgejoClient) CreatePullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error) {
+	signedBody := c.mode.signBody(body)
+	if agentTrackerBrokerEnabled() {
+		return createBrokeredPullRequest(ctx, owner, repo, head, base, title, signedBody)
+	}
+	return c.createDirectPullRequest(ctx, owner, repo, head, base, title, signedBody)
+}
+
+func createBrokeredPullRequest(ctx context.Context, owner, repo, head, base, title, body string) (string, error) {
+	result, err := sendAgentTrackerMutation(ctx, trackerMutationRequest{
+		Operation: trackerMutationCreatePR, RecordKind: recordKindOutcome,
+		Target: owner + "/" + repo, Head: head, Base: base, Title: title, Body: body,
+	})
+	if err != nil {
+		return "", fmt.Errorf("forgejo: broker create PR in %s/%s: %w", owner, repo, err)
+	}
+	if strings.TrimSpace(result.URL) == "" {
+		return "", fmt.Errorf("forgejo: broker create PR in %s/%s omitted URL", owner, repo)
+	}
+	return result.URL, nil
+}
+
+func (c *forgejoClient) createDirectPullRequest(ctx context.Context, owner, repo, head, base, title, signedBody string) (string, error) {
 	token, err := c.apiToken(ctx)
 	if err != nil {
 		return "", err
@@ -599,7 +679,7 @@ func (c *forgejoClient) CreatePullRequest(ctx context.Context, owner, repo, head
 		"base":  base,
 		"head":  head,
 		"title": title,
-		"body":  c.mode.signBody(body),
+		"body":  signedBody,
 	})
 	if err != nil {
 		return "", err
@@ -912,10 +992,11 @@ func (c *forgejoClient) GetPullRequestContext(ctx context.Context, owner, repo s
 	}
 	return &agentPullRequestContext{
 		State:        strings.TrimSpace(pr.State),
-		Title:        strings.TrimSpace(pr.Title),
-		Body:         strings.TrimSpace(pr.Body),
+		Title:        pr.Title,
+		Body:         pr.Body,
 		URL:          strings.TrimSpace(pr.HTMLURL),
 		UpdatedAt:    pr.UpdatedAt,
+		Author:       strings.TrimSpace(pr.User.Login),
 		HeadSHA:      strings.TrimSpace(pr.Head.SHA),
 		HeadRef:      strings.TrimSpace(pr.Head.Ref),
 		BaseRef:      strings.TrimSpace(pr.Base.Ref),
@@ -950,7 +1031,7 @@ func (c *forgejoClient) ListOpenIssues(ctx context.Context, owner, repo string, 
 		if ri.isPullRequest() {
 			continue
 		}
-		bi := backlogIssue{Number: ri.Number, Kind: backlogKindIssue, Title: ri.Title, Body: ri.Body, URL: ri.HTMLURL}
+		bi := backlogIssue{Number: ri.Number, Kind: backlogKindIssue, Author: ri.User.Login, Title: ri.Title, Body: ri.Body, URL: ri.HTMLURL}
 		for _, l := range ri.Labels {
 			if l.Name != "" {
 				bi.Labels = append(bi.Labels, l.Name)
@@ -984,6 +1065,7 @@ func (c *forgejoClient) ListOpenPullRequests(ctx context.Context, owner, repo st
 			CreatedAt: ri.CreatedAt,
 			UpdatedAt: ri.UpdatedAt,
 		}
+		pr.User.Login = ri.User.Login
 		for _, l := range ri.Labels {
 			if l.Name != "" {
 				pr.Labels = append(pr.Labels, l.Name)
