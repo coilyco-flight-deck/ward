@@ -140,9 +140,6 @@ func workflowMachineToken(w workflowMode) string {
 // agentWorkflow resolves the --workflow flag to a workflowMode, erroring on an
 // unknown value. CLI wins; otherwise smart defaults resolve by target repo.
 func agentWorkflow(c *cli.Command, repoSlug string) (workflowMode, error) {
-	if verificationFixtureRequested(c) {
-		return verificationFixtureWorkflow(c)
-	}
 	if c.IsSet("workflow") {
 		return parseWorkflow(c.String("workflow"))
 	}
@@ -154,20 +151,6 @@ func agentWorkflow(c *cli.Command, repoSlug string) (workflowMode, error) {
 		return wf, nil
 	}
 	return defs.agentWorkflowDefault.orDefault(), nil
-}
-
-func verificationFixtureWorkflow(c *cli.Command) (workflowMode, error) {
-	if !c.IsSet("workflow") {
-		return workflowRemoteBranchOnly, nil
-	}
-	wf, err := parseWorkflow(c.String("workflow"))
-	if err != nil {
-		return "", err
-	}
-	if wf != workflowRemoteBranchOnly {
-		return "", fmt.Errorf("--%s requires --workflow %s", verificationFixtureFlagName, workflowRemoteBranchOnly)
-	}
-	return workflowRemoteBranchOnly, nil
 }
 
 // workflowCarryClause returns the carry clause for the selected workflow.

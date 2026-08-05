@@ -19,7 +19,7 @@ func TestDirectorCommandRetiresAutonomousBurndown(t *testing.T) {
 			names[name] = true
 		}
 	}
-	for _, removed := range []string{"burndown", "drain", "triage", "no-triage", "poll-interval", "max-cycles", "max-parallel", "engineer-harness", "dry-run", "override-reservation", verificationFixtureFlagName} {
+	for _, removed := range []string{"burndown", "drain", "triage", "no-triage", "poll-interval", "max-cycles", "max-parallel", "engineer-harness", "dry-run", "override-reservation"} {
 		if names[removed] {
 			t.Errorf("retired director flag --%s is still public", removed)
 		}

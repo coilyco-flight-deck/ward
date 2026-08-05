@@ -60,6 +60,21 @@ func TestQAPromptIncludesInspectionBrief(t *testing.T) {
 	assertSeedRejectsLiveCIPushLoop(t, got)
 }
 
+func TestQAResearchPlanUsesReadOnlyEphemeralCheckout(t *testing.T) {
+	ref := agentIssueRef{Owner: "example", Repo: "candidate", Number: 42, Forge: forgeForgejo}
+	plan := qaResearchPlan(upPlan{
+		Mode: modeCodex,
+		Repo: targetRepo{Owner: ref.Owner, Name: ref.Repo},
+	}, ref)
+
+	if !plan.Ask || !plan.ReadOnly || !plan.Interactive || !plan.Capture || plan.TTY {
+		t.Fatalf("QA plan has wrong execution shape: %+v", plan)
+	}
+	if plan.Role != roleQA || plan.Issue != 0 || plan.Branch != "" || plan.Forge != forgeForgejo {
+		t.Fatalf("QA plan has wrong checkout identity: %+v", plan)
+	}
+}
+
 func TestQAVerdictCommentSurfacesFailure(t *testing.T) {
 	read := `{"verdict":"fail","summary":"checks are red","evidence":["CI failed"],"risks":["merge would regress"],"next_steps":["fix the checks"]}`
 	got := qaVerdictComment(modeClaude, qaThoroughness{}, qaFamilyInternal, "inspect the branch", qaLaunchContext{

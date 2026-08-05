@@ -7,10 +7,10 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 
 ## `ward agent`
 
-- --harness, --agent, --workflow, --verification-fixture, --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, --skip-smoke-test, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
+- --harness, --agent, --workflow, --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, --skip-smoke-test, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
 ## `ward agent engineer`
 
-- --harness, --agent, --workflow, --verification-fixture, --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, --skip-smoke-test, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
+- --harness, --agent, --workflow, --branch, --repo, --details, --review-class, --skip-review, --no-review-gate, --github, --config, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull, --override-reservation, --override-capacity, --skip-preflight, --no-preflight, --skip-smoke-test, (hidden) --skip-host-preflight, (hidden) --quiet-seed, --instructions-file, (hidden) --pr
 ## `ward agent director`
 
 - --harness, --agent, --repo, --org, --with-repo, --limit, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, --no-pull
@@ -22,7 +22,7 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 - --repo, --org, --limit, --dry-run, --print
 ## `ward agent qa`
 
-- --harness, --agent, --thoroughness, --depth, --config, --family, --verification-fixture, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, --no-pull
+- --harness, --agent, --thoroughness, --depth, --config, --family, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, --no-pull
 ## `ward agent run`
 
 - --harness, --agent, --role, (hidden) --agent-id, --cluster, --repo, --config, (hidden) --image, (hidden) --tag, --context-bundle, (hidden) --ward-source, (hidden) --ward-version, (hidden) --allow-ward-downgrade, --print, (hidden) --no-pull

@@ -12,9 +12,6 @@ This file tells ward which repo verbs are allowed and how the gate behaves.
 - `agent.workflow` - optional repository workflow override.
 - `agent.image` - optional repository container image override.
 - `agent.release-channel` - optional repository image tag override.
-- `agent.verification.fixtures[]` - optional bounded live-verification
-  admission rules. Each entry requires `repository` in `owner/name` form and
-  an `issue-label`.
 
 ## Typical shape
 
@@ -30,10 +27,6 @@ agent:
   workflow: pull-request
   image: registry.example/ward
   release-channel: release
-  verification:
-    fixtures:
-      - repository: example/ward-qa-fixture
-        issue-label: qa-fixture
 ```
 
 The real file can carry more verbs, but the shape stays simple: a command map
@@ -46,9 +39,6 @@ plus optional security and agent launch preferences.
 - Agent values override operator YAML and are overridden by explicit command
   inputs.
 - Role profiles and authority settings are not valid repository configuration.
-- Verification fixture admission is repository configuration, not a role
-  authority grant. Ward requires both the configured repository and issue
-  label when `--verification-fixture` is present.
 - It does not replace the agent container or AOSguard operator surface.
 
 ## See also

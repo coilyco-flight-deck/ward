@@ -895,7 +895,6 @@ func agentSurfaceFlags() []cli.Flag {
 	flags = append(flags,
 		// --workflow picks the landing policy (ward#508).
 		workflowFlag(),
-		verificationFixtureFlag(),
 		// --branch remains a supported continuation escape hatch for existing PR work.
 		&cli.StringFlag{Name: "branch", Usage: "feature branch to create inside the clone (default: issue-<N>); use it to continue an existing PR branch explicitly"},
 		&cli.StringSliceFlag{Name: "repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy at /workspace/<owner>/<repo> (ward#1526)."},
@@ -1068,9 +1067,6 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	if err != nil {
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, err)
 	}
-	if err := validateVerificationFixtureEngineerOptions(c); err != nil {
-		return resolvedWork{}, fmt.Errorf("%s: %w", label, err)
-	}
 	// --github forces a bare owner/repo#N onto the GitHub forge (a github.com URL
 	// already parses there on its own; ward#489). See docs/agent-github.md.
 	if c.Bool("github") {
@@ -1096,9 +1092,6 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 	issue, issueErr := r.fetchIssue(ctx, ref)
 	if issueErr != nil && !ref.MergeRequest {
 		return resolvedWork{}, fmt.Errorf("%s: resolve issue %s: %w", label, ref, issueErr)
-	}
-	if err := validateVerificationFixtureTarget(c, ref, issue); err != nil {
-		return resolvedWork{}, fmt.Errorf("%s: %w", label, err)
 	}
 	var title string
 	var body string

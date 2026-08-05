@@ -51,7 +51,6 @@ Start here for Ward's operating surface.
 - [agent-pr-workflow.md](agent-pr-workflow.md) - merge, status, wait, logs, runs, rerun.
 - [agent-pr-status-object.md](agent-pr-status-object.md) - PR/CI status object.
 - [agent-workflow.md](agent-workflow.md) - landing policy and review.
-- [verification-fixtures.md](verification-fixtures.md) - bounded live proof.
 - [warded-kernel-boundary.md](warded-kernel-boundary.md) - kernel versus edge extraction boundary.
 
 ## Container

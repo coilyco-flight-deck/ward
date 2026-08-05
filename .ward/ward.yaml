@@ -25,9 +25,6 @@ commands:
   test-runtime-config:
     run: go test ./cmd/ward -run RuntimeConfig
     description: Run the focused typed runtime configuration and role-independence tests.
-  test-verification-fixture:
-    run: go test ./cmd/ward -run VerificationFixture
-    description: Run the focused bounded live-verification fixture tests.
   test-policy-boundary:
     run: go test ./cmd/ward -run PolicyBoundary
     description: Run the focused native-policy and AOSguard-boundary contract tests.

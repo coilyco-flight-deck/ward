@@ -40,7 +40,6 @@ type smartDefaults struct {
 	trustedOwners                 []string
 	repoAuthorityDefault          forge
 	repoAuthorityRules            []repoAuthorityRule
-	verificationFixtures          []verificationFixtureRule
 }
 
 type repoAuthorityRule struct {
@@ -51,11 +50,6 @@ type repoAuthorityRule struct {
 	Landing    forge
 	LandingSet bool
 	Mirrors    []forge
-}
-
-type verificationFixtureRule struct {
-	Repository string `yaml:"repository"`
-	IssueLabel string `yaml:"issue-label"`
 }
 
 type operatorPreferences struct {
@@ -196,12 +190,9 @@ func applyOperatorPreferences(defs *smartDefaults, prefs operatorPreferences) {
 
 type repoRuntimeConfig struct {
 	Agent struct {
-		Workflow     string `yaml:"workflow"`
-		Image        string `yaml:"image"`
-		Channel      string `yaml:"release-channel"`
-		Verification struct {
-			Fixtures []verificationFixtureRule `yaml:"fixtures"`
-		} `yaml:"verification"`
+		Workflow string `yaml:"workflow"`
+		Image    string `yaml:"image"`
+		Channel  string `yaml:"release-channel"`
 	} `yaml:"agent"`
 }
 
@@ -238,13 +229,6 @@ func applyRepoRuntimeConfig(defs *smartDefaults) error {
 	if value := strings.TrimSpace(cfg.Agent.Channel); value != "" {
 		defs.agentTag = value
 	}
-	fixtures, err := normalizeVerificationFixtureRules(cfg.Agent.Verification.Fixtures)
-	if err != nil {
-		return fmt.Errorf("repository agent.verification.fixtures: %w", err)
-	}
-	if len(fixtures) > 0 {
-		defs.verificationFixtures = fixtures
-	}
 	return nil
 }
 
@@ -256,7 +240,6 @@ func cloneSmartDefaults(in smartDefaults) smartDefaults {
 	}
 	out.trustedOwners = append([]string{}, in.trustedOwners...)
 	out.repoAuthorityRules = append([]repoAuthorityRule{}, in.repoAuthorityRules...)
-	out.verificationFixtures = append([]verificationFixtureRule{}, in.verificationFixtures...)
 	return out
 }
 

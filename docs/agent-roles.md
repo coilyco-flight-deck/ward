@@ -23,10 +23,6 @@ Live-only or repeated failures move to a separate `interactive` operator issue,
 while director and Ops authority stays distinct. See
 [agent-ci-boundary.md](agent-ci-boundary.md).
 
-`--verification-fixture` narrows director, engineer, and QA runs to an
-explicitly configured disposable target. It does not change the role's
-credentials or authority. See [verification-fixtures.md](verification-fixtures.md).
-
 `warded #98` selects `engineer`. `warded director --repo owner/name` selects
 `director`. `warded qa #98` selects `qa`. Ward rejects additional startup role
 names instead of loading a profile.

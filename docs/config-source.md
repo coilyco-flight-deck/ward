@@ -12,9 +12,7 @@ Supported preferences have these owners:
   `agent.image`, `agent.release-channel`, workflow defaults, `agent.redaction`,
   `container.staging-dir`, and director limits.
 - `.ward/ward.yaml` holds repository-local `agent.workflow`, `agent.image`, and
-  `agent.release-channel` values beside the repository's dev verbs. It also
-  owns the explicit `agent.verification.fixtures` admission list for bounded
-  live-verification targets.
+  `agent.release-channel` values beside the repository's dev verbs.
 - Explicit command flags win over YAML for the setting they name.
 - Harness-owned environment variables select models, endpoints, reasoning, and
   display identity. Ward does not supply those values through a role profile.

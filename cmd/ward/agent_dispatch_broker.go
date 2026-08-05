@@ -1791,14 +1791,13 @@ func validateDispatchBrokerArgv(role string, tail []string) error {
 		for _, f := range []string{"--image", "--tag", "--ward-version", "--branch", "--repo"} {
 			valueFlags[f] = true
 		}
-		for _, f := range []string{"--no-pull", "--override-reservation", "--override-capacity", "--skip-preflight", "--no-preflight", "--skip-smoke-test", "--skip-review", "--no-review-gate", "--pr", "--verification-fixture"} {
+		for _, f := range []string{"--no-pull", "--override-reservation", "--override-capacity", "--skip-preflight", "--no-preflight", "--skip-smoke-test", "--skip-review", "--no-review-gate", "--pr"} {
 			boolFlags[f] = true
 		}
 		return validateDispatchBrokerFlags(role, tail, valueFlags, boolFlags, false)
 	}
 	if role == "qa" {
 		valueFlags["--family"] = true
-		boolFlags["--verification-fixture"] = true
 	}
 	valueFlags["--thoroughness"] = true
 	valueFlags["--depth"] = true
@@ -2009,7 +2008,7 @@ func brokerEngineerArgv(c *cli.Command, mode containerMode, ref agentIssueRef) [
 	if c.Bool("print") {
 		argv = append(argv, "--print")
 	}
-	return appendVerificationFixtureArg(argv, c)
+	return argv
 }
 
 func brokerQaArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []string {
@@ -2024,15 +2023,7 @@ func brokerQaArgv(c *cli.Command, mode containerMode, ref agentIssueRef) []strin
 	if c.Bool("print") {
 		argv = append(argv, "--print")
 	}
-	argv = appendVerificationFixtureArg(argv, c)
 	argv = append(argv, c.Args().Tail()...)
-	return argv
-}
-
-func appendVerificationFixtureArg(argv []string, c *cli.Command) []string {
-	if verificationFixtureRequested(c) {
-		return append(argv, "--verification-fixture")
-	}
 	return argv
 }
 

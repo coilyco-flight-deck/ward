@@ -27,7 +27,6 @@ Inventory of what `ward` ships today.
 - Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
 - Open-PR backpressure gate.
 - Issue-scoped director snapshot and attached read-only surface. Harness-native goals own repetition and dispatch judgment.
-- Bounded engineer and QA fixtures. See [verification-fixtures.md](verification-fixtures.md).
 - Compose broker with durable cluster/request IDs, restart recovery, sibling
   launch, lifecycle status, and Forgejo RPC. See [agent-dispatch-lifecycle.md](agent-dispatch-lifecycle.md).
 - Broker-only clusters with scoped lifecycle verbs. See [agent-clusters.md](agent-clusters.md).
