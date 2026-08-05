@@ -132,7 +132,7 @@ func dictatableID() string {
 // agentArgs seed the agent's argv. Errors only on a bad --repo grant (ward#230).
 func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd, assetsDir string, agentArgs []string, mountSurfaceExtras bool) (upPlan, error) {
 	wardSrc := c.String("ward-source")
-	contextBundle, err := resolveContextBundle(c.String("context-bundle"), role, mode)
+	contextBundle, contextRepositories, err := resolvePlanContext(c.String("context-bundle"), role, mode, cwd)
 	if err != nil {
 		return upPlan{}, err
 	}
@@ -192,10 +192,11 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		ForgejoBase: forgejoBaseURL,
 		HostCwd:     cwd,
 		Mounts: appendSurfaceMounts(leastAccessMounts(cwd, mountOpts{
-			AssetsDir:     assetsDir,
-			WardSource:    wardSrc,
-			AgentLogsDir:  agentLogs,
-			ContextBundle: contextBundle.Root,
+			AssetsDir:      assetsDir,
+			WardSource:     wardSrc,
+			AgentLogsDir:   agentLogs,
+			ContextBundle:  contextBundle.Root,
+			ReferenceRepos: contextRepositories,
 		}), mountSurfaceExtras),
 		Interactive:         !c.Bool("detach"),
 		TTY:                 !c.Bool("detach") && terminalAttached(),
@@ -223,6 +224,15 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		plan.ClusterID = strings.TrimSpace(os.Getenv(envClusterID))
 	}
 	return plan, nil
+}
+
+func resolvePlanContext(bundlePath, role string, mode containerMode, cwd string) (resolvedContextBundle, []mountSpec, error) {
+	bundle, err := resolveContextBundle(bundlePath, role, mode)
+	if err != nil || bundle.Root == "" {
+		return bundle, nil, err
+	}
+	mounts, err := resolveContextRepositoryMounts(cwd, bundle.Repositories)
+	return bundle, mounts, err
 }
 
 func resolveLaunchWardVersion(c *cli.Command) (string, string, error) {

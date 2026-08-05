@@ -22,8 +22,8 @@ Inventory of what `ward` ships today.
 - Read-only Forgejo issue-comment guard.
 - Reservation and dispatch comments clean up after release.
 - Harness install hooks for claude, codex, goose, and opencode.
-- Read-only context bundles with role and agent binding, home projection, and
-  no authority fields. See [context-bundle.md](context-bundle.md).
+- Context bundles bind role, agent, home, and verified repositories without authority.
+  Launches mount safe checkouts read-only at `/refs`. See [context-bundle.md](context-bundle.md).
 - Tracker and forge adapters do not depend on AOSguard.
 - Launch-intent vs running-engineer split in list, dispatch-health, reap, and director.
 - Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
@@ -55,7 +55,7 @@ Inventory of what `ward` ships today.
   [container-substrate.md](container-substrate.md).
 - Claude in Chrome browser computer-use is disabled for Claude Code containers.
 - Optional context bundles stay authority-free. Ward retains credentials,
-  permissions, mounts, network, and launch authority.
+  permissions, mount modes, network, and launch authority.
 - Public demo image build. See [demo-image.md](demo-image.md).
 
 ## AOS policy and AOSguard boundary

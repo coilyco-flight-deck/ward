@@ -46,6 +46,10 @@ starts, mounts it at `/opt/ward-context-bundle`, and exports that fixed path as
 `WARD_CONTEXT_BUNDLE`. Container startup revalidates the bundle and projects
 the selected agent layout into the private agent home before launch.
 
+The manifest carries verified, owner-qualified repository identities. Ward maps
+real host checkouts read-only at `/refs/<owner>/<repository>` and rejects unsafe
+or missing selections before launch. Bundles cannot name paths or request writes.
+
 An optional validated `bin/` is exposed as `WARD_CONTEXT_TOOLS` and appended
 after the image's existing `PATH`. The bundle changes context and tool
 availability only. It grants no authority or runtime capability. See

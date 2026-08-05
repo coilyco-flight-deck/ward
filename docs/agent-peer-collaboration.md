@@ -74,6 +74,7 @@ and `ward agent stop <peer-id>`. Stopping a peer retires its active admission.
 ## Context bundles
 
 Host-launched composed peers retain their own validated context bundle when
-they join a broker. The bundle is context only and cannot grant repository or
-Forgejo authority. Nested agents cannot forward a container-only bundle path
+they join a broker. Sealed repository metadata is retained but ignored by the
+repository-free peer plan, so the bundle cannot grant repository or Forgejo
+authority. Nested agents cannot forward a container-only bundle path
 as a new host bind. Launch a separately composed role through AOS on the host.

@@ -29,12 +29,15 @@ The strict manifest binds the context to the selected Ward role and agent:
 {
   "format": "ward.context-bundle.v1",
   "role": "engineer",
-  "agent": "codex"
+  "agent": "codex",
+  "repositories": ["coilyco-flight-deck/agentic-os", "coilysiren/lore"]
 }
 ```
 
 Ward rejects unknown fields. A bundle cannot declare permissions, credentials,
-network, mounts, or capabilities. Role selects context only. Ward owns authority.
+network, source paths, or capabilities. `repositories` is required, nonempty,
+strictly sorted, deduplicated, and limited to safe `owner/repository` identities.
+See [repository references](context-bundle-repositories.md). Ward owns authority.
 
 ## Accepted home projection
 
@@ -67,13 +70,8 @@ preserve the parent container's host source as a read-only bind.
 ## Ownership boundary
 
 * A producer owns context selection, skill generation, and materialization.
-* Ward owns its manifest schema, host validation, read-only Docker mount,
-  selected role and agent checks, private home projection, launch failure
-  policy, credentials, permissions, network, filesystem authority, and
-  teardown.
+* Ward owns manifest validation, exact read-only mapping, private home projection,
+  failure policy, credentials, permissions, network, filesystem authority, and teardown.
 * Ward does not invoke or import a context producer.
 * The bundle grants no command, credential, network, permission, or writable
   filesystem capability.
-
-Cross-repository composition on Ward's side is tracked in
-[ward#1511](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1511).

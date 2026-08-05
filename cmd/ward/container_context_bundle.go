@@ -19,14 +19,16 @@ const (
 )
 
 type contextBundleManifest struct {
-	Format string `json:"format"`
-	Role   string `json:"role"`
-	Agent  string `json:"agent"`
+	Format       string    `json:"format"`
+	Role         string    `json:"role"`
+	Agent        string    `json:"agent"`
+	Repositories *[]string `json:"repositories"`
 }
 
 type resolvedContextBundle struct {
-	Root     string
-	HasTools bool
+	Root         string
+	HasTools     bool
+	Repositories []string
 }
 
 type contextBundleFile struct {
@@ -36,8 +38,9 @@ type contextBundleFile struct {
 }
 
 type inspectedContextBundle struct {
-	Home     []contextBundleFile
-	HasTools bool
+	Home         []contextBundleFile
+	HasTools     bool
+	Repositories []string
 }
 
 type contextBundleWalkState struct {
@@ -85,7 +88,10 @@ func resolveContextBundle(raw, role string, mode containerMode) (resolvedContext
 	if err != nil {
 		return resolvedContextBundle{}, fmt.Errorf("validate --context-bundle %q: %w", resolved, err)
 	}
-	return resolvedContextBundle{Root: resolved, HasTools: inspected.HasTools}, nil
+	return resolvedContextBundle{
+		Root: resolved, HasTools: inspected.HasTools,
+		Repositories: append([]string(nil), inspected.Repositories...),
+	}, nil
 }
 
 func inspectContextBundle(root, role, agent string) (inspectedContextBundle, error) {
@@ -95,7 +101,8 @@ func inspectContextBundle(root, role, agent string) (inspectedContextBundle, err
 	}
 	defer func() { _ = scopedRoot.Close() }()
 
-	if err := validateContextBundleManifest(scopedRoot, role, agent); err != nil {
+	repositories, err := validateContextBundleManifest(scopedRoot, role, agent)
+	if err != nil {
 		return inspectedContextBundle{}, err
 	}
 
@@ -116,20 +123,48 @@ func inspectContextBundle(root, role, agent string) (inspectedContextBundle, err
 	if !state.hasInstruction {
 		return inspectedContextBundle{}, fmt.Errorf("missing selected %s instruction file home/%s", agent, instructionRel)
 	}
-	return inspectedContextBundle{Home: state.home, HasTools: state.hasTools}, nil
+	return inspectedContextBundle{Home: state.home, HasTools: state.hasTools, Repositories: repositories}, nil
 }
 
-func validateContextBundleManifest(root *os.Root, role, agent string) error {
+func validateContextBundleManifest(root *os.Root, role, agent string) ([]string, error) {
+	manifest, err := decodeContextBundleManifest(root)
+	if err != nil {
+		return nil, err
+	}
+	if manifest.Format != contextBundleFormat {
+		return nil, fmt.Errorf("%s format is %q, want %q", contextBundleManifestName, manifest.Format, contextBundleFormat)
+	}
+	if manifest.Role != role {
+		return nil, fmt.Errorf("%s role is %q, selected Ward role is %q", contextBundleManifestName, manifest.Role, role)
+	}
+	if manifest.Agent != agent {
+		return nil, fmt.Errorf("%s agent is %q, selected Ward agent is %q", contextBundleManifestName, manifest.Agent, agent)
+	}
+	if manifest.Repositories == nil || len(*manifest.Repositories) == 0 {
+		return nil, fmt.Errorf("%s must name the verified bundle repositories", contextBundleManifestName)
+	}
+	prior := ""
+	for _, repository := range *manifest.Repositories {
+		parts := strings.Split(repository, "/")
+		if len(parts) != 2 || !safeContextRepositorySegment(parts[0]) || !safeContextRepositorySegment(parts[1]) || repository <= prior {
+			return nil, fmt.Errorf("%s has invalid, unsorted, or duplicate repository %q", contextBundleManifestName, repository)
+		}
+		prior = repository
+	}
+	return append([]string(nil), (*manifest.Repositories)...), nil
+}
+
+func decodeContextBundleManifest(root *os.Root) (contextBundleManifest, error) {
 	manifestInfo, err := root.Lstat(contextBundleManifestName)
 	if err != nil {
-		return fmt.Errorf("missing readable %s: %w", contextBundleManifestName, err)
+		return contextBundleManifest{}, fmt.Errorf("missing readable %s: %w", contextBundleManifestName, err)
 	}
 	if manifestInfo.Mode()&os.ModeSymlink != 0 || !manifestInfo.Mode().IsRegular() {
-		return fmt.Errorf("%s must be a regular file, not a link or special file", contextBundleManifestName)
+		return contextBundleManifest{}, fmt.Errorf("%s must be a regular file, not a link or special file", contextBundleManifestName)
 	}
 	manifestFile, err := root.Open(contextBundleManifestName)
 	if err != nil {
-		return fmt.Errorf("open %s: %w", contextBundleManifestName, err)
+		return contextBundleManifest{}, fmt.Errorf("open %s: %w", contextBundleManifestName, err)
 	}
 	defer func() { _ = manifestFile.Close() }()
 
@@ -137,25 +172,99 @@ func validateContextBundleManifest(root *os.Root, role, agent string) error {
 	decoder := json.NewDecoder(io.LimitReader(manifestFile, 64*1024))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&manifest); err != nil {
-		return fmt.Errorf("decode %s: %w", contextBundleManifestName, err)
+		return contextBundleManifest{}, fmt.Errorf("decode %s: %w", contextBundleManifestName, err)
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err != nil {
-			return fmt.Errorf("decode %s: %w", contextBundleManifestName, err)
+			return contextBundleManifest{}, fmt.Errorf("decode %s: %w", contextBundleManifestName, err)
 		}
-		return fmt.Errorf("decode %s: multiple JSON values", contextBundleManifestName)
+		return contextBundleManifest{}, fmt.Errorf("decode %s: multiple JSON values", contextBundleManifestName)
 	}
-	if manifest.Format != contextBundleFormat {
-		return fmt.Errorf("%s format is %q, want %q", contextBundleManifestName, manifest.Format, contextBundleFormat)
+	return manifest, nil
+}
+
+func safeContextRepositorySegment(value string) bool {
+	return value != "" && value != "." && value != ".." && !strings.ContainsAny(value, `/\\`)
+}
+
+func resolveContextRepositoryMounts(cwd string, repositories []string) ([]mountSpec, error) {
+	projectsRoot, err := resolveContextProjectsRoot(cwd)
+	if err != nil {
+		return nil, err
 	}
-	if manifest.Role != role {
-		return fmt.Errorf("%s role is %q, selected Ward role is %q", contextBundleManifestName, manifest.Role, role)
+	mounts := make([]mountSpec, 0, len(repositories))
+	for _, repository := range repositories {
+		source := filepath.Join(projectsRoot, filepath.FromSlash(repository))
+		info, err := os.Lstat(source)
+		if err != nil {
+			return nil, fmt.Errorf("context-bundle repository %q is unavailable at %s: %w", repository, source, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return nil, fmt.Errorf("context-bundle repository %q must be a real directory at %s", repository, source)
+		}
+		resolved, err := filepath.EvalSymlinks(source)
+		if err != nil {
+			return nil, fmt.Errorf("resolve context-bundle repository %q: %w", repository, err)
+		}
+		rel, err := filepath.Rel(projectsRoot, resolved)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.ToSlash(rel) != repository {
+			return nil, fmt.Errorf("context-bundle repository %q resolves outside allowed projects root %s", repository, projectsRoot)
+		}
+		mounts = append(mounts, mountSpec{
+			Source:   resolved,
+			Target:   filepath.ToSlash(filepath.Join(containerReferenceRoot, filepath.FromSlash(repository))),
+			ReadOnly: true,
+		})
 	}
-	if manifest.Agent != agent {
-		return fmt.Errorf("%s agent is %q, selected Ward agent is %q", contextBundleManifestName, manifest.Agent, agent)
+	return mounts, nil
+}
+
+func resolveContextProjectsRoot(cwd string) (string, error) {
+	if configured := strings.TrimSpace(os.Getenv("PROJECTS_ROOT")); configured != "" {
+		return canonicalContextProjectsRoot(configured)
 	}
-	return nil
+	current, err := filepath.Abs(cwd)
+	if err != nil {
+		return "", fmt.Errorf("resolve context-bundle cwd: %w", err)
+	}
+	current, err = filepath.EvalSymlinks(current)
+	if err != nil {
+		return "", fmt.Errorf("resolve context-bundle cwd: %w", err)
+	}
+	for probe := current; ; probe = filepath.Dir(probe) {
+		if _, err := os.Lstat(filepath.Join(probe, ".git")); err == nil {
+			owner := filepath.Dir(probe)
+			projects := filepath.Dir(owner)
+			if projects == owner || owner == probe {
+				break
+			}
+			return canonicalContextProjectsRoot(projects)
+		} else if !os.IsNotExist(err) {
+			return "", fmt.Errorf("inspect context-bundle repository root %s: %w", probe, err)
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			break
+		}
+	}
+	return "", fmt.Errorf("cannot derive projects root from %s; set PROJECTS_ROOT", cwd)
+}
+
+func canonicalContextProjectsRoot(root string) (string, error) {
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve projects root %q: %w", root, err)
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return "", fmt.Errorf("resolve projects root %q: %w", root, err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.IsDir() {
+		return "", fmt.Errorf("projects root %s is not an existing directory", resolved)
+	}
+	return resolved, nil
 }
 
 func (s *contextBundleWalkState) inspectEntry(full string, entry os.DirEntry, walkErr error) error {

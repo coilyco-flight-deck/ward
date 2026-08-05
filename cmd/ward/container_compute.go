@@ -56,6 +56,7 @@ const (
 	// already-materialized generic context bundle (ward#1511).
 	containerContextBundle = "/opt/ward-context-bundle"
 	containerContextTools  = containerContextBundle + "/bin"
+	containerReferenceRoot = "/refs"
 
 	// containerGitcacheVol is a shared named volume of bare mirrors (never a
 	// host dir) so fresh clones are cheap and never land in the host repo tree.
@@ -414,6 +415,8 @@ type mountOpts struct {
 	// ContextBundle, when non-empty, mounts one validated generic context bundle
 	// read-only. The bundle cannot declare authority (ward#1511).
 	ContextBundle string
+	// ReferenceRepos are verified role-bundle repositories mounted read-only.
+	ReferenceRepos []mountSpec
 }
 
 // leastAccessMounts is the default set: cwd + assets read-only and the gitcache
@@ -438,6 +441,7 @@ func leastAccessMounts(hostCwd string, opts mountOpts) []mountSpec {
 	if opts.ContextBundle != "" {
 		mounts = append(mounts, mountSpec{Source: opts.ContextBundle, Target: containerContextBundle, ReadOnly: true, Volume: false})
 	}
+	mounts = append(mounts, opts.ReferenceRepos...)
 	return mounts
 }
 

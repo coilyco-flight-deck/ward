@@ -11,7 +11,7 @@ import (
 func writeContextBundleFixture(t *testing.T, role string, mode containerMode, withTool bool) string {
 	t.Helper()
 	dir := t.TempDir()
-	manifest := `{"format":"` + contextBundleFormat + `","role":"` + role + `","agent":"` + string(mode) + `"}`
+	manifest := `{"format":"` + contextBundleFormat + `","role":"` + role + `","agent":"` + string(mode) + `","repositories":["owner/repo"]}`
 	if err := os.WriteFile(filepath.Join(dir, contextBundleManifestName), []byte(manifest), 0o644); err != nil {
 		t.Fatalf("write manifest: %v", err)
 	}
@@ -128,6 +128,27 @@ func TestContextBundleManifestBindsRoleAndAgentWithoutAuthority(t *testing.T) {
 			},
 			wantErr: `want "` + contextBundleFormat + `"`,
 		},
+		{
+			name: "repository metadata absent",
+			mutate: func(root string) {
+				writeManifestForTest(t, root, `{"format":"`+contextBundleFormat+`","role":"engineer","agent":"codex"}`)
+			},
+			wantErr: "must name the verified bundle repositories",
+		},
+		{
+			name: "repository metadata unsorted",
+			mutate: func(root string) {
+				writeManifestForTest(t, root, `{"format":"`+contextBundleFormat+`","role":"engineer","agent":"codex","repositories":["owner/two","owner/one"]}`)
+			},
+			wantErr: "invalid, unsorted, or duplicate repository",
+		},
+		{
+			name: "repository metadata malformed",
+			mutate: func(root string) {
+				writeManifestForTest(t, root, `{"format":"`+contextBundleFormat+`","role":"engineer","agent":"codex","repositories":["../outside"]}`)
+			},
+			wantErr: "invalid, unsorted, or duplicate repository",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -139,6 +160,52 @@ func TestContextBundleManifestBindsRoleAndAgentWithoutAuthority(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveContextRepositoryMountsFailsClosed(t *testing.T) {
+	projects := t.TempDir()
+	t.Setenv("PROJECTS_ROOT", projects)
+
+	t.Run("missing repository", func(t *testing.T) {
+		_, err := resolveContextRepositoryMounts(projects, []string{"owner/missing"})
+		if err == nil || !strings.Contains(err.Error(), "is unavailable") {
+			t.Fatalf("missing repository error = %v", err)
+		}
+	})
+
+	if runtime.GOOS == "windows" {
+		return
+	}
+	t.Run("repository symlink", func(t *testing.T) {
+		target := t.TempDir()
+		owner := filepath.Join(projects, "owner")
+		if err := os.MkdirAll(owner, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, filepath.Join(owner, "linked")); err != nil {
+			t.Fatal(err)
+		}
+		_, err := resolveContextRepositoryMounts(projects, []string{"owner/linked"})
+		if err == nil || !strings.Contains(err.Error(), "must be a real directory") {
+			t.Fatalf("repository symlink error = %v", err)
+		}
+	})
+
+	t.Run("intermediate owner escapes projects root", func(t *testing.T) {
+		separateProjects := t.TempDir()
+		outside := t.TempDir()
+		if err := os.Mkdir(filepath.Join(outside, "repo"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(separateProjects, "escaped")); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PROJECTS_ROOT", separateProjects)
+		_, err := resolveContextRepositoryMounts(separateProjects, []string{"escaped/repo"})
+		if err == nil || !strings.Contains(err.Error(), "outside allowed projects root") {
+			t.Fatalf("escaped owner error = %v", err)
+		}
+	})
 }
 
 func writeManifestForTest(t *testing.T, root, body string) {
@@ -256,8 +323,14 @@ func TestContextBundleRequiresSelectedInstruction(t *testing.T) {
 
 func TestBuildUpPlanMountsContextBundleReadOnly(t *testing.T) {
 	bundle := writeContextBundleFixture(t, roleEngineer, modeCodex, true)
+	projects := t.TempDir()
+	t.Setenv("PROJECTS_ROOT", projects)
+	cwd := filepath.Join(projects, "owner", "repo")
+	if err := os.MkdirAll(filepath.Join(cwd, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	cmd := parseCommandForTest(t, agentImageFlags(), []string{"probe", "--context-bundle", bundle})
-	plan, err := buildUpPlan(cmd, targetRepo{Owner: "owner", Name: "repo"}, modeCodex, roleEngineer, t.TempDir(), t.TempDir(), nil, false)
+	plan, err := buildUpPlan(cmd, targetRepo{Owner: "owner", Name: "repo"}, modeCodex, roleEngineer, cwd, t.TempDir(), nil, false)
 	if err != nil {
 		t.Fatalf("buildUpPlan: %v", err)
 	}
@@ -276,6 +349,20 @@ func TestBuildUpPlanMountsContextBundleReadOnly(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("mount set has no %s: %+v", containerContextBundle, plan.Mounts)
+	}
+	referenceTarget := filepath.ToSlash(filepath.Join(containerReferenceRoot, "owner", "repo"))
+	resolvedCWD, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	referenceFound := false
+	for _, mount := range plan.Mounts {
+		if mount.Target == referenceTarget {
+			referenceFound = mount.Source == resolvedCWD && mount.ReadOnly && !mount.Volume
+		}
+	}
+	if !referenceFound {
+		t.Fatalf("mount set has no verified read-only repository reference: %+v", plan.Mounts)
 	}
 	env := plan.wardEnv()
 	if got := env["WARD_CONTEXT_BUNDLE"]; got != containerContextBundle {
