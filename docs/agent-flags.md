@@ -71,6 +71,18 @@ doc_goal: Give a reader the canonical, code-generated tree of every ward agent c
 ## `ward agent logs`
 
 - --tail, --follow, --artifact
+## `ward agent dispatch`
+
+- No direct flags.
+## `ward agent dispatch list`
+
+- --json
+## `ward agent dispatch status`
+
+- --json
+## `ward agent dispatch prune`
+
+- --older-than, --confirm, --json
 ## `ward agent issue create`
 
 - --title, --body-file

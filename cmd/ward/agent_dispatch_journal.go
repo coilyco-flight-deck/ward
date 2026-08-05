@@ -18,7 +18,7 @@ import (
 
 const (
 	dispatchJournalsSubdir     = "dispatch-requests"
-	dispatchJournalVersion     = 1
+	dispatchJournalVersion     = 2
 	envDispatchJournalDir      = "WARD_DISPATCH_JOURNAL_DIR"
 	envDispatchRequestID       = "WARD_DISPATCH_REQUEST_ID"
 	envDispatchJournalPath     = "WARD_DISPATCH_JOURNAL_PATH"
@@ -43,17 +43,27 @@ const (
 var dispatchRequestLocks sync.Map
 
 type dispatchRequestJournal struct {
-	Version     int                   `json:"version"`
-	RequestID   string                `json:"request_id"`
-	Fingerprint string                `json:"fingerprint"`
-	Request     dispatchBrokerRequest `json:"request"`
-	Paths       dispatchArtifactPaths `json:"paths"`
-	Phase       string                `json:"phase"`
-	Outcome     string                `json:"outcome"`
-	ContainerID string                `json:"container_id,omitempty"`
-	Error       string                `json:"error,omitempty"`
-	AcceptedAt  time.Time             `json:"accepted_at"`
-	UpdatedAt   time.Time             `json:"updated_at"`
+	Version        int                         `json:"version"`
+	RequestID      string                      `json:"request_id"`
+	Fingerprint    string                      `json:"fingerprint"`
+	Request        dispatchBrokerRequest       `json:"request"`
+	Paths          dispatchArtifactPaths       `json:"paths"`
+	BrokerID       string                      `json:"broker_id,omitempty"`
+	Repo           string                      `json:"repo,omitempty"`
+	Issue          string                      `json:"issue,omitempty"`
+	Ref            string                      `json:"ref,omitempty"`
+	Role           string                      `json:"role,omitempty"`
+	Harness        string                      `json:"harness,omitempty"`
+	Workflow       string                      `json:"workflow,omitempty"`
+	State          string                      `json:"state"`
+	LastTransition dispatchLifecycleTransition `json:"last_transition"`
+	TerminalReason string                      `json:"terminal_reason,omitempty"`
+	Phase          string                      `json:"phase"`
+	Outcome        string                      `json:"outcome"`
+	ContainerID    string                      `json:"container_id,omitempty"`
+	Error          string                      `json:"error,omitempty"`
+	AcceptedAt     time.Time                   `json:"accepted_at"`
+	UpdatedAt      time.Time                   `json:"updated_at"`
 }
 
 type dispatchContainerState struct {
@@ -144,6 +154,7 @@ func acceptDispatchLaunch(req dispatchBrokerRequest) (dispatchArtifactPaths, *di
 		AcceptedAt:  paths.CreatedAt,
 		UpdatedAt:   paths.CreatedAt,
 	}
+	initializeDispatchLifecycle(&journal, req, paths)
 	if err := createDispatchJournal(path, journal); err != nil {
 		_ = logf.Close()
 		return paths, nil, path, false, fmt.Errorf("dispatch broker: persist accepted request: %w", err)
@@ -236,6 +247,10 @@ func updateDispatchJournal(path, phase, containerID, outcome string, launchErr e
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
+	requestID := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	lock := dispatchRequestLock(requestID)
+	lock.Lock()
+	defer lock.Unlock()
 	journal, err := readDispatchJournal(path)
 	if err != nil {
 		return err
@@ -252,7 +267,12 @@ func updateDispatchJournal(path, phase, containerID, outcome string, launchErr e
 	if launchErr != nil {
 		journal.Error = redactSecrets(firstLine(launchErr.Error()))
 	}
-	return writeDispatchJournal(path, journal)
+	advanceDispatchLifecycle(&journal, phase, outcome, launchErr)
+	if err := writeDispatchJournal(path, journal); err != nil {
+		return err
+	}
+	writeDispatchLifecycleArtifact(journal)
+	return nil
 }
 
 func checkpointDispatchJournal(phase, containerID string) error {
@@ -266,13 +286,9 @@ func checkpointDispatchJournal(phase, containerID string) error {
 }
 
 func (r *Runner) reconcileDispatchJournals(ctx context.Context, brokerID string) error {
-	dir := strings.TrimSpace(os.Getenv(envDispatchJournalDir))
-	if dir == "" {
-		global, err := config.GlobalDir()
-		if err != nil {
-			return err
-		}
-		dir = filepath.Join(global, dispatchJournalsSubdir)
+	dir, err := dispatchJournalDir()
+	if err != nil {
+		return err
 	}
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -282,24 +298,44 @@ func (r *Runner) reconcileDispatchJournals(ctx context.Context, brokerID string)
 		return err
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
-			continue
-		}
-		path := filepath.Join(dir, entry.Name())
-		journal, rerr := readDispatchJournal(path)
-		if rerr != nil {
-			return fmt.Errorf("read %s: %w", path, rerr)
-		}
-		if journal.Phase == dispatchPhaseTerminal {
-			continue
-		}
-		if strings.TrimSpace(journal.Request.BrokerID) != strings.TrimSpace(brokerID) {
-			continue
-		}
-		if rerr := r.reconcileDispatchJournal(ctx, path, journal); rerr != nil {
+		if rerr := r.reconcileDispatchJournalEntry(ctx, dir, brokerID, entry); rerr != nil {
 			return rerr
 		}
 	}
+	return nil
+}
+
+func (r *Runner) reconcileDispatchJournalEntry(ctx context.Context, dir, brokerID string, entry os.DirEntry) error {
+	if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+		return nil
+	}
+	path := filepath.Join(dir, entry.Name())
+	journal, err := readDispatchJournal(path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	if err := ensureDispatchLifecycleMigrated(path, &journal); err != nil {
+		return err
+	}
+	if dispatchLifecycleTerminal(journal.State) {
+		return nil
+	}
+	if strings.TrimSpace(firstNonEmptyList(journal.BrokerID, journal.Request.BrokerID)) != strings.TrimSpace(brokerID) {
+		return nil
+	}
+	return r.reconcileDispatchJournal(ctx, path, journal)
+}
+
+func ensureDispatchLifecycleMigrated(path string, journal *dispatchRequestJournal) error {
+	needsMigration := journal.Version < dispatchJournalVersion || journal.State == ""
+	migrateDispatchLifecycle(journal)
+	if !needsMigration {
+		return nil
+	}
+	if err := writeDispatchJournal(path, *journal); err != nil {
+		return fmt.Errorf("migrate %s: %w", path, err)
+	}
+	writeDispatchLifecycleArtifact(*journal)
 	return nil
 }
 

@@ -44,25 +44,28 @@ type dispatchArtifactPaths struct {
 
 // dispatchArtifactMeta is the safe join record written beside the console log.
 type dispatchArtifactMeta struct {
-	RequestID     string `json:"request_id"`
-	Action        string `json:"action"`
-	Requester     string `json:"requester,omitempty"`
-	RequesterRole string `json:"requester_role,omitempty"`
-	RequesterMode string `json:"requester_mode,omitempty"`
-	Role          string `json:"role"`
-	Ref           string `json:"ref,omitempty"`
-	Repo          string `json:"repo,omitempty"`
-	Issue         string `json:"issue,omitempty"`
-	Harness       string `json:"harness,omitempty"`
-	WardVersion   string `json:"ward_version,omitempty"`
-	CreatedAt     string `json:"created_at"`
-	CompletedAt   string `json:"completed_at,omitempty"`
-	Outcome       string `json:"outcome"`
-	ErrorClass    string `json:"error_class,omitempty"`
-	Error         string `json:"error,omitempty"`
-	RedactedArgv  string `json:"redacted_argv,omitempty"`
-	LogPath       string `json:"log_path,omitempty"`
-	SummaryPath   string `json:"summary_path,omitempty"`
+	RequestID      string                      `json:"request_id"`
+	Action         string                      `json:"action"`
+	Requester      string                      `json:"requester,omitempty"`
+	RequesterRole  string                      `json:"requester_role,omitempty"`
+	RequesterMode  string                      `json:"requester_mode,omitempty"`
+	Role           string                      `json:"role"`
+	Ref            string                      `json:"ref,omitempty"`
+	Repo           string                      `json:"repo,omitempty"`
+	Issue          string                      `json:"issue,omitempty"`
+	Harness        string                      `json:"harness,omitempty"`
+	WardVersion    string                      `json:"ward_version,omitempty"`
+	CreatedAt      string                      `json:"created_at"`
+	CompletedAt    string                      `json:"completed_at,omitempty"`
+	Outcome        string                      `json:"outcome"`
+	State          string                      `json:"state,omitempty"`
+	LastTransition dispatchLifecycleTransition `json:"last_transition,omitempty"`
+	TerminalReason string                      `json:"terminal_reason,omitempty"`
+	ErrorClass     string                      `json:"error_class,omitempty"`
+	Error          string                      `json:"error,omitempty"`
+	RedactedArgv   string                      `json:"redacted_argv,omitempty"`
+	LogPath        string                      `json:"log_path,omitempty"`
+	SummaryPath    string                      `json:"summary_path,omitempty"`
 }
 
 func newDispatchArtifactPaths(req dispatchBrokerRequest, now time.Time, requestID string) dispatchArtifactPaths {
@@ -165,20 +168,22 @@ func openDispatchArtifact(req dispatchBrokerRequest, now time.Time, requestID st
 
 func writeDispatchArtifactInitial(paths dispatchArtifactPaths, req dispatchBrokerRequest) {
 	meta := dispatchArtifactMeta{
-		RequestID:     paths.RequestID,
-		Action:        dispatchAction(req.Action),
-		Requester:     strings.TrimSpace(req.Requester),
-		RequesterRole: paths.RequesterRole,
-		RequesterMode: string(paths.RequesterMode),
-		Role:          paths.TargetRole,
-		Ref:           paths.TargetRef,
-		Repo:          paths.Repo,
-		Issue:         paths.Issue,
-		Harness:       paths.Harness,
-		WardVersion:   paths.WardVersion,
-		CreatedAt:     paths.CreatedAt.Format(time.RFC3339Nano),
-		Outcome:       "in-progress",
-		RedactedArgv:  redactDispatchBrokerArgv(req.Argv),
+		RequestID:      paths.RequestID,
+		Action:         dispatchAction(req.Action),
+		Requester:      strings.TrimSpace(req.Requester),
+		RequesterRole:  paths.RequesterRole,
+		RequesterMode:  string(paths.RequesterMode),
+		Role:           paths.TargetRole,
+		Ref:            paths.TargetRef,
+		Repo:           paths.Repo,
+		Issue:          paths.Issue,
+		Harness:        paths.Harness,
+		WardVersion:    paths.WardVersion,
+		CreatedAt:      paths.CreatedAt.Format(time.RFC3339Nano),
+		Outcome:        "in-progress",
+		State:          dispatchStateAccepted,
+		LastTransition: dispatchLifecycleTransition{To: dispatchStateAccepted, At: paths.CreatedAt, ReasonCode: "broker-accepted"},
+		RedactedArgv:   redactDispatchBrokerArgv(req.Argv),
 	}
 	writeDispatchArtifactJSON(paths.MetaPath, meta)
 	writeDispatchArtifactSummary(paths.SummaryPath, summarizeDispatchArtifact(meta, ""))
@@ -200,6 +205,7 @@ func finalizeDispatchArtifact(paths dispatchArtifactPaths, req dispatchBrokerReq
 		CreatedAt:     paths.CreatedAt.Format(time.RFC3339Nano),
 		CompletedAt:   time.Now().UTC().Format(time.RFC3339Nano),
 		Outcome:       dispatchArtifactOutcome(launchErr),
+		State:         map[bool]string{true: dispatchStateFailed, false: dispatchStateRunning}[launchErr != nil],
 		RedactedArgv:  redactDispatchBrokerArgv(req.Argv),
 		LogPath:       logPath,
 		SummaryPath:   paths.SummaryPath,

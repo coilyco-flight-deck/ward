@@ -124,6 +124,10 @@ const (
 	dispatchActionList = "list"
 	// dispatchActionLogs streams one engineer's logs back to the requester.
 	dispatchActionLogs = "logs"
+	// dispatch lifecycle reads expose retained request state after the originating
+	// terminal disconnects (ward#1618).
+	dispatchActionLifecycleList   = "dispatch-list"
+	dispatchActionLifecycleStatus = "dispatch-status"
 	// dispatchActionPing proves that the broker protocol, token, and listener are
 	// live. Compose uses it for the broker service health check (ward#1562).
 	dispatchActionPing = "ping"
@@ -357,6 +361,10 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 	}
 	if dispatchAction(req.Action) == dispatchActionList {
 		r.runDispatchBrokerList(ctx, conn, req)
+		return
+	}
+	if dispatchAction(req.Action) == dispatchActionLifecycleList || dispatchAction(req.Action) == dispatchActionLifecycleStatus {
+		r.runDispatchBrokerLifecycleRead(conn, req)
 		return
 	}
 	if dispatchAction(req.Action) == dispatchActionMessageSend {
@@ -1704,10 +1712,7 @@ func (r *Runner) resolveDispatchBrokerLogsSource(ctx context.Context, req dispat
 		return agentLogSource{}, err
 	}
 	opts := agentLogsResolveOptions{Artifact: artifact}
-	if ref, err := parseAgentIssueRef(req.Target); err == nil && ref.Owner != "" && ref.Repo != "" {
-		return r.resolveAgentLogsSourceForIssue(ctx, ref, req.Tail, req.Follow, opts)
-	}
-	return r.resolveAgentLogsSourceForName(ctx, req.Target, req.Tail, req.Follow, opts)
+	return r.resolveAgentLogsSource(ctx, req.Target, req.Tail, req.Follow, opts)
 }
 
 func validateDispatchBrokerArgv(role string, tail []string) error {

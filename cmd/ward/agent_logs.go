@@ -316,6 +316,9 @@ func (r *Runner) runAgentLogsForCurrentComposeGroup(ctx context.Context, tail in
 // resolveAgentLogsSource resolves the target to a live agent container or a
 // drained log file, preferring the live Docker path when available.
 func (r *Runner) resolveAgentLogsSource(ctx context.Context, target string, tail int, follow bool, opts agentLogsResolveOptions) (agentLogSource, error) {
+	if source, matched, err := resolveAgentLogsSourceForRequestID(target, tail, follow, opts); matched || err != nil {
+		return source, err
+	}
 	if ref, err := parseAgentIssueRef(target); err == nil && ref.Owner != "" && ref.Repo != "" {
 		return r.resolveAgentLogsSourceForIssue(ctx, ref, tail, follow, opts)
 	}
@@ -333,6 +336,27 @@ func (r *Runner) resolveAgentLogsSource(ctx context.Context, target string, tail
 		}
 	}
 	return r.resolveAgentLogsSourceForName(ctx, target, tail, follow, opts)
+}
+
+func resolveAgentLogsSourceForRequestID(target string, tail int, follow bool, opts agentLogsResolveOptions) (agentLogSource, bool, error) {
+	if !dispatchRequestIDPattern.MatchString(target) {
+		return agentLogSource{}, false, nil
+	}
+	path, err := dispatchJournalPath(target)
+	if err != nil {
+		return agentLogSource{}, true, err
+	}
+	journal, err := readDispatchJournal(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return agentLogSource{}, false, nil
+	}
+	if err != nil {
+		return agentLogSource{}, true, err
+	}
+	if opts.artifact() != agentLogArtifactConsole && opts.artifact() != agentLogArtifactDispatch {
+		return agentLogSource{}, true, fmt.Errorf("request ids support console or dispatch artifacts")
+	}
+	return agentLogSource{Kind: agentLogSourceFile, Path: journal.Paths.ConsolePath, Tail: tail, Follow: follow}, true, nil
 }
 
 // resolveAgentLogsSourceForIssue resolves a carried issue to one live agent container

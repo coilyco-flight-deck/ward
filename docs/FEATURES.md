@@ -31,16 +31,16 @@ Inventory of what `ward` ships today.
 - Issue-scoped director dispatch.
 - Bounded director, engineer, and QA live-verification fixtures. See
   [verification-fixtures.md](verification-fixtures.md).
-- Compose broker with stable cluster and request IDs, restart recovery,
-  isolated sibling launch, and director Forgejo RPC. See
-  [agent-dispatch-broker.md](agent-dispatch-broker.md).
+- Compose broker with durable cluster/request IDs, restart recovery, sibling
+  launch, lifecycle status, and director Forgejo RPC. See
+  [agent-dispatch-lifecycle.md](agent-dispatch-lifecycle.md).
 - Broker-only clusters start outside Git and provide scoped lifecycle verbs. See
   [agent-clusters.md](agent-clusters.md).
 - Generic peers provide broker-minted IDs, messages, roster labels, and a
   repository-free context-bundle plan. See
   [agent-peer-collaboration.md](agent-peer-collaboration.md).
 - PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
-- PR lifecycle close/reopen/recovery tools and repair classification.
+- PR close/reopen/recovery and repair classification.
 - One canonical secret-safe agent archive with configurable exact-value and RE2
   redaction. See [agent-observability.md](agent-observability.md).
 - Director defaults read-only; autonomous drain needs `--burndown` / `--drain`.

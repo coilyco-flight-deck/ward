@@ -328,10 +328,18 @@ func (r *Runner) drainAgentRunIdempotent(ctx context.Context, name, baseDir stri
 
 // drainAgentRun pulls one exited container's console + transcript + meta into
 // memory and routes them to the resolved sink; disk is written only if asked.
-func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) error {
+func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) (retErr error) {
 	mode := resolveSinkMode()
 	fmt.Fprintf(os.Stderr, "ward container: starting drain of container %s (sink %s)\n", name, mode)
-	redactor, err := configuredSecretRedactor(r.inspectContainerEnvAll(ctx, name))
+	allEnv := r.inspectContainerEnvAll(ctx, name)
+	requestID := strings.TrimSpace(allEnv[envDispatchRequestID])
+	normalizedOutcome := ""
+	defer func() {
+		if lifecycleErr := updateDispatchLifecycleFromDrain(requestID, normalizedOutcome, retErr); lifecycleErr != nil && retErr == nil {
+			retErr = fmt.Errorf("persist dispatch lifecycle: %w", lifecycleErr)
+		}
+	}()
+	redactor, err := configuredSecretRedactor(allEnv)
 	if err != nil {
 		return fmt.Errorf("build secret-safe redactor: %w", err)
 	}
@@ -357,6 +365,7 @@ func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) error {
 		return fmt.Errorf("sanitize meta.json: %w", err)
 	}
 	meta = safeMeta
+	normalizedOutcome = meta.Summary.NormalizedOutcome
 	if skillUsage != nil {
 		var safeSkillUsage skillUsageArtifact
 		if err := redactJSONStrings(skillUsage, &safeSkillUsage, redactor); err != nil {
