@@ -397,12 +397,7 @@ func extractEnvelopesWithRedactor(transcript []byte, redact bool, r secretRedact
 	return envelopes
 }
 
-// sanitizeToolInput splits a tool's input into scalar args and touched files.
-func sanitizeToolInput(input json.RawMessage, redact bool) (map[string]string, []string) { //nolint:gocyclo,cyclop
-	r, _ := newSecretRedactor(nil, nil)
-	return sanitizeToolInputWithRedactor(input, redact, r)
-}
-
+// sanitizeToolInputWithRedactor splits a tool's input into scalar args and touched files.
 func sanitizeToolInputWithRedactor(input json.RawMessage, redact bool, r secretRedactor) (map[string]string, []string) { //nolint:gocyclo,cyclop
 	args := map[string]string{}
 	var files []string

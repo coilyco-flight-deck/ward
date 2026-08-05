@@ -377,9 +377,6 @@ func (r *Runner) drainAgentRun(ctx context.Context, name, dir string) (retErr er
 	if err := r.writeDiskArtifacts(name, dir, safeConsole, safeTranscript, meta, skillUsage); err != nil {
 		return err
 	}
-	if containerModeFromContainerName(name) == modeClaude {
-		r.writeClaudeToolFailureRecords(name, meta, []byte(redactor.redact(string(transcript.Body))))
-	}
 	if err := r.scrubContainerTranscripts(ctx, name, transcript.Files); err != nil {
 		return fmt.Errorf("sanitize retained container transcript: %w", err)
 	}
