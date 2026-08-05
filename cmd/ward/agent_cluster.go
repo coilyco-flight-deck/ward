@@ -220,6 +220,9 @@ func (r *Runner) runBrokerOnlyCluster(ctx context.Context, plan upPlan, stack di
 	if err := r.dockerExec(ctx, "compose", "version"); err != nil {
 		return fmt.Errorf("ward collaboration cluster: Docker Compose plugin is required: %w", err)
 	}
+	if err := r.ensureComposeExternalVolumes(ctx, plan.Mounts); err != nil {
+		return fmt.Errorf("ward collaboration cluster: prepare Compose volumes: %w", err)
+	}
 	commands := directorStackComposeArgs(stack)
 	if err := r.dockerExec(ctx, commands.BrokerUp...); err != nil {
 		return fmt.Errorf("ward collaboration cluster: start broker: %w", err)

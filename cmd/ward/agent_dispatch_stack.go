@@ -172,7 +172,8 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, brokerEnvFile,
 	volumes := map[string]composeExternal{}
 	for _, mount := range plan.Mounts {
 		if mount.Volume {
-			volumes[mount.Source] = composeExternal{Name: mount.Source}
+			// Ward owns shared named-volume lifecycle outside each Compose project.
+			volumes[mount.Source] = composeExternal{External: true, Name: mount.Source}
 		}
 	}
 	doc := composeDocument{
@@ -263,6 +264,20 @@ func composeMounts(mounts []mountSpec) []composeMount {
 	return out
 }
 
+func (r *Runner) ensureComposeExternalVolumes(ctx context.Context, mounts []mountSpec) error {
+	seen := map[string]bool{}
+	for _, mount := range mounts {
+		if !mount.Volume || seen[mount.Source] {
+			continue
+		}
+		seen[mount.Source] = true
+		if err := r.runDockerSilenced(ctx, true, "volume", "create", mount.Source); err != nil {
+			return fmt.Errorf("create external volume %s: %w", mount.Source, err)
+		}
+	}
+	return nil
+}
+
 func labelsMap(labels []string) map[string]string {
 	out := make(map[string]string, len(labels))
 	for _, label := range labels {
@@ -324,6 +339,9 @@ func (r *Runner) runDirectorStack(ctx context.Context, plan upPlan, stack direct
 	}
 	if err := r.dockerExec(ctx, "compose", "version"); err != nil {
 		return fmt.Errorf("ward director stack: Docker Compose plugin is required: %w", err)
+	}
+	if err := r.ensureComposeExternalVolumes(ctx, plan.Mounts); err != nil {
+		return fmt.Errorf("ward director stack: prepare Compose volumes: %w", err)
 	}
 	commands := directorStackComposeArgs(stack)
 	if err := r.dockerExec(ctx, commands.BrokerUp...); err != nil {

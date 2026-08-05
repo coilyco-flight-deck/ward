@@ -110,6 +110,9 @@ printf '%s\n' "$*" >> "$WARD_TEST_DOCKER_LOG"
 		Mode:        modeCodex,
 		ClusterID:   stack.Project,
 		ForgejoBase: forgejoBaseURL,
+		Mounts: []mountSpec{
+			{Source: containerGitcacheVol, Target: containerGitcacheMnt, Volume: true},
+		},
 	}
 	if err := r.runBrokerOnlyCluster(context.Background(), plan, stack, sourceEnv); err != nil {
 		t.Fatalf("run broker-only cluster: %v", err)
@@ -138,11 +141,16 @@ printf '%s\n' "$*" >> "$WARD_TEST_DOCKER_LOG"
 	}
 	for _, want := range []string{
 		"compose version",
+		"volume create " + containerGitcacheVol,
 		"compose -p codex-ab45 -f " + stack.ComposePath + " up -d --wait broker",
 	} {
 		if !strings.Contains(string(calls), want) {
 			t.Errorf("Docker calls missing %q\n%s", want, calls)
 		}
+	}
+	if strings.Index(string(calls), "volume create "+containerGitcacheVol) >
+		strings.Index(string(calls), " up -d --wait broker") {
+		t.Fatalf("external volume was created after Compose startup\n%s", calls)
 	}
 }
 

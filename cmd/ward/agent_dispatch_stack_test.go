@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
@@ -65,6 +67,14 @@ func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
 	}
 	if strings.Contains(text, "network_mode: host") {
 		t.Fatal("Compose director cannot use host networking with broker service DNS")
+	}
+	var doc composeDocument
+	if err := yaml.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("decode Compose output: %v", err)
+	}
+	gitcache, ok := doc.Volumes[containerGitcacheVol]
+	if !ok || !gitcache.External || gitcache.Name != containerGitcacheVol {
+		t.Fatalf("Compose gitcache volume = %#v, present %t; want external stable name", gitcache, ok)
 	}
 }
 
