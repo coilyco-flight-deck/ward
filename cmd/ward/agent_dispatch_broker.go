@@ -287,6 +287,19 @@ var dispatchFailedDispatchLaunchStartHook = func() {}
 // dispatches before any container starts (ward#600, docs/agent-reservation.md).
 var dispatchRefLocks sync.Map // ref string -> *sync.Mutex
 
+// dispatchBrokerWorkersMu protects lazy worker-group initialization on Runner
+// literals used by tests and lean internal call paths.
+var dispatchBrokerWorkersMu sync.Mutex
+
+func (r *Runner) dispatchBrokerWorkerGroup() *sync.WaitGroup {
+	dispatchBrokerWorkersMu.Lock()
+	defer dispatchBrokerWorkersMu.Unlock()
+	if r.dispatchBrokerWorkers == nil {
+		r.dispatchBrokerWorkers = &sync.WaitGroup{}
+	}
+	return r.dispatchBrokerWorkers
+}
+
 // dispatchRefLock returns the shared mutex for ref, creating it on first use.
 func dispatchRefLock(ref string) *sync.Mutex {
 	m, _ := dispatchRefLocks.LoadOrStore(ref, &sync.Mutex{})
@@ -533,7 +546,12 @@ func (r *Runner) startHostDispatchBrokerRequest(ctx context.Context, req dispatc
 		logDispatchDecision(logf, "broker", "stdio-routing", "mode=service child_stdout=artifact")
 	}
 	started := make(chan struct{})
-	go r.handleHostDispatchBrokerLaunch(ctx, req, paths, logf, restore, lock, started)
+	workers := r.dispatchBrokerWorkerGroup()
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		r.handleHostDispatchBrokerLaunch(ctx, req, paths, logf, restore, lock, started)
+	}()
 	return waitForDispatchBrokerLaunchStart(ctx, paths.ConsolePath, started)
 }
 

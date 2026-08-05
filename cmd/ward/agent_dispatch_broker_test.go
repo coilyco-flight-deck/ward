@@ -28,7 +28,9 @@ import (
 
 func serveDispatchBrokerRequests(t *testing.T, ln net.Listener, handle func(net.Conn, dispatchBrokerRequest)) {
 	t.Helper()
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
@@ -44,6 +46,32 @@ func serveDispatchBrokerRequests(t *testing.T, ln net.Listener, handle func(net.
 			}()
 		}
 	}()
+	t.Cleanup(func() {
+		_ = ln.Close()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Errorf("dispatch broker fixture listener did not stop")
+		}
+	})
+}
+
+// trackDispatchBrokerWorkers joins every detached launch this runner accepted
+// before earlier cleanups restore process-global hooks, environment, or fixtures.
+func trackDispatchBrokerWorkers(t *testing.T, r *Runner) {
+	t.Helper()
+	t.Cleanup(func() {
+		done := make(chan struct{})
+		go func() {
+			r.dispatchBrokerWorkerGroup().Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Errorf("detached dispatch broker worker escaped test cleanup")
+		}
+	})
 }
 
 func roundTripDispatchBrokerRequest(t *testing.T, addr string, req dispatchBrokerRequest) dispatchBrokerResponse {
@@ -1533,7 +1561,8 @@ func TestServeHostDispatchBrokerSurvivesExit125NameConflict(t *testing.T) {
 		return nil
 	}
 
-	go (&Runner{}).serveHostDispatchBroker(ctx, ln, "director-box", "secret")
+	broker := &Runner{}
+	go broker.serveHostDispatchBroker(ctx, ln, "director-box", "secret")
 
 	first := roundTripDispatchBrokerRequest(t, ln.Addr().String(), dispatchBrokerRequest{
 		Role:  "engineer",
@@ -1546,6 +1575,7 @@ func TestServeHostDispatchBrokerSurvivesExit125NameConflict(t *testing.T) {
 	if first.LogPath == "" {
 		t.Fatal("accepted launch response omitted the durable dispatch artifact path")
 	}
+	trackDispatchBrokerWorkers(t, broker)
 	select {
 	case <-failed:
 	case <-time.After(2 * time.Second):
@@ -1643,8 +1673,9 @@ func TestRunHostDispatchBrokerRequestDetachesAfterHostLaunchStarts(t *testing.T)
 		Role: "qa",
 		Argv: []string{"qa", "coilyco-flight-deck/ward#795", "--harness", "codex"},
 	}
+	broker := &Runner{}
 	go func() {
-		gotLogPath, err := (&Runner{}).startHostDispatchBrokerRequest(t.Context(), req)
+		gotLogPath, err := broker.startHostDispatchBrokerRequest(t.Context(), req)
 		result <- struct {
 			logPath string
 			err     error
@@ -1661,6 +1692,7 @@ func TestRunHostDispatchBrokerRequestDetachesAfterHostLaunchStarts(t *testing.T)
 	}
 	select {
 	case got = <-result:
+		trackDispatchBrokerWorkers(t, broker)
 		if got.err != nil {
 			t.Fatalf("startHostDispatchBrokerRequest: %v", got.err)
 		}
@@ -1767,6 +1799,7 @@ func TestRunHostDispatchBrokerRequestReportsLaterLaunchFailureThroughArtifact(t 
 		Argv: []string{"engineer", "coilyco-flight-deck/ward#786", "--harness", "codex", "--pr"},
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(t.Context(), req)
+	trackDispatchBrokerWorkers(t, r)
 	if err != nil {
 		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
 	}
@@ -2432,6 +2465,7 @@ func TestStartHostDispatchBrokerRequestDetachesBeforeEngineerVisibility(t *testi
 	}
 	select {
 	case err := <-result:
+		trackDispatchBrokerWorkers(t, r)
 		if err != nil {
 			t.Fatalf("startHostDispatchBrokerRequest: %v", err)
 		}
@@ -2524,6 +2558,7 @@ func TestStartHostDispatchBrokerRequestReportsMissingEngineerVisibilityAsynchron
 		Token:     "nonce-missing",
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+	trackDispatchBrokerWorkers(t, r)
 	if err != nil {
 		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
 	}
@@ -2615,6 +2650,7 @@ func TestStartHostDispatchBrokerRequestReportsCrossOwnerVisibilityCollisionAsync
 		Token:     "nonce-collision",
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+	trackDispatchBrokerWorkers(t, r)
 	if err != nil {
 		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
 	}
@@ -2768,7 +2804,7 @@ func TestStartHostDispatchBrokerRequestDecisionArtifactShape(t *testing.T) {
 	}
 	dispatchBrokerLaunch = func(_ context.Context, req dispatchBrokerRequest) error {
 		if got := brokeredDispatchRequestID(); got != req.RequestID {
-			t.Fatalf("brokered launch env request id = %q, want %q", got, req.RequestID)
+			t.Errorf("brokered launch env request id = %q, want %q", got, req.RequestID)
 		}
 		logDispatchDecision(os.Stderr, "host", "plan", "container=engineer-codex-ward-1469 image=ward/dev-base")
 		maybeDumpSeed(os.Stderr, strings.Repeat("full issue body should not dominate\n", 24), false)
@@ -2782,6 +2818,7 @@ func TestStartHostDispatchBrokerRequestDecisionArtifactShape(t *testing.T) {
 		Token:     "nonce-shape",
 	}
 	logPath, err := r.startHostDispatchBrokerRequest(context.Background(), req)
+	trackDispatchBrokerWorkers(t, r)
 	if err != nil {
 		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
 	}
@@ -2859,7 +2896,7 @@ func TestStartHostDispatchBrokerRequestDeferredDecisionArtifact(t *testing.T) {
 		dispatchStdioRestoreHook = origRestoreHook
 	})
 	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
-		t.Fatal("launch should not run after broker-time open PR backpressure")
+		t.Error("launch should not run after broker-time open PR backpressure")
 		return nil
 	}
 	dispatchStdioRestoreHook = func() {
@@ -2876,7 +2913,9 @@ func TestStartHostDispatchBrokerRequestDeferredDecisionArtifact(t *testing.T) {
 		Requester: "director-codex-host",
 		Token:     "nonce-deferred",
 	}
-	logPath, err := (&Runner{}).startHostDispatchBrokerRequest(context.Background(), req)
+	broker := &Runner{}
+	logPath, err := broker.startHostDispatchBrokerRequest(context.Background(), req)
+	trackDispatchBrokerWorkers(t, broker)
 	if err != nil {
 		t.Fatalf("startHostDispatchBrokerRequest: %v", err)
 	}

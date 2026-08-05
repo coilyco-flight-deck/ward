@@ -323,7 +323,9 @@ func TestAcceptedRequestIDLaunchesExactlyOnce(t *testing.T) {
 		Role:      roleQA,
 		Argv:      []string{"qa", "coilyco-flight-deck/ward#1562", "--harness", "codex"},
 	}
-	firstPath, err := (&Runner{}).startHostDispatchBrokerRequest(t.Context(), req)
+	broker := &Runner{}
+	firstPath, err := broker.startHostDispatchBrokerRequest(t.Context(), req)
+	trackDispatchBrokerWorkers(t, broker)
 	if err != nil {
 		t.Fatalf("first accepted request: %v", err)
 	}
@@ -332,7 +334,7 @@ func TestAcceptedRequestIDLaunchesExactlyOnce(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("accepted request never launched")
 	}
-	secondPath, err := (&Runner{}).startHostDispatchBrokerRequest(t.Context(), req)
+	secondPath, err := broker.startHostDispatchBrokerRequest(t.Context(), req)
 	if err != nil {
 		t.Fatalf("duplicate accepted request: %v", err)
 	}

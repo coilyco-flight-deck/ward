@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/sandbox"
@@ -34,6 +35,10 @@ type Runner struct {
 	// pullHeartbeatInterval overrides the silenced-pull heartbeat cadence
 	// (ward#322); zero means pullHeartbeatDefault. A field so tests can shrink it.
 	pullHeartbeatInterval time.Duration
+
+	// dispatchBrokerWorkers lets tests join this runner's detached launches before
+	// restoring process-global fixtures. Production still detaches (ward#1630).
+	dispatchBrokerWorkers *sync.WaitGroup
 }
 
 // newRunner builds the production Runner lazily so lean verbs like hook/version
