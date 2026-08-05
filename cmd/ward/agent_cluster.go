@@ -299,7 +299,7 @@ func (r *Runner) runClusterStop(ctx context.Context, c *cli.Command) error { //n
 		writef(agentCommandWriter(c), "cluster %s: would stop and remove %s\n", clusterID, strings.Join(names, ", "))
 		return nil
 	}
-	stopArgs := append([]string{"stop", "--time", "30"}, names...)
+	stopArgs := append([]string{"stop", "--timeout", "30"}, names...)
 	if err := r.dockerExec(ctx, stopArgs...); err != nil {
 		return fmt.Errorf("ward agent cluster stop: stop %s: %w", clusterID, err)
 	}

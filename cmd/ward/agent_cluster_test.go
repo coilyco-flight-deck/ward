@@ -310,7 +310,7 @@ esac
 		"ps -a --filter label=ward.cluster=codex-ab45",
 		"logs --tail 25 codex-ab45-broker",
 		"logs --tail 25 codex-ab45-critic",
-		"stop --time 30 codex-ab45-broker codex-ab45-critic",
+		"stop --timeout 30 codex-ab45-broker codex-ab45-critic",
 		"rm codex-ab45-broker codex-ab45-critic",
 		"compose -p codex-ab45 -f " + stack.ComposePath + " down --remove-orphans",
 	} {
