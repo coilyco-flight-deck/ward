@@ -1113,56 +1113,73 @@ func TestSplitOwnerName(t *testing.T) {
 // opencode + goose config composers drained to their folders in ward#425
 // Phase 3; TestConfigJSON / TestConfigYAML live there now.
 
-// TestComposeContextRuntimeDoctrineLoadPoints covers ward#377 for Go bootstrap:
-// canonical AGENTS.md feeds Codex, Claude, and Goose load points.
-func TestComposeContextRuntimeDoctrineLoadPoints(t *testing.T) {
-	const marker = "director's attached read-only surface session"
-	r := &Runner{}
-
-	home := t.TempDir()
-	r.composeContext(bootstrapEnv{
-		Mode:             "codex",
-		ContextLevel:     "0",
-		ContextSrc:       filepath.Join(t.TempDir(), "absent"),
-		AgentHome:        home,
-		ReadOnly:         true,
-		AgentDisplayName: "terran engineer",
-		AgentPronouns:    "he",
-	})
-	for _, path := range []string{
-		filepath.Join(home, "AGENTS.md"),
-		filepath.Join(home, ".codex", "AGENTS.md"),
-		filepath.Join(home, ".claude", "CLAUDE.md"),
-	} {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("expected runtime doctrine at %s: %v", path, err)
-		}
-		if !strings.Contains(string(data), marker) {
-			t.Errorf("%s missing read-only director doctrine", path)
-		}
-		if !strings.Contains(string(data), "Ward agent identity") || !strings.Contains(string(data), "terran engineer (he)") {
-			t.Errorf("%s missing resolved agent identity", path)
-		}
+// TestComposeContextHarnessPureMatrix covers ward#1569: each adapter reads only
+// its compatible source and writes only one regular native instruction file.
+func TestComposeContextHarnessPureMatrix(t *testing.T) {
+	allDestinations := []string{
+		".claude/CLAUDE.md",
+		".codex/AGENTS.md",
+		".config/goose/.goosehints",
+		".config/opencode/AGENTS.md",
 	}
-	if target, err := os.Readlink(filepath.Join(home, ".codex", "AGENTS.md")); err == nil && target != filepath.Join("..", "AGENTS.md") {
-		t.Errorf("codex AGENTS.md link target = %q, want ../AGENTS.md", target)
+	cases := []struct {
+		mode containerMode
+		dest string
+		want string
+	}{
+		{modeClaude, ".claude/CLAUDE.md", "claude-only-source"},
+		{modeCodex, ".codex/AGENTS.md", "codex-only-source"},
+		{modeGoose, ".config/goose/.goosehints", "goose-only-source"},
+		{modeOpencode, ".config/opencode/AGENTS.md", "codex-only-source"},
 	}
-
-	gooseHome := t.TempDir()
-	r.composeContext(bootstrapEnv{
-		Mode:         "goose",
-		ContextLevel: "0",
-		ContextSrc:   filepath.Join(t.TempDir(), "absent"),
-		AgentHome:    gooseHome,
-		ReadOnly:     true,
-	})
-	ghints, err := os.ReadFile(filepath.Join(gooseHome, ".config", "goose", ".goosehints"))
-	if err != nil {
-		t.Fatalf("expected goose hints mirror: %v", err)
-	}
-	if !strings.Contains(string(ghints), marker) {
-		t.Error("goose hints missing read-only director doctrine")
+	for _, tc := range cases {
+		t.Run(string(tc.mode), func(t *testing.T) {
+			source := t.TempDir()
+			for name, body := range map[string]string{
+				"CLAUDE.md":   "claude-only-source",
+				"AGENTS.md":   "codex-only-source",
+				".goosehints": "goose-only-source",
+			} {
+				if err := os.WriteFile(filepath.Join(source, name), []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			home := t.TempDir()
+			err := (&Runner{}).composeContext(bootstrapEnv{
+				Mode: string(tc.mode), ContextLevel: "2", ContextSrc: source, AgentHome: home,
+				ReadOnly: true, AgentDisplayName: "selected agent", AgentPronouns: "she/her",
+			})
+			if err != nil {
+				t.Fatalf("composeContext: %v", err)
+			}
+			dest := filepath.Join(home, filepath.FromSlash(tc.dest))
+			data, err := os.ReadFile(dest)
+			if err != nil {
+				t.Fatalf("read selected instruction: %v", err)
+			}
+			if !strings.Contains(string(data), tc.want) {
+				t.Fatalf("%s selected the wrong source:\n%s", tc.mode, data)
+			}
+			for _, marker := range []string{"claude-only-source", "codex-only-source", "goose-only-source"} {
+				if marker != tc.want && strings.Contains(string(data), marker) {
+					t.Errorf("%s absorbed foreign source marker %q:\n%s", tc.mode, marker, data)
+				}
+			}
+			if info, err := os.Lstat(dest); err != nil || !info.Mode().IsRegular() {
+				t.Fatalf("%s instruction is not a regular file: info=%v err=%v", tc.mode, info, err)
+			}
+			for _, other := range allDestinations {
+				if other == tc.dest {
+					continue
+				}
+				if _, err := os.Lstat(filepath.Join(home, filepath.FromSlash(other))); !os.IsNotExist(err) {
+					t.Errorf("%s created foreign harness instruction %s: %v", tc.mode, other, err)
+				}
+			}
+			if _, err := os.Lstat(filepath.Join(home, "AGENTS.md")); !os.IsNotExist(err) {
+				t.Errorf("%s created retired shared ~/AGENTS.md: %v", tc.mode, err)
+			}
+		})
 	}
 }
 
@@ -1178,8 +1195,11 @@ func TestComposeContextInteractiveIntroductionBlock(t *testing.T) {
 		if env.Mode == "" {
 			env.Mode = "codex"
 		}
-		r.composeContext(env)
-		data, err := os.ReadFile(filepath.Join(env.AgentHome, "AGENTS.md"))
+		if err := r.composeContext(env); err != nil {
+			t.Fatalf("composeContext: %v", err)
+		}
+		instruction := lookupAgent(containerMode(env.Mode)).Record().Projection.InstructionPath
+		data, err := os.ReadFile(filepath.Join(env.AgentHome, filepath.FromSlash(instruction)))
 		if err != nil {
 			t.Fatalf("read composed context: %v", err)
 		}
@@ -1204,20 +1224,28 @@ func TestComposeContextInteractiveIntroductionBlock(t *testing.T) {
 	}
 }
 
-func TestComposeClaudeSettingsInjectsStatusLineOnlyForClaude(t *testing.T) {
-	gotClaude, err := composeClaudeSettings(modeClaude)
-	if err != nil {
-		t.Fatalf("composeClaudeSettings(claude): %v", err)
-	}
-	if !strings.Contains(string(gotClaude), `"statusLine"`) {
-		t.Fatalf("claude settings missing statusLine:\n%s", gotClaude)
-	}
-	gotCodex, err := composeClaudeSettings(modeCodex)
-	if err != nil {
-		t.Fatalf("composeClaudeSettings(codex): %v", err)
-	}
-	if strings.Contains(string(gotCodex), `"statusLine"`) {
-		t.Fatalf("codex settings should not gain statusLine:\n%s", gotCodex)
+func TestComposePermissionsOnlyForClaude(t *testing.T) {
+	for _, mode := range []containerMode{modeClaude, modeCodex, modeGoose, modeOpencode} {
+		t.Run(string(mode), func(t *testing.T) {
+			home := t.TempDir()
+			r := testRunner()
+			rc := r.agentRunCtx(context.Background(), bootstrapEnv{
+				Mode: string(mode), AgentHome: home, GooseModel: "model",
+				OpencodeModel: "model", OllamaURL: "http://example.invalid/v1",
+			}, nil)
+			composeAgentContainer(lookupAgent(mode), rc)
+			settings := filepath.Join(home, ".claude", "settings.json")
+			data, err := os.ReadFile(settings)
+			if mode == modeClaude {
+				if err != nil || !strings.Contains(string(data), `"statusLine"`) {
+					t.Fatalf("claude settings missing statusLine: err=%v\n%s", err, data)
+				}
+				return
+			}
+			if err == nil || !os.IsNotExist(err) {
+				t.Fatalf("%s unexpectedly received Claude settings: err=%v\n%s", mode, err, data)
+			}
+		})
 	}
 }
 

@@ -5,7 +5,6 @@ package main
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
 	"sync"
 )
@@ -30,30 +29,15 @@ type agentArgv struct {
 	Interactive []string
 }
 
-// agentAdapter is one agent's full divergence record, replacing the per-mode
-// Go switches and bash cases. See docs/agent-harnesses.md for the schema.
+// agentAdapter is the launcher's invocation view. The typed agentsapi.Manifest
+// owns each harness's complete private-home projection and capabilities.
 type agentAdapter struct {
 	Name         string
 	Binary       string
 	ContextLevel int
 	Stream       string
 	Auth         string
-	ContextFiles []string
 	Argv         agentArgv
-}
-
-// contextFiles returns the runtime doctrine load points this adapter needs.
-func (a agentAdapter) contextFiles() []string {
-	if len(a.ContextFiles) != 0 {
-		out := make([]string, len(a.ContextFiles))
-		copy(out, a.ContextFiles)
-		return out
-	}
-	out := []string{filepath.Join(".claude", "CLAUDE.md"), filepath.Join(".codex", "AGENTS.md")}
-	if a.Name == string(modeGoose) {
-		out = append(out, filepath.Join(".config", "goose", ".goosehints"))
-	}
-	return out
 }
 
 // preflightArgv returns the host one-shot argv with the prompt appended, plus
@@ -217,7 +201,6 @@ func launchConfigToAgentManifest(f launchConfig) agentManifest {
 			ContextLevel: a.ContextLevel,
 			Stream:       a.Stream,
 			Auth:         a.Auth,
-			ContextFiles: contextFilesForAdapter(a.Name),
 			Argv: agentArgv{
 				Preflight:   a.Argv.Preflight,
 				Headless:    a.Argv.Headless,
@@ -226,15 +209,6 @@ func launchConfigToAgentManifest(f launchConfig) agentManifest {
 		})
 	}
 	return m
-}
-
-// contextFilesForAdapter centralizes the per-agent doctrine load-point fanout.
-func contextFilesForAdapter(name string) []string {
-	files := []string{filepath.Join(".claude", "CLAUDE.md"), filepath.Join(".codex", "AGENTS.md")}
-	if name == string(modeGoose) {
-		files = append(files, filepath.Join(".config", "goose", ".goosehints"))
-	}
-	return files
 }
 
 // validateAgentManifest enforces the schema on the projected fleet roster, so a

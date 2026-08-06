@@ -1,16 +1,23 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
 // TestContainerSettingsPolicy locks valid generated JSON, bypassPermissions,
 // and no deny wall - isolation is the sole boundary (ward#375).
 func TestContainerSettingsPolicy(t *testing.T) {
-	data, err := composeClaudeSettings(modeClaude)
+	home := t.TempDir()
+	r := testRunner()
+	rc := r.agentRunCtx(context.Background(), bootstrapEnv{Mode: string(modeClaude), AgentHome: home}, nil)
+	composeAgentContainer(lookupAgent(modeClaude), rc)
+	data, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
 	if err != nil {
-		t.Fatalf("compose container settings: %v", err)
+		t.Fatalf("read composed container settings: %v", err)
 	}
 	var s struct {
 		TUI              string           `json:"tui"`

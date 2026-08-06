@@ -69,6 +69,15 @@ const (
 	gooseOllamaHostEnvKey = "WARD_GOOSE_OLLAMA_HOST_B64"
 )
 
+var harnessBootstrapEnvKeys = []string{
+	claudeCredsEnvKey,
+	codexAuthEnvKey,
+	gooseOllamaHostEnvKey,
+	"ANTHROPIC_API_KEY",
+	"ANTHROPIC_AUTH_TOKEN",
+	"OPENAI_API_KEY",
+}
+
 // resolveAgentCreds resolves the host-side credential env-file lines a mode needs
 // through the drained CredentialProvider seam (ward#425).
 func (r *Runner) resolveAgentCreds(ctx context.Context, mode containerMode) []agentsapi.EnvLine {

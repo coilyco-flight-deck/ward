@@ -24,6 +24,14 @@ var record = agentsapi.Manifest{
 	ContextLevel: 2,
 	Stream:       "none",
 	Auth:         "ollama",
+	Projection: agentsapi.Projection{
+		InstructionSources: []string{".goosehints"},
+		InstructionPath:    ".config/goose/.goosehints",
+		SkillsPath:         ".agents/skills",
+		ConfigPaths:        []string{".config/goose/config.yaml"},
+		StatePaths:         []string{".config/goose"},
+		OwnershipPaths:     []string{".config/goose", ".agents"},
+	},
 	Argv: agentsapi.Argv{
 		Preflight:   []string{"goose", "run", "-t"},
 		Headless:    []string{"goose", "run", "--no-session", "-t"},

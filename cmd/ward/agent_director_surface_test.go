@@ -315,13 +315,15 @@ func TestComposeContextReadOnlyBlock(t *testing.T) {
 func composeInto(t *testing.T, r *Runner, readOnly bool) string {
 	t.Helper()
 	home := t.TempDir()
-	r.composeContext(bootstrapEnv{
+	if err := r.composeContext(bootstrapEnv{
 		Mode:         "claude",
 		ContextLevel: "0",
 		ContextSrc:   filepath.Join(t.TempDir(), "absent"),
 		AgentHome:    home,
 		ReadOnly:     readOnly,
-	})
+	}); err != nil {
+		t.Fatalf("composeContext: %v", err)
+	}
 	out, err := os.ReadFile(filepath.Join(home, ".claude", "CLAUDE.md"))
 	if err != nil {
 		t.Fatalf("composed context not written: %v", err)

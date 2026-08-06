@@ -377,15 +377,15 @@ func readContextBundleRootFile(root *os.Root, rel string) ([]byte, error) {
 }
 
 func contextBundleLayout(mode string) (instruction, skills string, err error) {
-	switch containerMode(mode) {
-	case modeClaude:
-		return ".claude/CLAUDE.md", ".claude/skills", nil
-	case modeCodex:
-		return ".codex/AGENTS.md", ".agents/skills", nil
-	case modeGoose:
-		return ".config/goose/.goosehints", ".agents/skills", nil
-	case modeOpencode:
-		return ".config/opencode/AGENTS.md", ".agents/skills", nil
+	selected := containerMode(mode)
+	switch selected {
+	case modeClaude, modeCodex, modeGoose, modeOpencode:
+		agent := lookupAgent(selected)
+		if err := validateHarnessProjection(agent); err != nil {
+			return "", "", err
+		}
+		p := agent.Record().Projection
+		return p.InstructionPath, p.SkillsPath, nil
 	default:
 		return "", "", fmt.Errorf("ward has no context-bundle home layout for agent %q", mode)
 	}
@@ -411,8 +411,8 @@ func safeContextToolName(name string) bool {
 	return true
 }
 
-// projectContextBundleHome revalidates the read-only mount, copies its narrow
-// home projection, then composes Ward authority into the harness load point.
+// projectContextBundleHome revalidates and copies the narrow bundle, then writes
+// selected role instruction plus Ward authority to the native load point.
 func (r *Runner) projectContextBundleHome(e bootstrapEnv) error {
 	bundle := strings.TrimSpace(e.ContextBundle)
 	if bundle == "" {
@@ -427,21 +427,30 @@ func (r *Runner) projectContextBundleHome(e bootstrapEnv) error {
 		return err
 	}
 
-	// Remove only composeContext's known Ward-owned projection before installing
-	// the selected instruction file. Any foreign replacement still fails closed.
 	instruction := filepath.Join(e.AgentHome, filepath.FromSlash(instructionRel))
-	if containerMode(e.Mode) != modeOpencode {
-		if err := removeWardContextProjection(instruction, filepath.Join(e.AgentHome, "AGENTS.md")); err != nil {
-			return err
-		}
-	}
+	var selectedInstruction []byte
 	for _, file := range inspected.Home {
+		if filepath.Clean(file.Rel) == filepath.FromSlash(instructionRel) {
+			selectedInstruction = file.Body
+			continue
+		}
 		dest := filepath.Join(e.AgentHome, file.Rel)
 		if err := writeContextBundleFile(dest, file); err != nil {
 			return err
 		}
 	}
-	if err := appendWardAuthorityContext(instruction, filepath.Join(e.AgentHome, "AGENTS.md")); err != nil {
+	if len(selectedInstruction) == 0 {
+		return fmt.Errorf("validated context bundle has no selected instruction %s", instructionRel)
+	}
+	authority := []byte(containerDoctrine)
+	if e.ReadOnly {
+		authority = append(authority, []byte(readOnlyContextBlock)...)
+	}
+	merged := append([]byte{}, bytes.TrimSpace(selectedInstruction)...)
+	merged = append(merged, []byte("\n\n---\n\n## Ward container authority context\n\n")...)
+	merged = append(merged, bytes.TrimSpace(authority)...)
+	merged = append(merged, '\n')
+	if err := writeWardInstruction(e.AgentHome, instruction, merged); err != nil {
 		return err
 	}
 	blog("context bundle projected: %s -> %s (%s/%s)", bundle, e.AgentHome, e.Role, e.Mode)
@@ -469,53 +478,6 @@ func writeContextBundleFile(dest string, file contextBundleFile) error {
 	}
 	if err := os.WriteFile(dest, file.Body, file.Mode); err != nil {
 		return fmt.Errorf("write context path %s: %w", dest, err)
-	}
-	return nil
-}
-
-func removeWardContextProjection(instruction, authority string) error {
-	info, err := os.Lstat(instruction)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("inspect Ward context projection %s: %w", instruction, err)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		projected, readErr := os.ReadFile(instruction) // #nosec G304 -- fixed path under agent HOME.
-		if readErr != nil {
-			return fmt.Errorf("read Ward context projection %s: %w", instruction, readErr)
-		}
-		base, readErr := os.ReadFile(authority) // #nosec G304 -- fixed path under agent HOME.
-		if readErr != nil {
-			return fmt.Errorf("read Ward authority context %s: %w", authority, readErr)
-		}
-		if !bytes.Equal(projected, base) {
-			return fmt.Errorf("refusing to replace foreign harness context at %s", instruction)
-		}
-	}
-	if err := os.Remove(instruction); err != nil {
-		return fmt.Errorf("remove Ward context projection %s: %w", instruction, err)
-	}
-	return nil
-}
-
-func appendWardAuthorityContext(instruction, authority string) error {
-	projected, err := os.ReadFile(instruction) // #nosec G304 -- selected fixed load point.
-	if err != nil {
-		return fmt.Errorf("read projected context bundle instruction %s: %w", instruction, err)
-	}
-	ward, err := os.ReadFile(authority) // #nosec G304 -- fixed path under agent HOME.
-	if err != nil {
-		return fmt.Errorf("read Ward authority context %s: %w", authority, err)
-	}
-	merged := make([]byte, 0, len(projected)+len(ward)+64)
-	merged = append(merged, bytes.TrimSpace(projected)...)
-	merged = append(merged, []byte("\n\n---\n\n## Ward container authority context\n\n")...)
-	merged = append(merged, bytes.TrimSpace(ward)...)
-	merged = append(merged, '\n')
-	if err := os.WriteFile(instruction, merged, 0o644); err != nil { // #nosec G306 -- context, not a secret.
-		return fmt.Errorf("compose Ward authority into %s: %w", instruction, err)
 	}
 	return nil
 }

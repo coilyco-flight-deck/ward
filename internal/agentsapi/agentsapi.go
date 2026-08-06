@@ -39,6 +39,12 @@ type ConfigComposer interface {
 	ComposeConfig(RunCtx) error
 }
 
+// PermissionComposer is implemented by a harness that needs a native
+// permission-policy file. Harnesses without this capability receive none.
+type PermissionComposer interface {
+	ComposePermissions(RunCtx) error
+}
+
 // OnboardingSeeder is implemented by an agent that seeds first-run state to skip
 // interactive gates (claude's ~/.claude.json onboarding + trust flags).
 type OnboardingSeeder interface {

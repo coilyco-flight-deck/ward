@@ -28,6 +28,16 @@ var record = agentsapi.Manifest{
 	Stream:       "stream-json",
 	Auth:         "claude-keychain",
 	StatusLine:   true,
+	Projection: agentsapi.Projection{
+		InstructionSources: []string{"CLAUDE.md"},
+		InstructionPath:    ".claude/CLAUDE.md",
+		SkillsPath:         ".claude/skills",
+		CredentialPaths:    []string{".claude/.credentials.json"},
+		PermissionPaths:    []string{".claude/settings.json"},
+		OnboardingPaths:    []string{".claude.json"},
+		StatePaths:         []string{".claude", ".claude.json"},
+		OwnershipPaths:     []string{".claude", ".claude.json"},
+	},
 	Argv: agentsapi.Argv{
 		Preflight:   []string{"claude", "-p"},
 		Headless:    []string{"claude", "-p", "--verbose", "--output-format", "stream-json"},
@@ -45,6 +55,7 @@ type Agent struct{}
 var (
 	_ agentsapi.Agent              = Agent{}
 	_ agentsapi.CredentialProvider = Agent{}
+	_ agentsapi.PermissionComposer = Agent{}
 	_ agentsapi.OnboardingSeeder   = Agent{}
 	_ agentsapi.LaunchGate         = Agent{}
 )

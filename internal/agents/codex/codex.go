@@ -26,6 +26,15 @@ var record = agentsapi.Manifest{
 	Auth:            "codex-host",
 	ReasoningEffort: "medium",
 	Verbosity:       "low",
+	Projection: agentsapi.Projection{
+		InstructionSources: []string{"AGENTS.md"},
+		InstructionPath:    ".codex/AGENTS.md",
+		SkillsPath:         ".agents/skills",
+		ConfigPaths:        []string{".codex/config.toml"},
+		CredentialPaths:    []string{".codex/auth.json"},
+		StatePaths:         []string{".codex"},
+		OwnershipPaths:     []string{".codex", ".agents"},
+	},
 	Argv: agentsapi.Argv{
 		Preflight:   nil,
 		Headless:    []string{"codex", "exec"},

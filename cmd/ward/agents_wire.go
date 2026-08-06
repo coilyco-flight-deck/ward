@@ -51,11 +51,14 @@ func hostOneShot(mode containerMode, prompt string) (argv []string, stdin string
 	return full[:len(full)-1], prompt, true
 }
 
-// composeAgentContainer runs the in-container setup capabilities feature-tested,
-// keeping the creds -> onboarding -> config order (ward#425).
+// composeAgentContainer runs only the selected adapter's in-container setup
+// capabilities. An adapter without a capability receives none of its files.
 func composeAgentContainer(agent agentsapi.Agent, rc agentsapi.RunCtx) {
 	if cp, ok := agent.(agentsapi.CredentialProvider); ok {
 		_ = cp.WriteCreds(rc)
+	}
+	if pc, ok := agent.(agentsapi.PermissionComposer); ok {
+		_ = pc.ComposePermissions(rc)
 	}
 	if seeder, ok := agent.(agentsapi.OnboardingSeeder); ok {
 		_ = seeder.SeedOnboarding(rc)

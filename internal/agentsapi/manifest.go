@@ -33,6 +33,23 @@ type Manifest struct {
 	Verbosity string
 	// StatusLine marks a harness that can render a live status-line command.
 	StatusLine bool
+	// Projection declares the complete private-home surface this harness owns.
+	// Core uses only the selected adapter's record during bootstrap.
+	Projection Projection
+}
+
+// Projection is one harness's native private-home contract. Paths are relative
+// to that home, and InstructionSources are accepted in priority order.
+type Projection struct {
+	InstructionSources []string
+	InstructionPath    string
+	SkillsPath         string
+	ConfigPaths        []string
+	CredentialPaths    []string
+	PermissionPaths    []string
+	OnboardingPaths    []string
+	StatePaths         []string
+	OwnershipPaths     []string
 }
 
 // Argv holds the argv prefixes for the three ways ward invokes an agent; the

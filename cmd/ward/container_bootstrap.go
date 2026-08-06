@@ -464,20 +464,24 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 		r.makeReadOnlyTree(e.SubstrateDest)
 	}
 	blog("bootstrap context compose start")
-	r.composeContext(e)
-	if err := r.projectContextBundleHome(e); err != nil {
-		blog("fatal: %v", err)
-		writeGateFailure("context-bundle", err.Error())
-		return err
+	var contextErr error
+	if strings.TrimSpace(e.ContextBundle) == "" {
+		contextErr = r.composeContext(e)
+	} else {
+		contextErr = r.projectContextBundleHome(e)
 	}
-	blog("bootstrap permissions compose start")
-	r.composePermissions(e)
+	if contextErr != nil {
+		blog("fatal: %v", contextErr)
+		writeGateFailure("context", contextErr.Error())
+		return contextErr
+	}
 	// Set the trust set here, post-warm, not in agentRunCtx (which runs pre-warm)
 	// so the /substrate dirs already exist to enumerate (ward#168).
 	rc.TrustDirs = agentTrustDirs(e)
-	// Creds write + onboarding seed + config compose, each feature-tested per mode
-	// (Phase 3, ward#418); composeAgentContainer holds the order.
+	// Selected credentials, permissions, onboarding, and config compose here.
+	// composeAgentContainer feature-tests each adapter capability (ward#418).
 	composeAgentContainer(agent, rc)
+	scrubHarnessBootstrapEnv()
 	blog("bootstrap agent container composition done")
 
 	_ = os.Setenv("WARD_REAP_WORK", work)
@@ -503,8 +507,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	argv, stream := buildAgentArgv(e, agentArgs)
 	logAgentArgv(e, agentArgs)
 
-	// Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127);
-	// setup ran as root. Keep ANTHROPIC_API_KEY from shadowing the OAuth creds.
+	// Drop to the non-root agent user (claude refuses bypass-perms as root, ward#127).
 	r.chownAgentTree(ctx, e, work)
 	if e.ReadOnly {
 		// Read-only surface: hand Forgejo access to the root-held broker pre-drop.
@@ -526,9 +529,6 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 			return cerr
 		}
 	}
-	_ = os.Unsetenv("ANTHROPIC_API_KEY")
-	_ = os.Unsetenv("ANTHROPIC_AUTH_TOKEN")
-
 	// LaunchGate feature-test (only claude wires one, ward#418): fail loud before
 	// launch if claude can't authenticate (ward#222), as the agent user post-chown.
 	if lg, ok := agent.(agentsapi.LaunchGate); ok {
@@ -558,6 +558,12 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	}
 	blog("bootstrap launch returned: agent process exited, deferred reaper runs next")
 	return nil
+}
+
+func scrubHarnessBootstrapEnv() {
+	for _, key := range harnessBootstrapEnvKeys {
+		_ = os.Unsetenv(key)
+	}
 }
 
 const surfaceScratchFloorBytes = 8 * 1024 * 1024
@@ -1378,142 +1384,6 @@ func readOnlyTag(readOnly bool) string {
 	return ""
 }
 
-// composeContext ports compose_context: write canonical AGENTS.md, then wire
-// Claude/Codex load points and Goose hints to that composed doctrine.
-func (r *Runner) composeContext(e bootstrapEnv) { //nolint:cyclop
-	out := filepath.Join(e.AgentHome, "AGENTS.md")
-	_ = os.MkdirAll(filepath.Dir(out), 0o755)
-	base, _ := os.ReadFile("/opt/ward/AGENTS.container.md") // #nosec G304 -- bind-mounted doctrine
-	buf := append([]byte{}, base...)
-	level, _ := strconv.Atoi(e.ContextLevel)
-	switch {
-	case level >= 2 && isDir(e.ContextSrc):
-		for _, f := range []string{"CLAUDE.md", "AGENTS.md"} {
-			if extra, ok := readFileIf(filepath.Join(e.ContextSrc, f)); ok {
-				buf = append(buf, []byte("\n\n---\n\n")...)
-				buf = append(buf, extra...)
-			}
-		}
-	case level == 1:
-		if extra, ok := readFileIf(filepath.Join(e.ContextSrc, "AGENTS.md")); ok {
-			buf = append(buf, []byte("\n\n---\n\n")...)
-			buf = append(buf, extra...)
-		}
-	}
-	// Label the mounted substrate repos as read-first context (ward#593); empty (no
-	// section appended) when no substrate repo is warmed. See docs/container-substrate.md.
-	if block := substrateInventoryBlock(e.SubstrateDest); block != "" {
-		buf = append(buf, []byte(block)...)
-	}
-	buf = append(buf, interactiveIntroductionContext(e)...)
-	// A read-only session has no seed to carry the "do not push" constraint, so it
-	// rides here as static entry context, overriding the autonomy doctrine (ward#293).
-	if e.ReadOnly {
-		buf = append(buf, []byte(readOnlyContextBlock)...)
-	}
-	buf = append(buf, agentIdentityContext(e)...)
-	_ = os.WriteFile(out, buf, 0o644) // #nosec G306 -- operating context, not a secret
-	blog("composed context (level %s%s) at %s", e.ContextLevel, readOnlyTag(e.ReadOnly), out)
-	adapter := mustAgentAdapter(containerMode(e.Mode))
-	for _, rel := range adapter.contextFiles() {
-		dest := filepath.Join(e.AgentHome, rel)
-		switch rel {
-		case filepath.Join(".claude", "CLAUDE.md"), filepath.Join(".codex", "AGENTS.md"):
-			r.linkOrCopyContext(filepath.Join("..", "AGENTS.md"), dest, out)
-			blog("linked context load point to %s", dest)
-		default:
-			_ = os.MkdirAll(filepath.Dir(dest), 0o755)
-			if werr := os.WriteFile(dest, buf, 0o644); werr == nil { // #nosec G306 -- operating context
-				blog("mirrored composed context into %s", dest)
-			}
-		}
-	}
-}
-
-func (r *Runner) linkOrCopyContext(linkTarget, dest, src string) {
-	_ = os.MkdirAll(filepath.Dir(dest), 0o755)
-	_ = os.Remove(dest)
-	if err := os.Symlink(linkTarget, dest); err == nil {
-		return
-	}
-	data, err := os.ReadFile(src) // #nosec G304 -- src is the composed context path.
-	if err != nil {
-		blog("could not read context for %s: %v", dest, err)
-		return
-	}
-	if werr := os.WriteFile(dest, data, 0o644); werr != nil { // #nosec G306 -- operating context
-		blog("could not write context fallback %s: %v", dest, werr)
-	}
-}
-
-// --- container permission policy ---------------------------------------------
-
-type containerClaudeSettings struct {
-	TUI              string                     `json:"tui"`
-	DeniedMCPServers []containerDeniedMCPServer `json:"deniedMcpServers"`
-	Permissions      containerPermissions       `json:"permissions"`
-	StatusLine       *containerStatusLine       `json:"statusLine,omitempty"`
-}
-
-type containerDeniedMCPServer struct {
-	ServerName string `json:"serverName"`
-}
-
-type containerPermissions struct {
-	DefaultMode string   `json:"defaultMode"`
-	Deny        []string `json:"deny,omitempty"`
-}
-
-type containerStatusLine struct {
-	Type            string `json:"type"`
-	Command         string `json:"command"`
-	Padding         int    `json:"padding"`
-	RefreshInterval int    `json:"refreshInterval"`
-}
-
-// composePermissions writes typed policy directly into Claude settings; the
-// policy is product code rather than a staged runtime asset.
-func (r *Runner) composePermissions(e bootstrapEnv) {
-	blog("permissions compose start: %s", e.AgentHome)
-	out := filepath.Join(e.AgentHome, ".claude", "settings.json")
-	_ = os.MkdirAll(filepath.Dir(out), 0o755)
-	buf, err := composeClaudeSettings(containerMode(e.Mode))
-	if err != nil {
-		blog("could not compose container permission policy: %v", err)
-		return
-	}
-	if werr := os.WriteFile(out, buf, 0o644); werr != nil { // #nosec G306 -- permission policy, not a secret
-		blog("could not write container permission policy: %v", werr)
-		return
-	}
-	blog("wrote container permission policy to %s", out)
-}
-
-func composeClaudeSettings(mode containerMode) ([]byte, error) {
-	settings := containerClaudeSettings{
-		TUI: "fullscreen",
-		DeniedMCPServers: []containerDeniedMCPServer{
-			{ServerName: "claude-in-chrome"},
-		},
-		Permissions: containerPermissions{
-			DefaultMode: "bypassPermissions",
-		},
-	}
-	if lookupAgent(mode).Record().StatusLine {
-		settings.StatusLine = &containerStatusLine{
-			Type:            "command",
-			Command:         "ward agent dispatch-health --line",
-			Padding:         1,
-			RefreshInterval: 5,
-		}
-	}
-	buf, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return append(buf, '\n'), nil
-}
-
 // --- reaper: deterministic teardown backstop ---------------------------------
 
 // reap ports the bash reap() EXIT trap: salvage residual work before teardown.
@@ -1761,14 +1631,21 @@ func setprivPrefix(e bootstrapEnv) []string {
 // chownAgentTree ports the launch-time chown: hand the work tree + agent config
 // dirs to the non-root agent user. Best-effort, like the bash `|| true`.
 func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string) {
-	paths := []string{
-		work,
-		filepath.Join(e.AgentHome, "AGENTS.md"),
-		filepath.Join(e.AgentHome, ".claude"),
-		filepath.Join(e.AgentHome, ".claude.json"), // onboarding seed, so claude can persist updates (ward#305)
-		filepath.Join(e.AgentHome, ".config"),
-		filepath.Join(e.AgentHome, ".codex"),
-		filepath.Join(e.AgentHome, ".agents"),
+	paths := agentOwnershipPaths(e, work)
+	_ = r.Runner.Exec(ctx, "chown", append([]string{"-R", e.AgentUID + ":" + e.AgentGID}, paths...)...)
+}
+
+func agentOwnershipPaths(e bootstrapEnv, work string) []string {
+	paths := make([]string, 0, 4)
+	if _, err := os.Lstat(work); err == nil {
+		paths = append(paths, work)
+	}
+	projection := lookupAgent(containerMode(e.Mode)).Record().Projection
+	for _, rel := range projection.OwnershipPaths {
+		path := filepath.Join(e.AgentHome, filepath.FromSlash(rel))
+		if _, err := os.Lstat(path); err == nil {
+			paths = append(paths, path)
+		}
 	}
 	// Hand each granted extra-repo tree to the agent user too (ward#230); they
 	// were cloned as root, like the target. Skip any that failed to clone.
@@ -1784,7 +1661,7 @@ func (r *Runner) chownAgentTree(ctx context.Context, e bootstrapEnv, work string
 			paths = append(paths, dest)
 		}
 	}
-	_ = r.Runner.Exec(ctx, "chown", append([]string{"-R", e.AgentUID + ":" + e.AgentGID}, paths...)...)
+	return paths
 }
 
 // --- headless progress (claude stream-json -> concise log lines) -------------

@@ -463,23 +463,17 @@ func TestContextBundleCoreRoleAndAgentCompatibilityMatrix(t *testing.T) {
 		for _, agent := range agents {
 			t.Run(role+"/"+string(agent), func(t *testing.T) {
 				home := t.TempDir()
-				authority := filepath.Join(home, "AGENTS.md")
-				if err := os.WriteFile(authority, []byte("ward authority"), 0o644); err != nil {
-					t.Fatal(err)
+				hostContext := t.TempDir()
+				for _, name := range []string{"CLAUDE.md", "AGENTS.md", ".goosehints"} {
+					if err := os.WriteFile(filepath.Join(hostContext, name), []byte("foreign host roster"), 0o644); err != nil {
+						t.Fatal(err)
+					}
 				}
 				instructionRel, skillsRel, err := contextBundleLayout(string(agent))
 				if err != nil {
 					t.Fatal(err)
 				}
 				instruction := filepath.Join(home, filepath.FromSlash(instructionRel))
-				if agent != modeOpencode {
-					if err := os.MkdirAll(filepath.Dir(instruction), 0o755); err != nil {
-						t.Fatal(err)
-					}
-					if err := os.WriteFile(instruction, []byte("ward authority"), 0o644); err != nil {
-						t.Fatal(err)
-					}
-				}
 				bundle := writeContextBundleFixture(t, role, agent, false)
 				before, err := os.ReadFile(filepath.Join(bundle, contextBundleManifestName))
 				if err != nil {
@@ -487,10 +481,12 @@ func TestContextBundleCoreRoleAndAgentCompatibilityMatrix(t *testing.T) {
 				}
 				r := &Runner{}
 				e := bootstrapEnv{
-					Role:          role,
-					Mode:          string(agent),
-					AgentHome:     home,
-					ContextBundle: bundle,
+					Role:             role,
+					Mode:             string(agent),
+					AgentHome:        home,
+					ContextBundle:    bundle,
+					ContextSrc:       hostContext,
+					AgentDisplayName: "foreign host roster",
 				}
 				if err := r.projectContextBundleHome(e); err != nil {
 					t.Fatalf("projectContextBundleHome: %v", err)
@@ -502,8 +498,14 @@ func TestContextBundleCoreRoleAndAgentCompatibilityMatrix(t *testing.T) {
 				text := string(got)
 				if !strings.Contains(text, "selected "+role+" identity") ||
 					!strings.Contains(text, "Ward container authority context") ||
-					!strings.Contains(text, "ward authority") {
+					!strings.Contains(text, "Container agent doctrine") {
 					t.Fatalf("merged context lost identity or authority:\n%s", text)
+				}
+				if strings.Contains(text, "foreign host roster") {
+					t.Fatalf("bundle projection absorbed host context or roster:\n%s", text)
+				}
+				if _, err := os.Lstat(filepath.Join(home, "AGENTS.md")); !os.IsNotExist(err) {
+					t.Fatalf("bundle projection created retired shared ~/AGENTS.md: %v", err)
 				}
 				skill := filepath.Join(home, filepath.FromSlash(skillsRel), "fixture", "SKILL.md")
 				if _, err := os.Stat(skill); err != nil {
@@ -523,16 +525,6 @@ func TestContextBundleCoreRoleAndAgentCompatibilityMatrix(t *testing.T) {
 
 func TestContextBundleProjectionFailsClosedOnForeignSkill(t *testing.T) {
 	home := t.TempDir()
-	if err := os.WriteFile(filepath.Join(home, "AGENTS.md"), []byte("ward authority"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	instruction := filepath.Join(home, ".codex", "AGENTS.md")
-	if err := os.MkdirAll(filepath.Dir(instruction), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(instruction, []byte("ward authority"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	foreign := filepath.Join(home, ".agents", "skills", "fixture", "SKILL.md")
 	if err := os.MkdirAll(filepath.Dir(foreign), 0o755); err != nil {
 		t.Fatal(err)

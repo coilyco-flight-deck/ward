@@ -26,6 +26,14 @@ var record = agentsapi.Manifest{
 	ContextLevel: 0,
 	Stream:       "none",
 	Auth:         "none",
+	Projection: agentsapi.Projection{
+		InstructionSources: []string{"AGENTS.md"},
+		InstructionPath:    ".config/opencode/AGENTS.md",
+		SkillsPath:         ".agents/skills",
+		ConfigPaths:        []string{".config/opencode/opencode.json"},
+		StatePaths:         []string{".config/opencode", ".opencode"},
+		OwnershipPaths:     []string{".config/opencode", ".agents", ".opencode"},
+	},
 	Argv: agentsapi.Argv{
 		Preflight:   nil,
 		Headless:    []string{"opencode", "run"},

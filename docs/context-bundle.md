@@ -22,8 +22,11 @@ paths, or capabilities are rejected.
 Each harness accepts only its instruction load point and skill root. Ward
 rejects other paths, symlinks, special files, nested tools, and non-executable
 tools. Bootstrap revalidates the read-only mount before copying allowed files
-into the private agent home, then appends Ward's authority document outside
-the immutable bundle.
+into the private agent home. The bundle instruction remains authoritative.
+Bootstrap composes it with Ward's minimal container authority and safety text
+in memory, then atomically writes the selected harness's native instruction
+file. It does not mutate the bundle, append to a projected file, create a
+shared `~/AGENTS.md`, or write any sibling harness load point.
 
 An optional `bin/` becomes `WARD_CONTEXT_TOOLS` after the image's existing
 `PATH`, so it cannot shadow image or harness binaries.
