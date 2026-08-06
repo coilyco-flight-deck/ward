@@ -22,7 +22,6 @@ func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
 		Mode:                modeCodex,
 		ForgejoBase:         forgejoBaseURL,
 		ReadOnly:            true,
-		TSSidecar:           true,
 		DispatchBrokerToken: "must-not-enter-compose",
 		Mounts: []mountSpec{
 			{Source: `X:\projects\coilyco-flight-deck\ward`, Target: containerContextMount, ReadOnly: true},
@@ -52,7 +51,6 @@ func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
 		"WARD_HOST_GOOS: windows",
 		"source: X:\\projects\\coilyco-flight-deck\\ward",
 		"target: /root/.ward",
-		"ward-tailnet",
 		"dispatch-broker-probe",
 	} {
 		if !strings.Contains(text, want) {
@@ -65,24 +63,16 @@ func TestDirectorStackComposeSeparatesBrokerLifecycle(t *testing.T) {
 	if !strings.Contains(text, `- X:\tmp\broker.env`) || !strings.Contains(text, `- X:\tmp\director.env`) {
 		t.Fatalf("Compose output does not carry separate service env files:\n%s", text)
 	}
-	if strings.Contains(text, "network_mode: host") {
-		t.Fatal("Compose director cannot use host networking with broker service DNS")
-	}
 	var doc composeDocument
 	if err := yaml.Unmarshal(body, &doc); err != nil {
 		t.Fatalf("decode Compose output: %v", err)
 	}
+	if got := doc.Services["director"].Networks; len(got) != 1 || got[0] != "default" {
+		t.Fatalf("director networks = %v, want only the Compose project network", got)
+	}
 	gitcache, ok := doc.Volumes[containerGitcacheVol]
 	if !ok || !gitcache.External || gitcache.Name != containerGitcacheVol {
 		t.Fatalf("Compose gitcache volume = %#v, present %t; want external stable name", gitcache, ok)
-	}
-}
-
-func TestNormalizeDirectorStackNetworkPreservesComposeDNS(t *testing.T) {
-	plan := upPlan{HostNet: true}
-	normalizeDirectorStackNetwork(&plan)
-	if plan.HostNet || !plan.TSSidecar {
-		t.Fatalf("normalized plan = HostNet %t TSSidecar %t, want false/true", plan.HostNet, plan.TSSidecar)
 	}
 }
 

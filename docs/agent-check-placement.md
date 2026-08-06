@@ -17,7 +17,7 @@ dispatch service.
   - owner trust gate.
   - issue closed / wrong-repo refusal.
   - host one-shot GO / NO-GO read.
-  - launch-adjacent probes such as tailnet readiness and image pull.
+  - launch-adjacent work such as image pull.
 - `both`
   - reservation conflict / stale hold detection.
   - open-PR backpressure.

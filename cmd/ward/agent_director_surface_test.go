@@ -110,7 +110,7 @@ func TestBuildUpPlanDirectorSurfaceThreading(t *testing.T) {
 		var got upPlan
 		probe := &cli.Command{
 			Name:  "probe",
-			Flags: tailnetProbeFlags(),
+			Flags: agentPlanProbeFlags(),
 			Action: func(_ context.Context, c *cli.Command) error {
 				p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleDirector, t.TempDir(), t.TempDir(), nil, mountSurfaceExtras)
 				if err != nil {

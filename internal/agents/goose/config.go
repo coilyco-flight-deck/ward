@@ -10,12 +10,12 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
-// ollamaHostEnvKey carries the base64'd tower Ollama endpoint resolved host-side;
-// decoded here and scrubbed once seeded (the tailnet endpoint is the secret).
+// ollamaHostEnvKey carries the base64'd Ollama endpoint resolved host-side;
+// decoded here and scrubbed once seeded.
 const ollamaHostEnvKey = "WARD_GOOSE_OLLAMA_HOST_B64"
 
-// ComposeConfig seeds goose's config.yaml with provider + model (+ the tower
-// Ollama host if the host resolved one into the env; ward#186).
+// ComposeConfig seeds goose's config.yaml with provider, model, and any Ollama
+// host resolved into the environment (ward#186).
 func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
 	dir := filepath.Join(rc.AgentHome, ".config", "goose")
 	_ = os.MkdirAll(dir, 0o755)
@@ -38,7 +38,7 @@ func (a Agent) ComposeConfig(rc agentsapi.RunCtx) error {
 		return nil
 	}
 	if provider == "ollama" && host == "" {
-		rc.Log("wrote goose config (provider=%s model=%s) to %s; no tower Ollama host resolved, goose will use its built-in default", provider, model, out)
+		rc.Log("wrote goose config (provider=%s model=%s) to %s; no Ollama host resolved, goose will use its built-in default", provider, model, out)
 	} else {
 		rc.Log("wrote goose config (provider=%s model=%s) to %s", provider, model, out)
 	}

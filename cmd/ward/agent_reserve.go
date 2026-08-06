@@ -1063,7 +1063,7 @@ func gateRecovery(gate string) (label, recovery string) {
 			"Wait for the Claude account limit to reset or switch harness/account, then re-dispatch."
 	case "ollama-probe":
 		return "ollama reachability probe (local-model harness)",
-			"Bring the goose/opencode Ollama endpoint up and reachable from the container (or pass `--ts-sidecar`), then re-dispatch."
+			"Point the configured endpoint at a backend reachable from the container, then re-dispatch."
 	case "codex-probe":
 		return "codex launch probe",
 			"Inspect the codex config/auth path in the container log, correct it, then re-dispatch."

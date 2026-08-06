@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -57,7 +56,6 @@ in-container entrypoint, not by hand. See docs/agent.md for the contributor surf
 			containerDispatchBrokerCapabilityCommand(),
 			containerDispatchBrokerPeerAdmitCommand(),
 			containerDispatchBrokerPeerStatusCommand(),
-			containerForwardCommand(),
 			containerDrainExitCommand(),
 		},
 	}
@@ -142,9 +140,6 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 	if err != nil {
 		return upPlan{}, err
 	}
-	// Role metadata never selects network reach. Explicit endpoints still use
-	// the ordinary container network.
-	hostNet, tsSidecar := false, false
 	// extraRepoGrant reads the --repo grant on the agent surfaces and --with-repo on
 	// director (ward#280, ward#362; docs/container-multi-repo.md).
 	extra, err := parseExtraRepos(extraRepoGrant(c), repo)
@@ -207,8 +202,6 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		MemorySwap:        memorySwap,
 		AgentArgs:         agentArgs,
 		ExtraRepos:        extra,
-		HostNet:           hostNet,
-		TSSidecar:         tsSidecar,
 		SkipPreflight:     c.Bool("skip-preflight") || c.Bool("no-preflight"),
 		SkipSmokeTest:     smokeTestSkipped(c),
 		ConfigEnv:         configEnv,
@@ -260,36 +253,6 @@ func containerNameSuffix(role string, machine string) string {
 		return directorSurfaceSessionSuffix()
 	}
 	return machine
-}
-
-// localHasTailscale0 reports whether a tailscale0 interface exists on this host's
-// netns (the netns a --host-net run joins on Linux); a probe error reads false.
-func localHasTailscale0() bool {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return false
-	}
-	for _, ifi := range ifaces {
-		if ifi.Name == "tailscale0" {
-			return true
-		}
-	}
-	return false
-}
-
-// maybeWarnHostNet prints the tailnet-unreachable warning when a --host-net plan
-// won't inherit a tailnet route here (ward#332); a no-op unless plan.HostNet set.
-func (r *Runner) maybeWarnHostNet(plan upPlan) {
-	if !plan.HostNet {
-		return
-	}
-	if msg, warn := hostNetTailnetWarning(launchHostGOOS(), localHasTailscale0()); warn {
-		w := r.Runner.Stderr
-		if w == nil {
-			w = os.Stderr
-		}
-		writeln(w, msg)
-	}
 }
 
 // terminalAttached reports whether stdin and stdout are both terminals - the
@@ -473,43 +436,6 @@ func writeAgentEnvFile(creds []agentsapi.EnvLine) (path string, cleanup func(), 
 		return "", func() {}, fmt.Errorf("ward container: close director env-file: %w", cerr)
 	}
 	return path, cleanup, nil
-}
-
-// preflightTailnet readies the ward-tailnet network for a --ts-sidecar run: a missing
-// network is created (not a failure), an unattached box only warns (ward#597, #349).
-func (r *Runner) preflightTailnet(ctx context.Context, plan upPlan) error {
-	if !plan.TSSidecar {
-		return nil
-	}
-	out, err := r.dockerCapture(ctx, dockerTailnetInspectArgv()...)
-	if err != nil {
-		// A missing network gets created (ward#597). A fresh network has no proxy box,
-		// so the warning below fires until the tailscale-proxy role converges.
-		if cerr := r.ensureTailnetNetwork(ctx); cerr != nil {
-			return cerr
-		}
-	}
-	if msg, warn := proxyBoxMissingWarning(string(out)); warn {
-		w := r.Runner.Stderr
-		if w == nil {
-			w = os.Stderr
-		}
-		writeln(w, msg)
-	}
-	return nil
-}
-
-// ensureTailnetNetwork idempotently creates the ward-tailnet network: a create that
-// loses the race to "already exists" is benign if a re-inspect now finds it (ward#597).
-func (r *Runner) ensureTailnetNetwork(ctx context.Context) error {
-	if _, err := r.dockerCapture(ctx, dockerTailnetCreateArgv()...); err != nil {
-		if _, ierr := r.dockerCapture(ctx, dockerTailnetInspectArgv()...); ierr != nil {
-			return fmt.Errorf("ward agent: could not create the %q docker network for the tailnet route: %w; "+
-				"create it by hand (docker network create %s) or re-run with --no-tailnet to dispatch isolated (ward#597)",
-				tailnetNetwork(), err, tailnetNetwork())
-		}
-	}
-	return nil
 }
 
 // randHex returns 4 random bytes as an 8-char lowercase hex string, the unique

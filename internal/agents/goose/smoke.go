@@ -9,8 +9,8 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/launchgate/ollamaprobe"
 )
 
-// defaultGooseOllamaHost is goose's built-in Ollama endpoint, used when no tower
-// host was seeded into config.yaml - it is what goose itself would dial by default.
+// defaultGooseOllamaHost is goose's built-in Ollama endpoint when config.yaml
+// does not provide one.
 const defaultGooseOllamaHost = "http://localhost:11434"
 
 // PreLaunchCheck probes goose's configured Ollama endpoint before a headless run so

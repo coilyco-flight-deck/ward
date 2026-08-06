@@ -23,12 +23,12 @@ func TestConfiguredOllamaHost(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "GOOSE_PROVIDER: ollama\nGOOSE_MODEL: qwen3-coder:30b\nOLLAMA_HOST: http://tower:11434\n"
+	body := "GOOSE_PROVIDER: ollama\nGOOSE_MODEL: qwen3-coder:30b\nOLLAMA_HOST: http://model-host:11434\n"
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := configuredOllamaHost(agentsapi.RunCtx{AgentHome: home}); got != "http://tower:11434" {
-		t.Errorf("seeded host: got %q, want %q", got, "http://tower:11434")
+	if got := configuredOllamaHost(agentsapi.RunCtx{AgentHome: home}); got != "http://model-host:11434" {
+		t.Errorf("seeded host: got %q, want %q", got, "http://model-host:11434")
 	}
 }
 

@@ -222,7 +222,7 @@ func TestAgentListIncludesReservedLaunchPhase(t *testing.T) {
 	logPath := filepath.Join(dispatchDir, "20260710T101500Z-director-box-coilyco-flight-deck-ward-1033.log")
 	if err := os.WriteFile(logPath, []byte(
 		"ward dispatch broker: director-box requested `ward agent engineer coilyco-flight-deck/ward#1033 --harness codex`\n"+
-			"ward dispatch broker: launch plan ready for coilyco-flight-deck/ward#1033 (container=engineer-codex-ward-1033 branch=issue-1033 readOnly=true tailnet=false/false)\n"+
+			"ward dispatch broker: launch plan ready for coilyco-flight-deck/ward#1033 (container=engineer-codex-ward-1033 branch=issue-1033 readOnly=true)\n"+
 			"ward dispatch broker: wrote launch env file for coilyco-flight-deck/ward#1033\n"), 0o644); err != nil {
 		t.Fatalf("write dispatch log: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestAgentListMarksStalePrelaunchLaunchesCleanupNeeded(t *testing.T) {
 	logPath := filepath.Join(dispatchDir, "20260710T101500Z-director-box-coilyco-flight-deck-ward-1034.log")
 	if err := os.WriteFile(logPath, []byte(
 		"ward dispatch broker: director-box requested `ward agent engineer coilyco-flight-deck/ward#1034 --harness codex`\n"+
-			"ward dispatch broker: launch plan ready for coilyco-flight-deck/ward#1034 (container=engineer-codex-ward-1034 branch=issue-1034 readOnly=true tailnet=false/false)\n"+
+			"ward dispatch broker: launch plan ready for coilyco-flight-deck/ward#1034 (container=engineer-codex-ward-1034 branch=issue-1034 readOnly=true)\n"+
 			"ward dispatch broker: wrote launch env file for coilyco-flight-deck/ward#1034\n"), 0o644); err != nil {
 		t.Fatalf("write dispatch log: %v", err)
 	}

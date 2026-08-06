@@ -21,8 +21,8 @@ func TestConfigYAML(t *testing.T) {
 	if !strings.Contains(noHost, "GOOSE_PROVIDER: ollama") || !strings.Contains(noHost, "GOOSE_MODEL: configured-model") {
 		t.Errorf("missing provider/model:\n%s", noHost)
 	}
-	withHost := configYAML("ollama", "configured-model", "http://tower:11434")
-	if !strings.Contains(withHost, "OLLAMA_HOST: http://tower:11434") {
+	withHost := configYAML("ollama", "configured-model", "http://model-host:11434")
+	if !strings.Contains(withHost, "OLLAMA_HOST: http://model-host:11434") {
 		t.Errorf("with-host config should include OLLAMA_HOST:\n%s", withHost)
 	}
 }
@@ -31,7 +31,7 @@ func TestConfigYAML(t *testing.T) {
 // bootstrap-only WARD_GOOSE_OLLAMA_HOST_B64 env var, so it can't leak (ward#357).
 func TestComposeConfigScrubsEnv(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv(ollamaHostEnvKey, base64.StdEncoding.EncodeToString([]byte("http://tower:11434")))
+	t.Setenv(ollamaHostEnvKey, base64.StdEncoding.EncodeToString([]byte("http://model-host:11434")))
 	rc := agentsapi.RunCtx{AgentHome: home, Log: noopLog, GooseModel: "configured-model"}
 	if err := (Agent{}).ComposeConfig(rc); err != nil {
 		t.Fatalf("ComposeConfig: %v", err)
@@ -40,7 +40,7 @@ func TestComposeConfigScrubsEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected config.yaml written: %v", err)
 	}
-	if !strings.Contains(string(got), "OLLAMA_HOST: http://tower:11434") {
+	if !strings.Contains(string(got), "OLLAMA_HOST: http://model-host:11434") {
 		t.Errorf("config.yaml missing resolved host:\n%s", got)
 	}
 	if v := os.Getenv(ollamaHostEnvKey); v != "" {

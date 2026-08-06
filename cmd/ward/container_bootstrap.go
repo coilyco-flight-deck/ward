@@ -88,7 +88,6 @@ type bootstrapEnv struct {
 	SubstrateManifest string
 	SubstrateTTL      string
 	SubstrateSkip     bool
-	TailnetSocks5     string
 	ContextBundle     string
 	ContextTools      string
 	Collaboration     bool
@@ -180,7 +179,6 @@ func readBootstrapEnv() (bootstrapEnv, error) { //nolint:gocyclo,cyclop // repos
 		SubstrateManifest: envOr("WARD_SUBSTRATE_MANIFEST", "/opt/ward/preclone-repos.txt"),
 		SubstrateTTL:      envOr("WARD_SUBSTRATE_TTL", "600"),
 		SubstrateSkip:     os.Getenv("WARD_SUBSTRATE_SKIP") == "1",
-		TailnetSocks5:     os.Getenv("WARD_TS_SOCKS5"),
 		ContextBundle:     os.Getenv("WARD_CONTEXT_BUNDLE"),
 		ContextTools:      os.Getenv("WARD_CONTEXT_TOOLS"),
 		Collaboration:     os.Getenv(envCollaborationPlan) == "1",

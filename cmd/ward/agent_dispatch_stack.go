@@ -126,15 +126,6 @@ func prepareDirectorStackAssets(ctx context.Context, clusterID, wardSource, ward
 	return stack, nil
 }
 
-// normalizeDirectorStackNetwork moves a Linux host-network director onto the project
-// and ward-tailnet networks because Compose service DNS and network_mode=host conflict.
-func normalizeDirectorStackNetwork(plan *upPlan) {
-	if plan != nil && plan.HostNet {
-		plan.HostNet = false
-		plan.TSSidecar = true
-	}
-}
-
 func renderDirectorStackCompose(plan upPlan, stack directorStack, brokerEnvFile, directorEnvFile, globalDir string) ([]byte, error) {
 	directorEnv := plan.wardEnv()
 	delete(directorEnv, envDispatchBrokerToken)
@@ -164,10 +155,6 @@ func renderDirectorStackCompose(plan upPlan, stack directorStack, brokerEnvFile,
 	})
 	networks := []string{"default"}
 	topNetworks := map[string]composeExternal{}
-	if plan.TSSidecar {
-		networks = append(networks, tailnetNetwork())
-		topNetworks[tailnetNetwork()] = composeExternal{External: true, Name: tailnetNetwork()}
-	}
 
 	volumes := map[string]composeExternal{}
 	for _, mount := range plan.Mounts {

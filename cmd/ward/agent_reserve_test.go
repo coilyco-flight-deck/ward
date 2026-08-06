@@ -834,8 +834,8 @@ func TestReserveIssueReportsPartialLaunchWhenReservationCommentPostFails(t *test
 
 func TestReservationCommentBodyHasMarker(t *testing.T) {
 	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
-	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "tower", now, "", nil)
-	for _, want := range []string{agentReservationMarker, "WARD-WORKFLOW: reservation-held", "ward agent --harness codex", "engineer-codex-ward-142", "tower", "3h TTL"} {
+	body := reservationCommentBody(modeCodex, "engineer-codex-ward-142", "build-host", now, "", nil)
+	for _, want := range []string{agentReservationMarker, "WARD-WORKFLOW: reservation-held", "ward agent --harness codex", "engineer-codex-ward-142", "build-host", "3h TTL"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reservation comment missing %q\n got: %s", want, body)
 		}
@@ -881,7 +881,7 @@ func TestWinningReservationClaim(t *testing.T) {
 	}
 	// Same timestamp -> lexically-min identity wins.
 	tie := []reservationClaim{
-		{at: t0, identity: "engineer@tower"},
+		{at: t0, identity: "engineer@worker-host"},
 		{at: t0, identity: "engineer@desktop"},
 	}
 	if w, _ := winningReservationClaim(tie); w.identity != "engineer@desktop" {
@@ -1203,7 +1203,7 @@ func TestGateRecovery(t *testing.T) {
 	for _, c := range []struct{ gate, wantLabel, wantRecov string }{
 		{"auth", "auth smoke test", "Refresh the host claude login"},
 		{"claude-quota", "Claude account/token quota", "account limit to reset"},
-		{"ollama-probe", "ollama reachability probe", "Ollama endpoint up"},
+		{"ollama-probe", "ollama reachability probe", "backend reachable from the container"},
 		{"codex-probe", "codex launch probe", "codex config/auth"},
 		{"model-config", "model-config pre-launch gate", "Update the model environment"},
 		{"bootstrap", "container bootstrap", "failing bootstrap step"},

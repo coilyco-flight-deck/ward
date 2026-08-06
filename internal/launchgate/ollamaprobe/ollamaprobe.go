@@ -35,8 +35,7 @@ const (
 	defaultOllamaPort = "11434"
 )
 
-// probeWindow/dialTimeout/retryDelay are vars (not consts) so tests can shrink the
-// window; retries absorb the --ts-sidecar forwarder's startup race (ward#359).
+// probeWindow/dialTimeout/retryDelay are vars so tests can shrink the window.
 var (
 	probeWindow = 15 * time.Second
 	dialTimeout = 3 * time.Second
@@ -82,7 +81,7 @@ func preLaunch(rc agentsapi.RunCtx, harness, endpoint, model string, modelProbe 
 	}
 	rc.Log("ollama smoke test: probing %s ollama endpoint %s before launch (ward#487)", harness, endpoint)
 	if derr := probe(rc.Ctx, addr); derr != nil {
-		return fmt.Errorf("ollama smoke test: %s's ollama endpoint %s (%s) was unreachable after %s - the dispatched container would hang or fail opaquely instead of a clean abort (ward#487, the local-harness analog of claude's auth smoke test). Is the backend reachable from the container? Point %s at a live endpoint (opencode: the agent-proxy URL in WARD_OLLAMA_URL; goose: its configured Ollama host) or pass --ts-sidecar to route localhost:11434 to the tower. %s=1 bypasses. (last dial error: %w)", harness, endpoint, addr, probeWindow, harness, skipEnv, derr)
+		return fmt.Errorf("ollama smoke test: %s's ollama endpoint %s (%s) was unreachable after %s - the dispatched container would hang or fail opaquely instead of a clean abort (ward#487, the local-harness analog of claude's auth smoke test). Point %s at a backend reachable from the container. %s=1 bypasses. (last dial error: %w)", harness, endpoint, addr, probeWindow, harness, skipEnv, derr)
 	}
 	if model = strings.TrimSpace(model); model != "" && modelProbe != nil {
 		if merr := modelProbe(rc.Ctx, endpoint, model); merr != nil {

@@ -5,10 +5,6 @@ import "os"
 // containerTopology holds typed product defaults. Per-launch environment
 // inputs take precedence.
 type containerTopology struct {
-	TailnetNetwork    string
-	TailnetProxy      string
-	TowerHost         string
-	TowerOllamaPort   string
 	SubstrateSeed     string
 	SubstrateDest     string
 	SubstrateManifest string
@@ -16,10 +12,6 @@ type containerTopology struct {
 }
 
 var containerTopologyDefaults = containerTopology{
-	TailnetNetwork:    defaultTailnetNetwork,
-	TailnetProxy:      defaultTailnetProxy,
-	TowerHost:         defaultTowerHost,
-	TowerOllamaPort:   defaultTowerOllamaPort,
 	SubstrateSeed:     containerSubstrateSeed,
 	SubstrateDest:     containerSubstrateDest,
 	SubstrateManifest: containerSubstrateManifest,

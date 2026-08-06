@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,38 @@ func stubContainerBootstrapStage(t *testing.T) {
 		return os.WriteFile(filepath.Join(dir, "ward"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
 	}
 	t.Cleanup(func() { stageWardBootstrapBinary = prev })
+}
+
+// agentPlanProbeFlags mirrors the launch inputs used by buildUpPlan without
+// constructing a public surface command.
+func agentPlanProbeFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{Name: "ward-source"},
+		&cli.StringFlag{Name: "ward-version"},
+		&cli.StringFlag{Name: "image", Value: containerImageDefault},
+		&cli.StringFlag{Name: "tag", Value: containerImageTagDefault},
+		&cli.StringFlag{Name: "branch"},
+		&cli.StringSliceFlag{Name: "repo"},
+		&cli.BoolFlag{Name: "detach"},
+	}
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// fakeDockerRunner builds a Runner whose docker command emits stdout and exits
+// with the requested code.
+func fakeDockerRunner(t *testing.T, stdout string, code int) *Runner {
+	t.Helper()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "docker")
+	body := "#!/bin/sh\nprintf '%s' " + shellQuote(stdout) + "\nexit " + strconv.Itoa(code) + "\n"
+	writeTestShellCommand(t, script, body)
+	return &Runner{Runner: &shell.Runner{
+		Stderr:  io.Discard,
+		Resolve: func(_ string) (string, error) { return script, nil },
+	}}
 }
 
 // TestSweepStaleContainerAssets reclaims dirs past the TTL (left by detached
@@ -251,7 +284,7 @@ func TestBuildUpPlanDirectorUsesDictatableSuffix(t *testing.T) {
 
 	probe := &cli.Command{
 		Name:  "probe",
-		Flags: tailnetProbeFlags(),
+		Flags: agentPlanProbeFlags(),
 		Action: func(_ context.Context, c *cli.Command) error {
 			p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleDirector, t.TempDir(), t.TempDir(), nil, false)
 			if err != nil {
@@ -275,7 +308,7 @@ func TestBuildUpPlanUsesTypedAttribution(t *testing.T) {
 	var got upPlan
 	probe := &cli.Command{
 		Name:  "probe",
-		Flags: tailnetProbeFlags(),
+		Flags: agentPlanProbeFlags(),
 		Action: func(_ context.Context, c *cli.Command) error {
 			p, err := buildUpPlan(c, targetRepo{Owner: "o", Name: "r"}, modeClaude, roleSession, t.TempDir(), t.TempDir(), nil, false)
 			if err != nil {
@@ -1494,7 +1527,7 @@ func TestContainerNamespaceHiddenPlumbingOnly(t *testing.T) {
 			t.Errorf("entrypoint-internal leaf %q must stay registered+resolvable", want)
 		}
 	}
-	for _, gone := range []string{"up", "exec", "down", "ls", "list"} {
+	for _, gone := range []string{"up", "exec", "down", "ls", "list", "forward"} {
 		if got[gone] {
 			t.Errorf("retired user-facing verb %q must be removed (ward#263)", gone)
 		}

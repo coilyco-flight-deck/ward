@@ -5,7 +5,6 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path"
@@ -107,73 +106,6 @@ const (
 	// containers does one fetch per repo per window, the rest skip the gate.
 	containerSubstrateTTL = "600"
 )
-
-// Tailnet + tower topology (ward#395): infra DATA, not baked identity. Each value takes
-// a WARD_* env override, the old literal kept as the fail-safe default. See the doc.
-const (
-	// envTailnetNetwork overrides the shared docker network runs attach to (ward#349).
-	envTailnetNetwork     = "WARD_TAILNET_NETWORK"
-	defaultTailnetNetwork = "ward-tailnet"
-
-	// envTailnetProxy overrides the standing SOCKS5 box host:port; host half is also
-	// its container name for the attach preflight (ward#349).
-	envTailnetProxy     = "WARD_TAILNET_PROXY"
-	defaultTailnetProxy = "tailscale-proxy:1055"
-
-	// proxySocks5Scheme is socks5h (not socks5): the proxy resolves the tower's
-	// MagicDNS name tailnet-side, so the run dials by name (ward#337; the doc).
-	proxySocks5Scheme = "socks5h://"
-
-	// envTowerHost overrides the tower's MagicDNS node name, dialed by name through
-	// the proxy (ward#337).
-	envTowerHost     = "WARD_TOWER_HOST"
-	defaultTowerHost = "kai-tower-3026"
-
-	// envTowerOllamaPort overrides the port the tower serves ollama on.
-	envTowerOllamaPort     = "WARD_TOWER_OLLAMA_PORT"
-	defaultTowerOllamaPort = "11434"
-)
-
-// tailnetNetwork resolves the shared docker network name (env > bundle > baked default;
-// ward#395). The bundle only fills the slot the baked literal fills now.
-func tailnetNetwork() string {
-	topo := currentContainerTopology()
-	return envOrBundleOr(envTailnetNetwork, topo.TailnetNetwork, defaultTailnetNetwork)
-}
-
-// proxyBoxAddr resolves the SOCKS5 box's host:port endpoint (env > bundle > default;
-// ward#395).
-func proxyBoxAddr() string {
-	topo := currentContainerTopology()
-	return envOrBundleOr(envTailnetProxy, topo.TailnetProxy, defaultTailnetProxy)
-}
-
-// proxyBoxName is the proxy box's container name - the host half of proxyBoxAddr, used
-// by the attach preflight. A port-less override falls back to the whole value.
-func proxyBoxName() string {
-	if host, _, err := net.SplitHostPort(proxyBoxAddr()); err == nil {
-		return host
-	}
-	return proxyBoxAddr()
-}
-
-// towerMagicDNS resolves the tower's MagicDNS node name (env > bundle > baked default;
-// ward#395).
-func towerMagicDNS() string {
-	topo := currentContainerTopology()
-	return envOrBundleOr(envTowerHost, topo.TowerHost, defaultTowerHost)
-}
-
-// towerOllamaPort resolves the port the tower serves ollama on (env > bundle > default;
-// ward#395).
-func towerOllamaPort() string {
-	topo := currentContainerTopology()
-	return envOrBundleOr(envTowerOllamaPort, topo.TowerOllamaPort, defaultTowerOllamaPort)
-}
-
-// towerOllamaURL is the by-name tower endpoint a --ts-sidecar run dials through the
-// proxy (ward#337; the doc).
-func towerOllamaURL() string { return "http://" + towerMagicDNS() + ":" + towerOllamaPort() }
 
 // substrateRepo is one entry in the container substrate manifest: a
 // Forgejo-canonical owner/name plus its seed tier (image|cache).
@@ -527,12 +459,6 @@ type upPlan struct {
 	// DispatchRequestID is the broker-minted idempotency key carried as an env
 	// value and Docker label on the sibling container.
 	DispatchRequestID string
-	// HostNet joins the container to the host network (--network=host) so a run
-	// inherits the host's tailnet route (--host-net, ward#330). docs/agent-host-net.md.
-	HostNet bool
-	// TSSidecar attaches the run to the shared ward-tailnet network so it reaches
-	// the standing tailscale-proxy box (--ts-sidecar, ward#349). docs/agent-ts-sidecar.md.
-	TSSidecar bool
 	// Workflow is the run's landing policy (--workflow, ward#508): non-merge-remote-main
 	// runs export WARD_WORKFLOW + a ward.workflow label. See docs/agent-workflow.md.
 	Workflow workflowMode
@@ -986,20 +912,6 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop,gocognit,f
 	if p.DispatchRequestID != "" {
 		env[envDispatchRequestID] = p.DispatchRequestID
 	}
-	if p.TSSidecar {
-		// Per-connection proxy (never a host-wide ALL_PROXY), the box dialed by name;
-		// socks5h so it resolves the tower's MagicDNS name tailnet-side (ward#349).
-		env["WARD_TS_SOCKS5"] = proxySocks5Scheme + proxyBoxAddr()
-		// A MagicDNS name, not a secret IP, so it rides plain (ward#337).
-		env["WARD_TOWER_OLLAMA"] = towerOllamaURL()
-		// The loopback forwarder's no-proxy endpoint: tools dial the tower at plain
-		// localhost:<port> with no --proxy once the run starts the forwarder (ward#359).
-		env["WARD_TOWER_OLLAMA_LOCAL"] = towerOllamaLocalURL()
-		// Propagate the tower topology so the in-container `ward container forward`
-		// --target follows the same override the host resolved (ward#395).
-		env[envTowerHost] = towerMagicDNS()
-		env[envTowerOllamaPort] = towerOllamaPort()
-	}
 	if len(p.ExtraRepos) > 0 {
 		env["WARD_EXTRA_REPOS"] = extraReposEnv(p.ExtraRepos)
 	}
@@ -1081,15 +993,8 @@ func dockerArgvHead(verb string, p upPlan) []string {
 		argv = append(argv, "--label", l)
 	}
 	argv = append(argv, "--entrypoint", containerEntrypointPath)
-	// Tailnet route (mutually exclusive, off by default): --host-net shares the host's
-	// namespace (ward#330), --ts-sidecar joins the shared ward-tailnet net (ward#349).
-	switch {
-	case p.DispatchBrokerNetwork != "":
+	if p.DispatchBrokerNetwork != "" {
 		argv = append(argv, "--network="+p.DispatchBrokerNetwork)
-	case p.TSSidecar:
-		argv = append(argv, "--network="+tailnetNetwork())
-	case p.HostNet:
-		argv = append(argv, "--network=host")
 	}
 	if p.MemoryLimit != "" {
 		argv = append(argv, "--memory="+p.MemoryLimit)
@@ -1098,70 +1003,11 @@ func dockerArgvHead(verb string, p upPlan) []string {
 		argv = append(argv, "--memory-swap="+p.MemorySwap)
 	}
 	// Map host.docker.internal to the host gateway so the surface's broker dial
-	// works on Linux too; --network=host already resolves it, so skip it there.
-	if strings.HasPrefix(p.DispatchBrokerAddr, containerHostGateway+":") && !p.HostNet {
+	// works on Linux too.
+	if strings.HasPrefix(p.DispatchBrokerAddr, containerHostGateway+":") {
 		argv = append(argv, "--add-host", containerHostGateway+":host-gateway")
 	}
 	return argv
-}
-
-// proxyBoxAttached reports whether the standing box is among the space-separated
-// container names attached to ward-tailnet (the preflight read; ward#349).
-func proxyBoxAttached(names string) bool {
-	for _, n := range strings.Fields(names) {
-		if n == proxyBoxName() {
-			return true
-		}
-	}
-	return false
-}
-
-// dockerTailnetInspectArgv reads the names of the containers attached to the
-// ward-tailnet network; it fails (non-zero) when the network does not exist (ward#349).
-func dockerTailnetInspectArgv() []string {
-	return []string{"network", "inspect", tailnetNetwork(),
-		"--format", "{{range .Containers}}{{.Name}} {{end}}"}
-}
-
-// dockerTailnetCreateArgv creates the ward-tailnet network - the idempotent provisioning
-// step (via ensureTailnetNetwork) that replaces the old hard failure (ward#597).
-func dockerTailnetCreateArgv() []string {
-	return []string{"network", "create", tailnetNetwork()}
-}
-
-// proxyBoxMissingWarning warns (true) when the tailscale-proxy box is not attached to
-// ward-tailnet, so the run launches but its tower route won't resolve (ward#349, #597).
-func proxyBoxMissingWarning(attachedNames string) (string, bool) {
-	if proxyBoxAttached(attachedNames) {
-		return "", false
-	}
-	return "WARNING: the standing tailnet proxy " + proxyBoxName() + " is not attached to " + tailnetNetwork() + ".\n" +
-		"  The container still launches on the network, but the tailnet SOCKS5 route\n" +
-		"  (the ollama tower, live-observe) will not resolve until the tailscale-proxy infra\n" +
-		"  role is converged on this host. See docs/agent-ts-sidecar.md (ward#349, ward#597).", true
-}
-
-// hostNetTailnetWarning returns a loud warning (and true) when a --host-net run
-// is unlikely to reach the tailnet on this host (ward#332; docs/agent-host-net.md).
-func hostNetTailnetWarning(goos string, hasTailscale0 bool) (string, bool) {
-	// Non-Linux is Docker Desktop: the run joins a LinuxKit VM netns, never a
-	// tailnet node, so hasTailscale0 (the Mac's, not the VM's) is ignored here.
-	if goos != "linux" {
-		return "WARNING: --host-net cannot reach the tailnet on Docker Desktop.\n" +
-			"  The container joins the LinuxKit VM's network namespace, not your\n" +
-			"  " + goos + " host, so it inherits no tailscale0 and no MagicDNS - tailnet\n" +
-			"  names (api, kai-tower-3026) will not resolve inside the run.\n" +
-			"  --host-net only reaches the tailnet on a native-Linux host that is\n" +
-			"  itself a tailnet node. See docs/agent-host-net.md (ward#332).", true
-	}
-	if !hasTailscale0 {
-		return "WARNING: --host-net found no tailscale0 on this host's network namespace.\n" +
-			"  The run joins this netns, so without a tailscale0 device it gets no\n" +
-			"  tailnet route and MagicDNS names (api, kai-tower-3026) will not resolve.\n" +
-			"  Bring this host onto the tailnet, or adopt the in-container tailscaled\n" +
-			"  sidecar. See docs/agent-host-net.md (ward#332).", true
-	}
-	return "", false
 }
 
 // appendEnvAndImage appends the WARD_* env, the --env-file, the image, and the agent

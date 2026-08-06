@@ -21,11 +21,11 @@ func TestDialAddr(t *testing.T) {
 		wantErr  bool
 	}{
 		{"http://localhost:11434/v1", "localhost:11434", false},
-		{"http://tower:11434", "tower:11434", false},
-		{"tower:11434", "tower:11434", false},
-		{"localhost", "localhost:11434", false}, // bare host -> default port
-		{"http://tower", "tower:11434", false},  // URL without port -> default port
-		{"  http://tower:9999  ", "tower:9999", false},
+		{"http://model-host:11434", "model-host:11434", false},
+		{"model-host:11434", "model-host:11434", false},
+		{"localhost", "localhost:11434", false},          // bare host -> default port
+		{"http://model-host", "model-host:11434", false}, // URL without port -> default port
+		{"  http://model-host:9999  ", "model-host:9999", false},
 		{"", "", true},
 	}
 	for _, c := range cases {

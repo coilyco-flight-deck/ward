@@ -15,9 +15,9 @@ func TestDoctorTargets_NoneConfigured(t *testing.T) {
 }
 
 func TestDoctorTargets_OpencodeFromEnv(t *testing.T) {
-	env := map[string]string{OpencodeEndpointEnv: "http://tower:11434/v1"}
+	env := map[string]string{OpencodeEndpointEnv: "http://model-host:11434/v1"}
 	got := DoctorTargets(func(k string) string { return env[k] })
-	if len(got) != 1 || got[0].Harness != "opencode" || got[0].Endpoint != "http://tower:11434/v1" {
+	if len(got) != 1 || got[0].Harness != "opencode" || got[0].Endpoint != "http://model-host:11434/v1" {
 		t.Fatalf("want one opencode target, got %+v", got)
 	}
 	if !strings.Contains(got[0].Source, OpencodeEndpointEnv) {
@@ -26,7 +26,7 @@ func TestDoctorTargets_OpencodeFromEnv(t *testing.T) {
 }
 
 func TestDoctorTargets_GooseDecodesBase64(t *testing.T) {
-	host := "http://kai-tower:11434"
+	host := "http://model-host:11434"
 	env := map[string]string{GooseHostEnv: base64.StdEncoding.EncodeToString([]byte(host))}
 	got := DoctorTargets(func(k string) string { return env[k] })
 	if len(got) != 1 || got[0].Harness != "goose" || got[0].Endpoint != host {
@@ -45,7 +45,7 @@ func TestDoctorTargets_GooseBadBase64Skipped(t *testing.T) {
 func TestDoctorTargets_Both(t *testing.T) {
 	env := map[string]string{
 		OpencodeEndpointEnv: "http://localhost:11434/v1",
-		GooseHostEnv:        base64.StdEncoding.EncodeToString([]byte("http://tower:11434")),
+		GooseHostEnv:        base64.StdEncoding.EncodeToString([]byte("http://model-host:11434")),
 	}
 	got := DoctorTargets(func(k string) string { return env[k] })
 	if len(got) != 2 {

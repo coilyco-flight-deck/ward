@@ -698,18 +698,6 @@ func configFlag() cli.Flag {
 	}
 }
 
-// resolveTailnetMechanism maps a resolved tailnet want to the host-net vs sidecar
-// mechanism (ward#362): host-net on Linux, else sidecar.
-func resolveTailnetMechanism(goos string, want bool) (hostNet, tsSidecar bool) {
-	if !want {
-		return false, false
-	}
-	if goos == "linux" {
-		return true, false
-	}
-	return false, true
-}
-
 // extraRepoGrant reads the extra-writable-repo grant under either name: engineer's --repo
 // or director's own --with-repo (ward#362 dropped the alias; nil-safe).
 func extraRepoGrant(c *cli.Command) []string {
@@ -1550,9 +1538,6 @@ func launchPreflightSkipReasons(plan upPlan, noPull bool) []string {
 		return nil
 	}
 	reasons := []string{}
-	if plan.TSSidecar {
-		reasons = append(reasons, "ward-tailnet readiness check")
-	}
 	if !noPull {
 		reasons = append(reasons, "image pull")
 	}
@@ -2299,8 +2284,8 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		logDispatchDecision(os.Stderr, "host", "plan", "container=%s image=%s branch=%s workflow=%s ward=%s",
 			plan.Name, plan.Image, plan.Branch, plan.Workflow.orDefault(), wardVersionLaunchLabel(plan.WardVersion, plan.WardVersionSource))
 	}
-	writef(os.Stderr, "%s: launch plan ready for %s (container=%s branch=%s readOnly=%t tailnet=%t/%t)\n",
-		label, ref, plan.Name, plan.Branch, c.Bool("detach"), plan.HostNet, plan.TSSidecar)
+	writef(os.Stderr, "%s: launch plan ready for %s (container=%s branch=%s readOnly=%t)\n",
+		label, ref, plan.Name, plan.Branch, c.Bool("detach"))
 
 	if c.Bool("print") {
 		return printAgentPlan(c, plan, ref, title, seed, surface)
@@ -2398,18 +2383,9 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	}
 	logDispatchDecision(decisionWriter, "host", "docker", "ready")
 
-	// Ready the ward-tailnet network before the sweep + pull burn, so a host missing it
-	// gets it created here (idempotent), not a raw 125 mid-launch (ward#597).
 	if plan.SkipPreflight {
 		logDispatchDecision(decisionWriter, "host", "launch-preflight", "skipped launch-adjacent probes")
 		logLaunchPreflightSkips(label, plan, c.Bool("no-pull"))
-	} else {
-		logDispatchDecision(decisionWriter, "host", "tailnet", "checking host_net=%t ts_sidecar=%t", plan.HostNet, plan.TSSidecar)
-		if err := r.preflightTailnet(ctx, plan); err != nil {
-			logDispatchDecision(decisionWriter, "host", "tailnet", "failed: %s", firstLine(err.Error()))
-			return err
-		}
-		logDispatchDecision(decisionWriter, "host", "tailnet", "ready")
 	}
 
 	// Reclaim dead containers' writable layers before adding one more, so the
@@ -2516,14 +2492,10 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	return nil
 }
 
-// prelaunchDispatch runs the shared pre-`docker create` steps for dispatch paths:
-// the ward-tailnet ready-up (create-if-absent; ward#597), the sweep, the pull.
+// prelaunchDispatch runs the shared pre-`docker create` steps for dispatch paths.
 func (r *Runner) prelaunchDispatch(ctx context.Context, c *cli.Command, plan upPlan, label string) error {
 	if err := r.checkDockerReady(ctx); err != nil {
 		return fmt.Errorf("%s: %w", label, err)
-	}
-	if err := r.preflightTailnet(ctx, plan); err != nil {
-		return err
 	}
 	r.sweepStaleContainers(ctx)
 	if !c.Bool("no-pull") {
@@ -2596,14 +2568,9 @@ func (r *Runner) createAgentContainer(ctx context.Context, plan upPlan, envFile 
 	if bin := snapDockerBin(exec.LookPath); bin != "" {
 		return fmt.Errorf("%s", snapDockerRemediation(bin))
 	}
-	// --host-net only carries the tailnet on a host that is itself a tailnet node;
-	// warn loudly when it won't, so a no-op route doesn't read as success (ward#332).
-	r.maybeWarnHostNet(plan)
 	// Seed any external (non-Forgejo) catalog.dependsOn mirror host-side before the
 	// sealed container clones from the warm gitcache (ward#612).
 	r.seedExternalContextMirrors(ctx, plan)
-	// The ward-tailnet network ready-up (create-if-absent + standing tailscale-proxy box
-	// warning) already ran before the pull in each dispatch path, so nothing here.
 	if plan.Interactive {
 		return r.dockerExec(ctx, dockerCreateArgv(plan, envFile)...)
 	}
@@ -3045,11 +3012,6 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 		writef(&b, "# pull skipped (--no-pull); image: %s\n", p.Image)
 	default:
 		writef(&b, "docker pull %s\n", p.Image)
-	}
-	if p.TSSidecar {
-		// The run attaches to the standing tailscale-proxy box over ward-tailnet (shown in
-		// the run argv's --network below); ward preflights the box, never starts it (ward#349).
-		writef(&b, "# preflight: docker %s (tailscale-proxy must be attached)\n", strings.Join(dockerTailnetInspectArgv(), " "))
 	}
 	writef(&b, "docker %s\n", strings.Join(dockerCreateArgv(p, "<ward-forgejo-token-envfile>"), " "))
 	_, err := io.WriteString(out, b.String())

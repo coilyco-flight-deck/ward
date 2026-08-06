@@ -80,8 +80,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		return printScratchPlan(c, plan, readOnly)
 	}
 
-	// Ready the tailnet network, sweep dead containers, then pull - the shared
-	// pre-launch steps; a missing ward-tailnet network is created here (ward#597, #272).
+	// Sweep dead containers and pull before opening the surface.
 	if err := r.prelaunchDispatch(ctx, c, plan, label); err != nil {
 		return err
 	}
@@ -165,7 +164,6 @@ func (r *Runner) prepareScratchPlan(ctx context.Context, c *cli.Command, mode co
 	}
 	plan.ReadOnly = readOnly
 	if readOnly {
-		normalizeDirectorStackNetwork(&plan)
 		plan.DispatchBrokerAddr = dispatchBrokerServiceAddress
 		plan.ClusterID = clusterID
 	}
