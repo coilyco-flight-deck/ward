@@ -5,8 +5,8 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 )
 
-// agents_wire.go holds the thin core-side dispatch helpers over the agentsapi
-// seam; the per-agent bodies live in their folders now (ward#425). docs/agentsapi.md.
+// agents_wire.go holds thin core-side dispatch helpers over agentsapi.
+// Per-agent bodies live in their folders; see docs/agent-harnesses.md.
 
 // lookupAgent resolves a mode to its registry agent (data + behaviour); an
 // unknown mode falls back to claude, matching the switches' default arm.
@@ -25,7 +25,7 @@ func localModelAgent(rec agentsapi.Manifest) bool {
 }
 
 // hostOneShotTrusted reports whether a harness may run one of ward's unsandboxed HOST
-// one-shot reads; local-model harnesses are barred (ward#162, docs/agent-preflight.md).
+// one-shot reads; local-model harnesses are barred (ward#162, docs/agent-lifecycle.md).
 func hostOneShotTrusted(mode containerMode) bool {
 	return !localModelAgent(lookupAgent(mode).Record())
 }

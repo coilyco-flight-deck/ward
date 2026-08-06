@@ -1,4 +1,7 @@
-# forge linking
+---
+doc_goal: Define relative, contributor-facing, canonical, and issue-reference link targets for maintained Ward artifacts.
+---
+# Forge linking
 
 Use the right forge target for the link.
 

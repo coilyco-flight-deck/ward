@@ -2,7 +2,7 @@
 // following ward#412). It owns claude's inert data record AND its capability
 // behaviour: credential resolve/write, onboarding seed, and the pre-launch auth
 // smoke test all live here now, not behind a closure into core. See
-// docs/agentsapi.md.
+// docs/agent-harnesses.md.
 package claude
 
 import (
@@ -20,7 +20,7 @@ const (
 )
 
 // record is claude's inert data record, mirroring the agent-adapter manifest and
-// the cmd/ward switches. See docs/agentsapi.md.
+// the cmd/ward switches. See docs/agent-harnesses.md.
 var record = agentsapi.Manifest{
 	Name:         "claude",
 	Binary:       "claude",

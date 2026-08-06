@@ -1,80 +1,66 @@
 ---
-doc_goal: Give a short symptom-indexed entry point for failed runs so readers do not have to guess which subsystem to read next.
+doc_goal: Map common Ward symptoms to the smallest supporting evidence and a safe product-owned remedy.
 ---
-# troubleshooting
+# Troubleshooting
 
-Start here when a run failed or seemed to do nothing.
+## Launch preview or run is refused
 
-## Common cases
+* Symptom - no container appears and the command names trust, target,
+  reservation, capacity, config, auth, or Docker.
+* Evidence - the command error, issue-thread reservation, `ward doctor`, and
+  `ward agent list --json`.
+* Remedy - correct the named input. For a stale prelaunch record, preview then
+  run `ward agent stop owner/repo#N`. Do not override a visible live engineer.
 
-- launched then nothing happened.
-- never launched.
-- `ward exec` refused.
-- the run never landed on `main`.
-- capacity looks full with a ghost `container starting` or `cleanup-needed` record.
+## Run is silent or appears stuck
 
-## What to check
+* Symptom - a container or dispatch request exists without useful terminal output.
+* Evidence - `ward agent dispatch status <request-id> --json`, `ward agent
+  logs <request-id>`, then `ward agent list --json`.
+* Remedy - wait while state is active. Stop one confirmed wedged run with
+  `ward agent stop`. Use `ward agent reap` for the idle-policy backstop.
 
-- `~/.ward/agent-logs-redacted/<container>/`.
-- `~/.ward/agent-logs-redacted/dispatch/` for brokered launch failures.
-- the reservation comment on the issue.
-- the preflight or trust gate that blocked the launch.
-- if the issue is already terminal, stale reservation cleanup is not the fix.
+## Capacity includes a ghost launch
 
-## Fast triage
+* Symptom - list shows `container starting`, `cleanup-needed`, or a launch
+  intent without `started_at`.
+* Evidence - list JSON plus the canonical issue thread.
+* Remedy - use `ward agent stop owner/repo#N --print`, then the real stop. If
+  only local cache is stale, run `ward agent reservations clear` and recheck.
 
-1. decide whether the run launched.
-2. decide whether the run landed.
-3. decide whether the problem is in launch, workflow, or teardown.
-4. use the narrowest page that matches the failure.
+## Work did not land
 
-## Symptom hints
+* Symptom - the harness exited, but `main`, the remote branch, or the pull
+  request lacks the expected candidate.
+* Evidence - issue workflow comment, remote Git refs, PR status, run summary,
+  and any retained rescue manifest.
+* Remedy - follow the selected workflow. Use `ward agent pr recover` for a
+  closed-unmerged PR or `ward agent recover` for a verified rescue artifact.
 
-- if the launch never started, the issue is usually in preflight or trust.
-- if the container started but nothing happened, the issue is usually in
-  credentials or harness startup.
-- if the branch exists but the merge did not happen, the issue is usually in
-  workflow or review.
-- if a `promote.yml` run on `main` fails in `go test` or another check but a
-  later main push promotes successfully, treat the earlier failure as
-  transient/superseded unless you can reproduce it on the current head.
-- if `promote.yml` fails after draft assets and the `ward:release` image alias
-  both publish, compare the failure with [promote-run-2491.md](promote-run-2491.md).
-- if `release.yml` fails immediately in `promote-draft-assets`, compare [2495](release-run-2495.md), [2497](release-run-2497.md).
-- if `release.yml` uploads draft assets but fails before publishing, compare [release-run-2501.md](release-run-2501.md).
-- if the run vanished, the issue is usually in teardown or reap.
-- if `ward agent list --json` shows `phase: container starting` with
-  `status: cleanup-needed` and an empty `started_at`, use the manual stale reservation cleanup path in
-  [agent-stale-reservation-cleanup.md](agent-stale-reservation-cleanup.md)
-  before host-side debugging.
-- if `ward agent list --json` shows `phase: container starting` with an empty
-  `started_at`, clear the whole reservation cache directory with
-  `ward agent reservations clear` before host-side debugging. The directory is
-  cache-only, so wholesale deletion is safe.
-- if repo dispatch says the engineer limit is reached but the visible running
-  count is still below the ceiling, retry with `--override-reservation` to
-  recover stale prelaunch holds. Use `--override-capacity` only for the real
-  running-engineer ceiling.
-- if Docker says `OOMKilled=true`, treat it as host memory pressure, not a
-  normal reap.
-- if `sudo` says the no new privileges flag is set, or SSH rejects a
-  root-owned include inside the jail, the privileged leg is being asked to
-  self-converge inside `ward exec`. Move that leg outside the jail or run it
-  from another host.
+## Logs or artifacts are missing
 
-## Common readings
+* Symptom - live Docker logs are empty or one completed artifact is unavailable.
+* Evidence - `ward agent logs <target> --artifact console|transcript|meta|friction|dispatch`.
+* Remedy - use the returned secret-safe summary. Ward never falls back to a
+  raw archive. `ward doctor` only warns when retired raw archives remain.
 
-- if there is no container, start with launch and trust.
-- if there is a container but no outcome, start with logs.
-- if the death line mentions `OOMKilled=true`, check Docker Desktop or host
-  memory pressure first.
-- if there is a landed branch but not main, start with workflow.
-- if the issue thread has a reservation comment, read that first.
-- if the issue thread still carries the reservation marker and the visible run
-  is not running, prefer `ward agent reservations clear` over deleting a single
-  host file. The cache directory is disposable.
+## `ward exec` refuses a repository command
+
+* Symptom - unknown verb, dirty/diverged checkout, detached local HEAD, or
+  denied argv.
+* Evidence - `.ward/ward.yaml`, `ward git status`, and `ward audit tail`.
+* Remedy - declare the verb, restore a clean synchronized named branch, or fix
+  the denied command shape. Use the dirty override only for a deliberate emergency.
+
+## Container exits under memory or privilege pressure
+
+* Symptom - Docker reports `OOMKilled=true`, or jailed `sudo`/SSH ownership checks fail.
+* Evidence - container state and secret-safe console artifact.
+* Remedy - correct host memory pressure. Move privileged convergence outside
+  the jailed command rather than weakening the repository gate.
 
 ## See also
 
-- [agent-ops.md](agent-ops.md) - logs and reap.
-- [agent-lifecycle.md](agent-lifecycle.md) - launch-time checks.
+* [agent-ops.md](agent-ops.md) - operational commands.
+* [agent-observability.md](agent-observability.md) - artifact contract.
+* [agent-reservation.md](agent-reservation.md) - canonical state and cache cleanup.

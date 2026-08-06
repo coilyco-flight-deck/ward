@@ -10,7 +10,7 @@ import (
 )
 
 // forge.go makes the git-hosting service a first-class dimension of a `ward agent`
-// run (ward#489): Forgejo (canonical) or GitHub. See docs/agent-github.md.
+// run (ward#489): Forgejo (canonical) or GitHub. See docs/compat-surface.md.
 
 // githubBaseURL is the GitHub origin clones + issue URLs build from; the token
 // resolves user-side, never here (ward#489, #441).
@@ -173,7 +173,7 @@ func gitlabRefRE(baseURL string) *regexp.Regexp {
 }
 
 // parseGitHubIssueRef tags a github.com ref forgeGitHub; ok is false for anything
-// else, so the caller falls through to the Forgejo parser. See docs/agent-github.md.
+// else, so the caller falls through to the Forgejo parser. See docs/compat-surface.md.
 func parseGitHubIssueRef(s string) (agentIssueRef, bool) {
 	m := githubRefRE.FindStringSubmatch(strings.TrimSpace(s))
 	if m == nil {
@@ -269,7 +269,7 @@ func gitlabBaseURL() string {
 }
 
 // githubTokenSource selects how the GitHub dispatch path provisions its token
-// (ward#533): env, gh, or app. See docs/agent-github.md.
+// (ward#533): env, gh, or app. See docs/compat-surface.md.
 type githubTokenSource int
 
 const (
@@ -304,7 +304,7 @@ func parseGitHubTokenSource(s string) (githubTokenSource, error) {
 		return githubTokenApp, nil
 	default:
 		return githubTokenEnv, fmt.Errorf(
-			"ward: unknown WARD_GITHUB_TOKEN_SOURCE %q - want env (default), gh, or app. See docs/agent-github.md", strings.TrimSpace(s))
+			"ward: unknown WARD_GITHUB_TOKEN_SOURCE %q - want env (default), gh, or app. See docs/compat-surface.md", strings.TrimSpace(s))
 	}
 }
 
@@ -437,7 +437,7 @@ func resolveGitHubTokenFromEnv() (string, error) {
 	return "", fmt.Errorf(
 		"ward: no GitHub token found - set GITHUB_TOKEN (or GH_TOKEN / WARD_GITHUB_TOKEN) to a token with repo scope, " +
 			"or set WARD_GITHUB_TOKEN_SOURCE=gh to mint one from your `gh` login; " +
-			"ward reads GitHub tokens only from explicit user-provided sources (ward#489). See docs/agent-github.md")
+			"ward reads GitHub tokens only from explicit user-provided sources (ward#489). See docs/compat-surface.md")
 }
 
 // resolveGitHubTokenFromGH shells `gh auth token` host-side for a fresh token from the
@@ -451,7 +451,7 @@ func (r *Runner) resolveGitHubTokenFromGH(ctx context.Context) (string, error) {
 	tok := strings.TrimSpace(string(out))
 	if tok == "" {
 		return "", fmt.Errorf(
-			"ward: WARD_GITHUB_TOKEN_SOURCE=gh but `gh auth token` returned an empty token - run `gh auth login` (or switch to WARD_GITHUB_TOKEN_SOURCE=env). See docs/agent-github.md")
+			"ward: WARD_GITHUB_TOKEN_SOURCE=gh but `gh auth token` returned an empty token - run `gh auth login` (or switch to WARD_GITHUB_TOKEN_SOURCE=env). See docs/compat-surface.md")
 	}
 	return tok, nil
 }

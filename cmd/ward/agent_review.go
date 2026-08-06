@@ -191,7 +191,7 @@ worker's own harness family first, with other families available as a later,
 higher-cost fallback. The reviewer runs against the live filesystem state and
 blocks the landing unless a class-tiered quorum passes. It fails closed: a reviewer
 error, timeout, or an empty panel never reads as approval. Panel verdicts are
-persisted to a sidecar log beside the audit trail. See docs/dispatch-review.md.`,
+persisted to a sidecar log beside the audit trail. See docs/agent-workflow.md.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "class", Sources: cli.EnvVars(reviewClassEnv), Usage: "autonomy/risk class tiering the quorum threshold: lint-cleanup|default|refactor (default default; lint-cleanup=1 pass, default=majority, refactor=unanimous)"},
 			&cli.StringFlag{Name: "diff-base", Value: "origin/main", Usage: "git ref the diff-under-review is computed against"},

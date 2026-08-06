@@ -432,13 +432,13 @@ type upPlan struct {
 	// stream-json); exports WARD_ASK=1 for one-shot attached runs.
 	Ask bool
 	// ExtraRepos are additional writable repos this run was granted to clone +
-	// operate against (--repo, ward#230); see docs/container-multi-repo.md.
+	// operate against (--repo, ward#230); see docs/container-substrate.md.
 	ExtraRepos []targetRepo
 	// Issue is the carried issue number (0 for a bare `container up`), exported as
 	// WARD_TARGET_ISSUE so the reaper can release a pre-launch hold (ward#264).
 	Issue int
 	// ReadOnly marks a read-only surface session (the director's drain surface, ward#293,
-	// ward#353): exports WARD_READONLY=1. See docs/agent-surface.md.
+	// ward#353): exports WARD_READONLY=1. See docs/agent-director.md.
 	ReadOnly bool
 	// DispatchBrokerAddr, when set, exports WARD_DISPATCH_BROKER_ADDR.
 	DispatchBrokerAddr string
@@ -469,7 +469,7 @@ type upPlan struct {
 	// bypassing any host-side or review preflight work.
 	SkipSmokeTest bool
 	// ReviewClass pins the pre-landing review panel's autonomy class into the
-	// container (WARD_REVIEW_CLASS, ward#134). See docs/dispatch-review.md.
+	// container (WARD_REVIEW_CLASS, ward#134). See docs/agent-workflow.md.
 	ReviewClass string
 	// ConfigEnv are resolved config-derived WARD_* env keys: selected fleet attribution
 	// plus `--config` overrides (ward#616), applied over the baked default in wardEnv.
@@ -832,7 +832,7 @@ func (p upPlan) wardEnv() map[string]string { //nolint:gocyclo,cyclop,gocognit,f
 		// line) can show it; HOSTNAME carries only the container ID (ward#365).
 		"WARD_CONTAINER_NAME": p.Name,
 		// Explicit "inside a ward container" marker host-only fleet-walk scripts fence
-		// on (ward#114); a host shell never has it. See docs/container-skill-surface.md.
+		// on (ward#114); a host shell never has it. See docs/container-contract.md.
 		"WARD_CONTAINER":      "1",
 		"WARD_RUN_ID":         p.Name,
 		"WARD_FORGEJO_BASE":   p.ForgejoBase,

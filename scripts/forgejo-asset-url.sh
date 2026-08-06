@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Resolve Forgejo attachment-metadata hops to the byte URL and print
-# "<url> <sha256>" for the final body (ward#1493, docs/release-binaries.md).
+# "<url> <sha256>" for the final body (ward#1493, docs/release.md).
 
 : "${DOWNLOAD_BASE:?missing DOWNLOAD_BASE (e.g. https://host/owner/repo/releases/download/vX.Y.Z)}"
 : "${ASSET_NAME:?missing ASSET_NAME}"

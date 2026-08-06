@@ -1,7 +1,7 @@
 # Mirror pair (ward#214): .github/workflows/test.yml and .forgejo/workflows/test.yml
 # are kept identical except runs-on by scripts/check_workflow_mirror.py, so canonical
 # Forgejo pushes run the same checks GitHub does. The GitHub file is the source; edit
-# it (or both), then run `make lint-workflows ARGS=--fix`. See docs/workflow-mirror.md.
+# it (or both), then run `make lint-workflows ARGS=--fix`. See docs/release.md.
 # Security: no untrusted github.event.* reaches run blocks; all commands are static.
 # PR-only on purpose: promote.yml runs the same checks on push to main, so a
 # main trigger here would start a second copy of the same job in the same

@@ -1,44 +1,41 @@
 ---
-doc_goal: Keep the reservation anchor stable after the old page was collapsed.
+doc_goal: Define canonical reservation authority, launch intents, release semantics, redispatch, stale cleanup, and disposable cache recovery.
 ---
-# agent reservation
+# Agent reservations
 
-This page is the durable anchor for launch-time reservations.
+The issue thread is canonical reservation authority. A local launch-intent
+record prevents pre-container duplication and helps display startup state, but
+it is disposable cache and is not a running engineer.
 
-- The issue thread is canonical.
-- It covers the remote marker comment and the local cache sentinel.
-- It keeps the TTL and release-marker comments readable.
-- A launch intent is not a running engineer. Running capacity belongs to the
-  visible container, while the launch intent is just the prelaunch lease.
+## Reservation and release
 
-## Release semantics
+* A fresh reservation prevents a competing launch for the same issue.
+* A release marker at or after the latest reservation retracts the hold.
+* Terminal or parked `WARD-WORKFLOW:` state also retracts it immediately.
+* A launch that fails before visibility releases its intent immediately. The
+  TTL is only an orphan backstop.
+* The reaper skips its release comment when a newer reservation proves a
+  follow-up run already owns the issue.
+* Once inactive, Ward may remove stale reservation and dispatch telemetry
+  comments while retaining the meaningful workflow record.
 
-- A release-marker comment at or after the latest reservation retracts it.
-- A terminal `WARD-WORKFLOW:` comment (done, a canonical PR URL for PR
-  workflows, a URL-headed reviewed-and-ready PR-and-merge handoff, merge-ready,
-  blocked, failed) retracts it the same way, the moment it posts
-  ([ward#1149](https://forgejo.coilysiren.me/coilyco-flight-deck/ward/issues/1149)).
-  A review-driven follow-up dispatched right after a run reports out no longer
-  collides with the finishing run's hold or races the reaper's release comment.
-- The reaper still posts the terminal release comment for legibility, but skips
-  it when a newer reservation shows a follow-up run already took the issue over.
-- Once the hold is no longer active, ward deletes stale reservation and dispatch
-  telemetry comments instead of leaving them as issue-history noise.
-- A launch that never becomes visible releases its launch-intent sentinel
-  immediately. The TTL is only the orphaned-launch backstop.
-- The local sentinel is a cache. The issue thread decides whether a run is
-  reserved, and stale cache never blocks when the thread is clear.
+A dispatch that still collides with live work starts nothing and records a
+needs-redispatch marker. Queue and health surfaces report it. A harness-native
+goal decides whether to try again, and every retry reapplies launch gates.
 
-## Collisions and the redispatch marker
+## Stale launch recovery
 
-- A forwarded dispatch that still collides with a live hold defers: it posts a
-  needs-redispatch marker without releasing the hold (the hold belongs to the
-  run that is still working) and starts nothing.
-- Queue/status and dispatch-health surface the needs-redispatch marker. A
-  harness-native goal decides whether and when to dispatch the issue again.
-  Ward applies the reservation and capacity gates again at launch time.
+1. Run `ward agent list --json` and read the issue thread.
+2. If no engineer is visible and the launch intent is stale, preview
+   `ward agent stop owner/repo#N --print`.
+3. Run the stop to clear the confirmed Ward-owned launch and reservation state.
+4. Re-run list before dispatching again.
+
+Never clear a reservation for visible live work. When the issue thread is
+already correct and only local cache is stale, run `ward agent reservations
+clear`. It removes and recreates `~/.ward/agent-reservations` wholesale.
 
 ## See also
 
-- [agent-lifecycle.md](agent-lifecycle.md) - the launch path.
-- [agent-ops.md](agent-ops.md) - logs, stop, list, reap.
+* [agent-lifecycle.md](agent-lifecycle.md) - launch checks.
+* [agent-ops.md](agent-ops.md) - list, stop, and cache commands.

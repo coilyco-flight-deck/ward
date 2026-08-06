@@ -1,31 +1,45 @@
 ---
-doc_goal: Define Ward's three fixed workflow labels without implying authority.
+doc_goal: Define Ward's fixed roles, execution limits, exact-revision QA contract, and sealed worker CI boundary without implying authority.
 ---
-# Ward agent roles
+# Agent roles
 
-`ward agent` exposes three fixed workflow labels:
+Ward exposes three fixed workflow roles. A role changes prompt and execution
+behavior only. It cannot change credentials, mounts, network, broker grants,
+merge authority, model, identity, or container topology.
 
-- `engineer` implements one issue in a detached container. Its execution limit
-  is 90 minutes.
-- `director` opens the attached, read-only supervisory surface. It has no
-  execution limit.
-- `qa` inspects a candidate and posts a structured verdict. Its execution limit
-  is 30 minutes.
+## Engineer
 
-These labels select workflow behavior and reporting only. A label cannot alter
-credentials, mounts, network access, broker grants, merge authority, model,
-identity, or container topology. Ward enforces those boundaries in the fixed
-launch and broker paths.
+* Implements one issue end to end in a detached container.
+* Has a 90-minute execution limit.
+* Accepts issue refs, pull-request refs, and freeform work that Ward first files
+  as an issue.
+* Follows the selected landing workflow and leaves durable remote evidence.
 
-Engineer and QA prompts also treat live CI as read-only evidence. An engineer
-may make one locally proven corrective push. QA never mutates the candidate.
-Live-only or repeated failures move to a separate `interactive` operator issue,
-while director and Ops authority stays distinct. See
-[agent-ci-boundary.md](agent-ci-boundary.md).
+## Director
 
-`warded #98` selects `engineer`. `warded director --repo owner/name` selects
-`director`. `warded qa #98` selects `qa`. Ward rejects additional startup role
-names instead of loading a profile.
+* Opens an attached, read-only supervisory surface with no execution limit.
+* Reads live queue and run state and may invoke explicitly typed broker actions.
+* Does not poll, prioritize, or autonomously dispatch. A harness-native goal
+  owns repeated judgment.
 
-See [agent.md](agent.md), [agent-director.md](agent-director.md), and
-[agent-lifecycle.md](agent-lifecycle.md).
+## QA
+
+* Independently inspects one exact candidate revision in a detached container.
+* Has a 30-minute execution limit and writes a structured verdict, not code.
+* Records the reviewed revision. A landing gate accepts the verdict only while
+  it still matches the candidate head.
+
+## Sealed worker CI boundary
+
+Engineer and QA may read live CI status and logs. QA never changes a candidate.
+An engineer may make one corrective push only when local repository evidence
+proves it. A live-only failure or a recurrence after that push is operator
+work, recorded in a separate `interactive` issue with the exact run, first
+actionable error, local proof state, and requested verification. Neither role
+reruns or probes live CI as a debugging loop.
+
+## See also
+
+* [agent-director.md](agent-director.md) - director surface.
+* [agent-workflow.md](agent-workflow.md) - landing modes and review.
+* [agent-harnesses.md](agent-harnesses.md) - independent harness axis.

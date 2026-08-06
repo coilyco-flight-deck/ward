@@ -1,80 +1,41 @@
 ---
-doc_goal: Capture the landing-policy surface in one place so the run modes and review gate are readable without the old per-issue split pages.
+doc_goal: Define Ward's fixed landing workflows, canonical machine state, review behavior, and successful-delivery evidence.
 ---
-# ward agent workflow
+# Agent workflows
 
-`--workflow` chooses how a run lands. For workflow and terminal-outcome terms,
-see [terminology.md](terminology.md).
+`--workflow` selects how a successful run delivers work.
 
-- `merge-remote-main` - merge to `main` and close.
-- `pull-request` - open a PR and observe its checks under the sealed worker CI boundary.
-- `pull-request-and-merge` - open a PR, wait for merge readiness, then let the director merge sweep finish the landing. The machine-readable `ward.workflow` marker uses the canonical `pull-request-and-merge` spelling.
-- `remote-branch-only` - publish a branch only.
+* `merge-remote-main` - land on remote `main` and close the issue.
+* `pull-request` - publish a branch and PR, then observe checks under the sealed worker boundary.
+* `pull-request-and-merge` - publish a reviewed, merge-ready PR for the director merge lane.
+* `remote-branch-only` - publish a remote branch and stop.
 
-Legacy aliases `direct-main`, `direct-to-main`, `pull-requests`,
-`pull-requests-and-merge`, and `patch-only` are still accepted with warnings.
-`pr` is not accepted.
+Legacy aliases remain compatibility input with warnings. `pr` is not an alias.
+New machine-readable workflow comments start with `WARD-WORKFLOW:`. Older
+typed headers remain parser input only.
 
-The machine-readable issue-comment prefix for ward-authored workflow updates is `WARD-WORKFLOW:`. New PR handoffs emit `WARD-WORKFLOW: <fully-qualified pull request link>`.
-For historical issue threads, parsers also accept the former `WARDED_WORKFLOW:` header and the earlier typed `WARD-OUTCOME:`, `WARD-RESERVATION:`, `WARD-DISPATCH:`, `WARD-QA:`, `WARD-STATUS:`, `WARD-REAP:`, and `WARD-TRIAGE:` headers. Those headers are compatibility input only; new workflow state always uses `WARD-WORKFLOW:`. Review-gated `pull-request-and-merge` handoffs carry `director merge authorization: reviewed-and-ready` in the collapsed details so the director can still treat the run as merge-ready.
+## Review gate
 
-## Review
+When enabled, review runs before opening or merging a PR. It examines the
+candidate diff and current filesystem state under the configured review class.
+A reviewer error, empty vote, timeout, or rejection blocks landing. Approval
+does not replace CI or the exact-revision QA gate.
 
-The review gate runs before a PR is opened or merged when enabled. It is a
-fail-closed gate, not an advisory comment.
+## Evidence
 
-### Review expectations
+* Direct landing requires the candidate on current remote `main`.
+* Pull-request landing requires the remote branch, canonical PR URL, and
+  submitted workflow state.
+* Director landing requires current CI, review authorization, any required QA
+  verdict for the current head, and final `merged: true`.
+* Branch-only delivery requires the named remote branch.
 
-- a reviewer error blocks the landing.
-- an empty vote blocks the landing.
-- a timeout blocks the landing.
-- a green review is still subject to CI.
-
-## What the PR modes guarantee
-
-- They keep the run visible after the branch opens.
-- They preserve the actionable failure comment on the issue thread.
-- They keep merge authority separate from launch authority.
-
-## Mode details
-
-### merge-remote-main
-
-The run lands directly on `main`. This is the shortest path and the least
-visible path.
-
-### pull-request
-
-The run opens a branch and a PR, then observes checks under the sealed
-[worker CI boundary](agent-ci-boundary.md) until green or an operator handoff.
-Failure comments stay on the issue, and the PR copy mirrors the actionable
-message when one already exists.
-When the PR is opened, the issue thread's workflow comment starts with the
-canonical pull request URL.
-
-### pull-request-and-merge
-
-This is the director-merge lane. The worker gets the PR ready, and the
-director merge sweep finishes the landing once the checks and review are
-green. The issue comment starts with the canonical PR URL and records the
-reviewed-and-ready authorization in its details block.
-The final machine-readable workflow marker uses `pull-request-and-merge`.
-
-### remote-branch-only
-
-The run produces a branch and stops there.
-
-## Why the workflow matters
-
-The workflow decides who is allowed to close the loop.
-
-- launch and implementation happen in the worker.
-- review and merge readiness happen in the workflow gate.
-- the director records the final merge state when that lane is used.
+Harness exit, a local commit, or a stale no-diff salvage branch is not delivery.
+Teardown rechecks current landing evidence before reporting failure or
+reopening an issue.
 
 ## See also
 
-- [agent-director.md](agent-director.md) - the merge-ready director lane.
-- [dispatch-review.md](dispatch-review.md) - the review gate details.
-- [agent-lifecycle.md](agent-lifecycle.md) - launch-time checks.
-- [terminology.md](terminology.md) - workflow and terminal-outcome terms.
+* [agent-pr-workflow.md](agent-pr-workflow.md) - PR status and mutation verbs.
+* [agent-roles.md](agent-roles.md) - sealed worker behavior.
+* [container-lifecycle.md](container-lifecycle.md) - teardown proof and rescue.

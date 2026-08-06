@@ -11,7 +11,7 @@ import (
 )
 
 // agent_drain_gate_test.go is the ward#425 ratchet: it fails on a per-agent name
-// as a string literal in core cmd/ward outside a tiny allowlist. docs/agentsapi.md.
+// as a string literal in core cmd/ward outside a tiny allowlist. docs/agent-harnesses.md.
 
 // drainAgentLiterals are the per-agent roster names that belong in the folders
 // (internal/agents/<name>), not scattered through core as string literals.

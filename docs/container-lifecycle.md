@@ -1,72 +1,49 @@
 ---
-doc_goal: Give the ephemeral run box a single lifecycle guide covering launch, debug, stop, reap, and cleanup.
+doc_goal: Define container launch, secret-safe drain, landed-state proof, rescue, recovery, reaping, retention, and cleanup.
 ---
-# ward container lifecycle
+# Container lifecycle
 
-The container exists to carry one feature from start to merge.
+1. The host stages a same-version Linux Ward binary, entrypoint, context, and
+   secured credential env file.
+2. The container clones the target into its writable workspace and starts the
+   selected harness.
+3. Ward records live console and lifecycle state while the workflow runs.
+4. Exit drains secret-safe artifacts and rechecks required landing evidence.
+5. Teardown preserves recoverable committed Git state, then removes or retains
+   the container according to cleanup status and retention policy.
 
-1. Launch from the selected agent workflow.
-2. Clone the target into the container workspace.
-3. Run the detached work or the read-only director session.
-4. Drain logs and post the result.
-5. Reap or clean up the container.
+## Rescue and recovery
 
-## Teardown rules
+Before removing a stopped engineer with unlanded commits, Ward writes verified
+Git bundles plus a manifest under `~/.ward/rescues/<run-id>/`. It never copies
+the workspace, ignored files, credentials, or arbitrary container state.
 
-- Clean runs land or merge, then disappear.
-- Wedged runs are reaped by policy.
-- Debugging starts from the container logs, not by rummaging in the host tree.
-- Before a stopped engineer container can be removed, Ward preserves any
-  unlanded committed Git history as a host-owned rescue artifact under
-  `~/.ward/rescues/<run-id>/`. The artifact contains verified Git bundles and a
-  manifest, never a workspace or ignored files.
+`ward agent recover owner/repo#N` previews the newest matching rescue. With
+`--apply --work <fresh-clean-clone>`, it prepares an issue recovery branch from
+current remote main. Large deletion sets and generated binaries remain
+quarantined unless explicitly included. Confirmed pruning removes only
+consumed artifacts past the selected retention window.
 
-## Forge outage recovery
+## Reap and cleanup
 
-When a forge failure prevents landing, use `ward agent recover owner/repo#N`.
-It prints the newest matching rescue plan without mutation. After reviewing the
-file inventory and any quarantine marker, run it again with `--apply --work
-<fresh-clean-clone>` to prepare an `issue-N-recovery` branch from current
-`origin/main`. That branch then follows the normal PR workflow.
+Targeted `stop` halts one run. `reap` is the idle-policy backstop. Cleanup
+retains failed drains and ambiguous recovery state rather than claiming
+success. Ordinary sweeps reclaim stopped Ward containers after the configured
+retention TTL, 48 hours by default.
 
-Rescues are intentionally retained across ordinary reaping and broker restarts.
-They are Git-object-only: Ward does not copy ignored files, credentials, or
-arbitrary container state. Large deletion sets and generated binaries are
-quarantined and require `--include-quarantined` on the explicit recovery run.
-After a consumed artifact has passed the retention window, remove it only with
-`ward agent recover prune --older-than 720h --confirm`.
+Teardown never treats process exit as landing. It checks current remote main,
+pull-request, or remote-branch evidence for the selected workflow. A closing
+reference already present on main prevents stale salvage logic from reopening
+completed work.
 
-## Launch details
+## Debug order
 
-- the host stages the package's matching Linux ward binary for the entrypoint.
-  Linux hosts copy the running executable. macOS and Windows packages carry a
-  same-version Linux sidecar. Explicit version pins still use release assets,
-  and older packages without a sidecar fall back to that download path.
-- per-run launch assets and credential env-files share the platform staging
-  root described in [container-staging.md](container-staging.md). On Windows,
-  Ward verifies both the env-file DACL and Docker Desktop's ability to read the
-  assets bind before handing credentials to the run.
-- the target repo is cloned into the workspace inside the box.
-- the selected workflow decides whether the run ends at a patch, a PR, or a
-  merge.
-- the teardown path always has to know whether the run actually landed.
-
-## Related surfaces
-
-- `stop` halts a specific run.
-- `cleanup` removes stopped containers.
-- `reap` is the backstop for idle engineer runs.
-
-## Debug path
-
-If the run looks stuck:
-
-1. read the run logs.
-2. check the reservation or launch comment.
-3. decide whether the run needs a stop or a reap.
-4. only then reach for deeper host inspection.
+Read dispatch status, secret-safe logs, list state, and the issue workflow
+record before stopping or reaping. Never inspect credential-bearing transient
+harness state as a substitute for the supported artifacts.
 
 ## See also
 
-- [container-contract.md](container-contract.md) - mounts and env.
-- [container-substrate.md](container-substrate.md) - `/substrate` and grants.
+* [agent-observability.md](agent-observability.md) - drain artifacts.
+* [agent-ops.md](agent-ops.md) - stop, reap, logs, and recover.
+* [container-staging.md](container-staging.md) - launch assets.

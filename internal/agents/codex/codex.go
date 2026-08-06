@@ -1,7 +1,7 @@
 // Package codex is the codex harness's agentsapi.Agent (ward#401 Phase 3,
 // following ward#412). It owns codex's inert data record AND its capability
 // behaviour: credential resolve/write and config compose live here now, not
-// behind a closure into core. See docs/agentsapi.md.
+// behind a closure into core. See docs/agent-harnesses.md.
 package codex
 
 import (

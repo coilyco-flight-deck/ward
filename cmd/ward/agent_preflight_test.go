@@ -128,7 +128,7 @@ func TestHostOneShotKeepsPromptOffCommandLine(t *testing.T) {
 }
 
 // TestPreflightPromptRefSurvivesOntoStdin pins ward#560 for the pre-flight's own prompt
-// (ward#548's tests use a hand-shaped stand-in): see docs/agent-preflight.md, mechanics.
+// (ward#548's tests use a hand-shaped stand-in): see docs/agent-lifecycle.md, mechanics.
 func TestPreflightPromptRefSurvivesOntoStdin(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 560}
 	prompt := preflightPrompt(ref, "Windows pre-flight silently no-ops",

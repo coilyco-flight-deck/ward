@@ -1,63 +1,51 @@
 ---
-doc_goal: Keep the observability anchor stable after the log-schema pages were collapsed.
+doc_goal: Define every secret-safe run artifact, summary and envelope schema, redaction guarantee, and residual exposure boundary.
 ---
-# agent observability
+# Agent observability
 
-This page is the durable anchor for the agent log and envelope schema.
-
-- It covers drained console views, redacted transcripts, and tool envelopes.
-- It keeps body-shaped payloads out of the persisted envelope stream.
-- It carries optional per-run `meta.json` friction events plus a versioned run
-  summary block with raw and normalized outcomes, workflow, timing, artifact
-  paths, git refs, and outcome signals so later review does not have to scrape
-  console logs.
-- The summary block is written atomically with the final `meta.json`, and the
-  console drain gets a convenience footer of the form `WARD-RUN-SUMMARY:
-  outcome=<normalized_outcome> meta=meta.json transcript=<path>`.
-- It also names the stable `WARD-DISPATCH-HEALTH:` line that alert rules can match in the existing agent-run stream.
-- It is the home for the redaction and cardinality discipline comments.
-
-## Drain artifact contract
-
-Each completed log drain writes one secret-safe run directory under
+Each completed drain writes one secret-safe directory under
 `~/.ward/agent-logs-redacted/<container>/`:
 
-- `console.log`, sanitized before the atomic write
-- `transcript.jsonl` when the harness produced safe tool envelopes
-- `meta.json`
-- `skill-usage.json` when the transcript contains observed skill use
+* `console.log` - sanitized console output.
+* `transcript.jsonl` - safe tool envelopes when the harness produced them.
+* `meta.json` - versioned run summary and optional friction events.
+* `skill-usage.json` - present only when supported skill use was observed.
 
-There is no parallel raw archive or privileged raw-log escape hatch. The
-redactor combines built-in secret shapes, exact nonempty values for credentials
-Ward injected, and operator-local `agent.redaction` rules. It runs before Ward
-persists or renders console output, stdout, stderr, broker logs, metadata error
-fields, failure summaries, and structured tool envelopes. Body-shaped tool
-arguments and tool-result bodies are dropped instead of retained.
+Broker wrapper artifacts live under the `dispatch/` subtree and follow the
+same redaction path. Ward has no raw-artifact fallback.
 
-After a safe drain, Ward overwrites harness JSONL transcripts inside a retained
-exited container. A sanitization or overwrite failure leaves the container for
-explicit recovery and does not mark the run drained.
+## Redaction and envelopes
 
-The residual boundary is the running process: an agent and its harness-owned
-transient session files necessarily see credential material before safe drain.
-Ward guarantees only artifacts it persists and logs it renders.
+Before persistence or rendering, Ward applies built-in credential patterns,
+exact nonempty credential values it injected, and operator
+`agent.redaction` rules. Body-shaped tool arguments and results are dropped,
+not scrubbed in place. Error fields, broker logs, summaries, console output,
+and tool envelopes all pass through the same secret-safe path.
 
-Ward does not automatically delete or retroactively sanitize historical raw
-archives under `~/.ward/agent-logs/`. `ward doctor` warns with that exact path
-when such archives remain.
+After a safe drain, Ward overwrites harness JSONL in a retained exited
+container. A drain or overwrite failure leaves cleanup-needed state for
+explicit recovery and does not claim a successful drain.
 
-`skill-usage.json` schema version 1 carries only stable run dimensions:
-`run_id`, `container`, `role`, `harness`, `repo`, `issue_ref`, `workflow`, and
-`ward_version`. Its sorted `skills` rows carry `skill_name`, `count`,
-`first_seen`, and `last_seen`. Ward recognizes Claude `Skill` tool calls and
-Codex execution tool calls that read a selected `skills/.../SKILL.md` file.
-Repeated references to one skill in a single Codex tool call count once.
+## Summary schema
 
-The artifact never copies prompts, skill arguments or bodies, commands, tool
-results, or transcript payloads. It is absent when no skill use is observed;
-the drain removes a stale copy if a deterministic run directory is reused.
+`meta.json` records stable correlation fields, raw and normalized outcomes,
+workflow, timing, artifact paths, Git refs, outcome signals, and a versioned
+friction `events` array. The console receives a convenience
+`WARD-RUN-SUMMARY:` footer that points to metadata and transcript artifacts.
+
+`skill-usage.json` schema 1 contains run id, container, role, harness,
+repository, issue ref, workflow, Ward version, and sorted skill rows with name,
+count, first seen, and last seen. It never copies prompts, arguments, command
+bodies, results, or transcript payloads.
+
+## Residual boundary
+
+The running harness and its transient session files necessarily see injected
+credentials before drain. Ward guarantees artifacts it persists and logs it
+renders. It does not retroactively migrate or sanitize retired raw archives at
+`~/.ward/agent-logs/`. `ward doctor` warns when they remain.
 
 ## See also
 
-- [agent-ops.md](agent-ops.md) - logs, stop, list, reap.
-- [troubleshooting.md](troubleshooting.md) - the symptom-indexed entry point.
+* [agent-ops.md](agent-ops.md) - artifact selectors.
+* [troubleshooting.md](troubleshooting.md) - evidence and remedies.

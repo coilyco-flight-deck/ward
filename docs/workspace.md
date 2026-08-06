@@ -1,4 +1,7 @@
-# workspace
+---
+doc_goal: Define Ward's local source workspace path and its boundary from release installs and repository gates.
+---
+# Workspace
 
 `make workspace` is the local development path for ward itself.
 
@@ -20,5 +23,5 @@
 
 ## See also
 
-- [homebrew-build.md](homebrew-build.md) - the install path.
-- [release.md](release.md) - the release path.
+- [release.md](release.md) - packaged install and release path.
+- [windows-development.md](windows-development.md) - native and cross-compile test lanes.

@@ -9,7 +9,7 @@ import (
 )
 
 // agent_signature.go signs ward's Forgejo bodies and reaper commit with the
-// agent's identity via cli-guard's pkg/attribution. See docs/agent-attribution.md.
+// agent's identity via cli-guard's pkg/attribution. See docs/agent-roles.md.
 
 // agentSignatureMarker is the hidden, idempotent marker on a signed body: an
 // HTML comment, so it stays invisible in rendered Forgejo markdown.

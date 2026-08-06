@@ -1,79 +1,49 @@
 ---
-doc_goal: Keep the operational run surface on one page.
+doc_goal: Define every supported read, status, stop, reap, and retained-dispatch operation in one operator reference.
 ---
-# ward agent ops
+# Agent operations
 
-This page groups the on-demand operational surfaces around a run.
+## Live and retained state
 
-- `ward agent director` - the read-only supervisory lane.
-- `ward agent director queue` / `status` - the read-only queue view for stale reservations, redispatch candidates, open PR handoffs, and closed-unmerged PR recovery.
-- `ward agent dispatch-health` - the dispatch pathology summary, status line feed, and alert line.
-- `ward agent list` - show running engineers, active launch intents, cleanup-needed records, and capacity when the limit is known.
-- `ward agent logs` - read one run's logs or the newest dispatch artifact.
-- `ward agent stop` - stop a running engineer or clear a confirmed stale
-  issue-ref launch through the supervised Compose broker.
-- `ward agent reap` - stop wedged engineer containers by idle policy and clear stale prelaunch reservations that never became visible.
-- `ward agent reservations clear` - clear the disposable reservation cache directory wholesale.
+* `ward agent list [--json]` shows launch intents, running engineers,
+  cleanup-needed records, execution budgets, capacity, and remaining slots.
+* `ward agent dispatch list [--json]` lists retained broker requests.
+* `ward agent dispatch status <request-id> [--json]` reads one public lifecycle.
+* `ward agent director queue|status --repo owner/repo [--json]` reads tracker-backed work state.
 
-## Shared contract
+The issue thread is reservation authority. Docker and `~/.ward` records are
+operational evidence and cache. Failed-before-start and cleanup-needed records
+remain visible but do not count as running capacity.
 
-- These surfaces route through the broker when a brokered surface exists.
-- The director view is read-only.
-- Dispatch, reservation, reaper comments, and failure reporting use typed
-  Forgejo/GitHub/GitLab/Shortcut adapters, not generated operator leaves.
-- `list`, `logs`, `stop`, and `reap` all work against a specific run or
-  container identity.
-- `dispatch-health` and `list` treat the issue thread as the reservation source of
-  truth. Docker and `~/.ward` are cache inputs, not authority, and both surfaces
-  exclude cleanup-needed and failed-before-start records from active capacity.
+## Logs
 
-## What to remember
+`ward agent logs <target>` prefers live container output, then the drained
+secret-safe archive. A target may be a run/container, issue ref, peer id, or
+dispatch request. `--artifact` selects `console`, `transcript`, `meta`,
+`friction`, or `dispatch`. Ward never falls back to a retired raw archive.
 
-- `logs` prefers the live container, then falls back to the drained archive.
-- `logs` falls back to the harness-specific live transcript tree when `docker
-  logs` is empty, then to the drained archive.
-- broker dispatch artifacts use the same issue/ref lookup under `~/.ward/agent-logs-redacted/dispatch/`.
-- `stop` and `reap` only target engineer state. `stop` refuses fresh intents,
-  then permits cleanup after the confirmation window.
-- A run that is already finished should not be treated as a new failure.
-- Fresh read-only director surfaces mount the Docker socket for local `reap`.
-  If an already-running surface does not have that mount yet, restart
-  `warded` to pick it up. Until then, use `ward agent stop <owner/repo#N>`
-  from the surface as the supported brokered cleanup path.
+## Stop and reap
 
-## Surface map
+* `ward agent stop <target> [--print]` deliberately stops one engineer or peer,
+  or clears a confirmed stale issue-ref launch after its confirmation window.
+  It refuses fresh intents and ambiguous peer ids.
+* `ward agent reap [--dry-run]` applies the idle-policy backstop to wedged
+  engineers and stale intents. It does not target director, QA, or broker containers.
+* `ward agent reservations clear` removes and recreates the disposable local
+  reservation cache. It does not delete canonical issue-thread evidence.
 
-### list
+## Retention
 
-`list` answers "what running engineers are active right now?" and shows the known limit plus remaining slots when available. It also surfaces launch intents before their container is visible, keeps cleanup-needed and failed-before-start records visible for diagnosis, and tags each entry with the current phase.
+`ward agent dispatch prune` previews terminal request records older than 30
+days by default. `--confirm` removes the selected journal and secret-safe
+dispatch artifact. Active and cleanup-needed records are never auto-pruned.
 
-### logs
-
-`logs` answers "what did this run last say?".
-
-### stop
-
-`stop` answers "stop this one run on purpose".
-
-### reap
-
-`reap` answers "this engineer is wedged and needs a host-side stop" and clears stale launch intents that never became visible.
-
-## Operational notes
-
-- `list` and `logs` are usually the first stop when a run seems stuck.
-- `stop` is the manual correction path for a live engineer.
-- Use `reap` or the stale-reservation cleanup path for a ghost launch record.
-- `reap` is the safety net for idle engineer containers and stale launch intents.
-- `reap` clears cache state, but the issue thread remains the canonical reservation record.
-- none of these surfaces should surprise the caller with a write to the target repo.
-
-Whole-folder reservation cache cleanup is documented in
-[agent-reservation-cache.md](agent-reservation-cache.md).
+None of these commands mutates the target checkout. Broker-connected read-only
+surfaces forward supported operations through the supervised broker.
 
 ## See also
 
-- [agent-director.md](agent-director.md) - the director surface itself.
-- [agent-dispatch-health.md](agent-dispatch-health.md) - the dispatch-health summary and alert line.
-- [agent-lifecycle.md](agent-lifecycle.md) - how runs start.
-- [troubleshooting.md](troubleshooting.md) - what to check when a run wedges.
+* [agent-dispatch-health.md](agent-dispatch-health.md) - health summary.
+* [agent-reservation.md](agent-reservation.md) - stale launch recovery.
+* [agent-observability.md](agent-observability.md) - artifact schemas.
+* [troubleshooting.md](troubleshooting.md) - symptom-to-remedy map.

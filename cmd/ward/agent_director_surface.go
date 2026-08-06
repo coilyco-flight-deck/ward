@@ -14,7 +14,7 @@ import (
 )
 
 // agent_director_surface.go is the director's attached read-only interactive
-// supervision surface. See docs/agent-surface.md.
+// supervision surface. See docs/agent-director.md.
 
 // directorSurfaceVerb names the surface for its command line, name, and audit verb.
 // Internal: `warded surface` is not registered, only the director reaches it.
@@ -61,7 +61,7 @@ func directorSurfaceCommand() *cli.Command {
 }
 
 // runScratchSession is the seedless interactive bring-up the surface phase uses; readOnly
-// exports WARD_READONLY=1 (ward#293). See docs/agent-surface.md.
+// exports WARD_READONLY=1 (ward#293). See docs/agent-director.md.
 func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode containerMode, readOnly bool) error {
 	label := agentCmdline(mode, directorSurfaceVerb)
 	plan, cleanupAssets, err := r.prepareScratchPlan(ctx, c, mode, readOnly, label)
@@ -107,7 +107,7 @@ func (r *Runner) runScratchSession(ctx context.Context, c *cli.Command, mode con
 		defer cleanupDirectorEnv()
 	}
 
-	// Pre-launch gate before the fullscreen TUI (ward#366); see docs/agent-gate.md.
+	// Pre-launch gate before the fullscreen TUI (ward#366); see docs/agent-lifecycle.md.
 	// proceed=false means an upgrade re-launch superseded this process's launch.
 	r.runScratchGate(ctx, plan, readOnly)
 

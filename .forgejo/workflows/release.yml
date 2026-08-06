@@ -59,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           # Reshape the tag helper's raw `git log` changelog into user-facing,
-          # categorised notes (ward#486, docs/release-notes.md). Same range
+          # categorised notes (ward#486, docs/release.md). Same range
           # the tag helper uses (previous_tag..HEAD, HEAD == the released SHA); a
           # missing previous_tag (first release) degrades to HEAD. On any
           # failure fall back to the raw changelog, never an empty body.
@@ -653,7 +653,7 @@ jobs:
             exit 0
           fi
           # Attribute to the coilyco-ops bot via its Forgejo-registered email, the
-          # same identity bump-tap-formula uses (ward#245, docs/agent-attribution.md).
+          # same identity bump-tap-formula uses (ward#245, docs/agent-roles.md).
           git config user.name "forgejo-scoop-writer"
           git config user.email "coilyco-ops@coilysiren.me"
           git commit -qm "chore(ward): bump scoop manifest to ${TAG} [skip ci]"

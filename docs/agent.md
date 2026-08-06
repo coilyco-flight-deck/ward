@@ -1,76 +1,45 @@
 ---
-doc_goal: Make ward's agent surface understandable from one entry page after the docs collapse.
+doc_goal: Explain the complete public `ward agent` surface and route each durable contract from one entry point.
 ---
-# ward agent
+# `ward agent`
 
-`ward agent` is the guarded execution layer for coding agents.
-It launches an ephemeral container, runs the selected role through the chosen
-harness, and lands work through the selected workflow.
+`ward agent` launches governed agent work. `warded` is a symlink that rewrites
+to the same command.
 
-## Public face
-`warded` is the symlinked entrypoint. It rewrites to `ward agent`.
+An agent plan combines four independent selections:
 
-## What it covers
+* A role describes the workflow behavior: engineer, director, or QA.
+* A harness describes the agent CLI and its host credential or endpoint.
+* A workflow describes acceptable landing evidence.
+* A context bundle may add read-only instructions and tools without authority.
 
-- role selection.
-- harness selection.
-- launch-time preflight.
-- reservation and audit.
-- landing policy.
-- optional [provider-neutral context-bundle projection](context-bundle.md).
-- the check-placement matrix in [agent-check-placement.md](agent-check-placement.md).
+Roles and context never grant credentials, mounts, network, broker operations,
+or merge permission. Ward fixes those surfaces in typed launch and broker code.
 
-## Mental model
-Think of `ward agent` as a small pipeline:
-
-1. resolve the issue or freeform prompt.
-2. choose the role.
-3. choose the harness.
-4. check the launch conditions.
-5. start the container.
-6. follow the selected workflow.
-
-The role determines what the run is trying to do. The harness determines how
-the run is authenticated and what model or CLI it talks to. The workflow
-determines where the work is allowed to land.
-Ward owns typed harness and launch defaults. Supported user configuration may
-override only the documented inputs. Use [terminology.md](terminology.md) when
-changing these words.
-
-## What changed here
-
-The old issue-slice pages are gone. The durable follow-on docs are:
-
-- [agent-roles.md](agent-roles.md)
-- [agent-flags.md](agent-flags.md)
-- [agent-harnesses.md](agent-harnesses.md)
-- [agent-lifecycle.md](agent-lifecycle.md)
-- [agent-director.md](agent-director.md)
-- [agent-ops.md](agent-ops.md)
-- [agent-workflow.md](agent-workflow.md)
-- [warded-kernel-boundary.md](warded-kernel-boundary.md)
-
-## Quick examples
+## Common commands
 
 ```bash
-warded #98
-warded engineer #98
-warded engineer freeform smoke test
-warded director --repo owner/name # open the read-only surface
-warded director queue --repo owner/name --json # stable live queue snapshot
-warded director owner/name#98
+warded engineer owner/repo#123 --print
+warded engineer owner/repo#123
+warded director --repo owner/repo
+warded qa owner/repo#123
+ward agent cluster start --harness codex
+ward agent run --cluster codex-ab45 --harness codex --role critic \
+  --context-bundle /path/to/bundle "Review the proposal."
 ```
 
-The bare ref form defaults to `engineer`. The ref can be a bare `#N`, a full
-`owner/repo#N`, a full Forgejo issue URL, or, for `director`, an issue-scoped
-positional ref.
+A bare issue ref selects engineer. Freeform engineer text files an issue before
+launch. Engineer and QA are detached. Director is an attached read-only
+surface. `--print` renders the resolved plan and launches nothing.
 
-Freeform engineer text files an issue first, then carries that issue through
-the detached run.
+## Contracts
 
-The director has no separate interactive subcommand. Start `warded director --repo owner/name` from a terminal to read one live snapshot and open the attached read-only session. Ward stores no director queue ledger and runs no autonomous loop. A harness-native goal owns repetition and dispatch judgment.
-
-## See also
-
-- [first-run.md](first-run.md) - the first dry run.
-- [container.md](container.md) - the run box.
+* [agent-roster.md](agent-roster.md) and [agent-flags.md](agent-flags.md) - generated command reference.
+* [agent-roles.md](agent-roles.md) - role behavior and sealed CI boundary.
+* [agent-harnesses.md](agent-harnesses.md) - adapters, auth, model, and endpoint inputs.
+* [agent-lifecycle.md](agent-lifecycle.md) - resolution, checks, launch, and outcome.
+* [agent-workflow.md](agent-workflow.md) - landing evidence and review.
+* [agent-director.md](agent-director.md) - attached supervision.
+* [agent-ops.md](agent-ops.md) - read, stop, reap, and retained dispatch operations.
+* [agent-dispatch-broker.md](agent-dispatch-broker.md) - durable broker and authority.
+* [container-contract.md](container-contract.md) - host/container boundary.

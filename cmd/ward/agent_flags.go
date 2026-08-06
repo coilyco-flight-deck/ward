@@ -10,7 +10,7 @@ import (
 )
 
 // agent_flags.go wires `ward agent flags`, the generated flag-tree docs page
-// for the full agent command subtree. See docs/agent-flags.md.
+// for the deliberately selected operational subtree. See docs/agent-flags.md.
 
 const (
 	agentFlagsDoc       = "docs/agent-flags.md"
@@ -19,10 +19,10 @@ const (
 
 // agentFlagsDocGoal is the doc_goal front-matter the generated page carries so it
 // grades against an explicit target like the other docs pages.
-const agentFlagsDocGoal = "Give a reader the canonical, code-generated tree of every ward agent command and its direct flags, so the visible flag surface stays aligned with the binary without hand maintenance."
+const agentFlagsDocGoal = "Give a reader the canonical code-generated flags for Ward's selected operational agent command paths, deliberately omitting self-description and fixed PR or issue leaves documented by their parent contracts."
 
 // agentFlagsMarkdown renders the committed docs/agent-flags.md body: doc_goal,
-// generated header, then one section per command in the agent subtree.
+// generated header, then one section per selected command in the agent subtree.
 func agentFlagsMarkdown() (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "---\ndoc_goal: %s\n---\n", agentFlagsDocGoal)

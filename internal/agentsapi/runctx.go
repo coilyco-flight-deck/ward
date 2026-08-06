@@ -41,7 +41,7 @@ type RunCtx struct {
 	// /workspace/<TargetName> (onboarding seeds its project entry).
 	TargetName string
 	// TrustDirs are the dirs claude pre-trusts so no folder-trust dialog re-appears
-	// on a cd (ward#168). Empty falls back to the target clone. See docs/agent-claude.md.
+	// on a cd (ward#168). Empty falls back to the target clone. See docs/agent-harnesses.md.
 	TrustDirs []string
 	// AgentUID and AgentGID are the non-root agent user's ids, for the setpriv drop
 	// a launch gate (the claude smoke test) probes under.

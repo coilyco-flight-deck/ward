@@ -1,7 +1,7 @@
 // Package opencode is the opencode harness's agentsapi.Agent (ward#401 Phase 3,
 // following ward#412). opencode drives a local Ollama-backed model (Qwen today);
 // the ward#401 roster untangle renamed the mode "qwen" -> "opencode". It owns its
-// config-compose + self-install behaviour directly now. See docs/agentsapi.md.
+// config-compose + self-install behaviour directly now. See docs/agent-harnesses.md.
 package opencode
 
 import (

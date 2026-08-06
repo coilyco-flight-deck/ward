@@ -1,7 +1,7 @@
 package main
 
-// container_reap_compute.go holds the pure decision logic behind `ward
-// container reap` (side effects live in container_reap.go). See docs/container-reap.md.
+// container_reap_compute.go holds pure `ward container reap` decisions.
+// Side effects live elsewhere; see docs/container-lifecycle.md.
 
 import (
 	"fmt"
@@ -151,8 +151,8 @@ type reapDecision struct {
 	Landed bool
 }
 
-// reapDiagnostics is the debugging block the reaper dumps on salvage/failure
-// (ward#531): the facts a false-salvage post-mortem needs. See docs/container-reap.md.
+// reapDiagnostics carries false-salvage evidence for failures and salvage.
+// See docs/container-lifecycle.md.
 type reapDiagnostics struct {
 	// WardVersion is the ward release running the reaper (the compiled Version).
 	WardVersion string
@@ -365,7 +365,7 @@ func appendSalvageIdentity(b *strings.Builder, r salvageReport) {
 func appendSalvageCauses(b *strings.Builder, r salvageReport) {
 	if r.AuthCause {
 		b.WriteString("## Likely cause: dead/rotated PAT, not a conflict\n\n")
-		b.WriteString("The push was rejected on **credentials**, not content. The Forgejo PAT baked into this container at `up` time was most likely rotated or revoked while it ran, so the final push to `main` (and any salvage-branch push) failed on auth. This is **not** a merge conflict - the work on the salvage branch should rebase and land cleanly once pushed with a live token. Don't rotate the PAT while containers are in flight; see docs/container-reap.md.\n\n")
+		b.WriteString("The push was rejected on **credentials**, not content. The Forgejo PAT baked into this container at `up` time was most likely rotated or revoked while it ran, so the final push to `main` (and any salvage-branch push) failed on auth. This is **not** a merge conflict - the work on the salvage branch should rebase and land cleanly once pushed with a live token. Don't rotate the PAT while containers are in flight; see docs/container-lifecycle.md.\n\n")
 	}
 	if r.Reason == reasonPreCommit {
 		b.WriteString("## Likely cause: pre-commit gate rejected the residual tree\n\n")

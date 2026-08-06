@@ -10,8 +10,8 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
 )
 
-// broker_client.go is the unprivileged side of ward's root credential broker: the
-// shared client both chokepoints route through (ward#334 Unit C). See docs/broker.md.
+// broker_client.go is the unprivileged root-broker client.
+// Both chokepoints share it; see docs/agent-dispatch-broker.md.
 
 // errBrokerUnreachable / errBrokerOutOfTier are the distinct, errors.Is-able
 // failure modes; a plain error is a normal forge/API failure relayed by the broker.

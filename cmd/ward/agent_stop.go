@@ -45,7 +45,7 @@ matches fail closed.
   ward agent stop critic-ab45                    # stop by broker peer id
   ward agent stop #625 --print                   # resolve + show the stoppable target, stop nothing
 
-See docs/agent-stop.md.`,
+See docs/agent-ops.md.`,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "print", Usage: "resolve + show the stoppable target, or report why the ref is not stoppable, and exit"},
 		},
@@ -137,7 +137,7 @@ func (r *Runner) forwardAgentStopToHostBroker(ctx context.Context, target string
 func agentStopSurfaceError() error {
 	return fmt.Errorf("ward agent stop only works from a director read-only surface with a host "+
 		"dispatch broker, except for a broker-minted peer id visible on this host (%s is unset here); "+
-		"see docs/agent-stop.md", envDispatchBrokerAddr)
+		"see docs/agent-ops.md", envDispatchBrokerAddr)
 }
 
 func (r *Runner) stopHostCollaborationPeer(ctx context.Context, peerID string, preview bool) error {

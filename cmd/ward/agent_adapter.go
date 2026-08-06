@@ -1,7 +1,7 @@
 package main
 
 // agent_adapter.go projects typed harness mechanics onto the launcher's adapter
-// shape. See docs/agent-adapter-manifest.md.
+// shape. See docs/agent-harnesses.md.
 
 import (
 	"fmt"
@@ -31,7 +31,7 @@ type agentArgv struct {
 }
 
 // agentAdapter is one agent's full divergence record, replacing the per-mode
-// Go switches and bash cases. See docs/agent-adapter-manifest.md for the schema.
+// Go switches and bash cases. See docs/agent-harnesses.md for the schema.
 type agentAdapter struct {
 	Name         string
 	Binary       string

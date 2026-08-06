@@ -1,78 +1,49 @@
 ---
-doc_goal: Keep Ward's canonical vocabulary entry point small while routing detailed inventory, ambiguities, model, and analogies to focused pages.
+doc_goal: Define Ward's canonical objects, lifecycle terms, and load-bearing distinctions on one page.
 ---
-# ward terminology
+# Ward terminology
 
-This is the canonical entry point for Ward vocabulary. Use it before changing
-docs, prompts, command output, or skills that name Ward objects, states, or
-transitions.
+Use these terms in docs, prompts, command output, and skills.
 
-Ward can use metaphor, including flight-deck language, but operational meaning
-wins. Define the behavior first; use metaphor only when it helps explain that
-behavior.
+## Objects
 
-## Normative Terms
+* `Ward` - the governed execution layer for agent runs and repository verbs.
+* `ward` - the CLI binary. `warded` is its `ward agent` symlinked face.
+* `role` - fixed workflow behavior: `engineer`, `director`, or `qa`.
+* `harness` - a typed agent CLI adapter.
+* `workflow` - the selected landing policy, not the whole run.
+* `cluster` - one broker plus its optional director and peers, identified by a
+  repository-independent cluster id.
+* `run` - one execution attempt with one container identity.
+* `dispatch request` - one durable request accepted or rejected by the broker.
+* `reservation` - the issue-thread hold that prevents duplicate work.
+* `launch intent` - the local prelaunch lease before a container is visible.
+* `terminal outcome` - the final or parked `WARD-WORKFLOW:` state.
 
-- `Ward`: the governed execution layer for unattended coding agents and audited
-  repo verbs.
-- `ward`: the CLI binary.
-- `warded`: the public symlinked face for `ward agent`.
-- `cli-guard`: the policy and routing engine Ward consumes.
-- `work`: the requested change or inspection, usually an issue/ref.
-- `role`: `engineer`, `director`, or `qa`.
-- `harness`: the CLI/runtime family: `claude`, `codex`, `goose`, or `opencode`.
-- `cluster`: one supervised `<harness>-<ab12>` collaboration group shared by
-  its broker, optional director, and peers.
-- `workflow`: the selected landing policy, not the whole run.
-- `run`: one execution attempt with one container identity.
-- `reservation`: the issue-thread hold that prevents duplicate work.
-- `launch intent`: the prelaunch lease before a running engineer is visible.
-- `running engineer`: a visible engineer container carrying Ward labels.
-- `terminal outcome`: a `WARD-WORKFLOW:` status that ends or parks a hold.
+## Lifecycle
 
-## Load-Bearing Distinctions
+Work resolves to an issue or ref, then selects a role, harness, and workflow.
+Dispatch acceptance may precede launch. Launch applies trust, reservation,
+capacity, and host checks before creating a container. The run produces logs
+and repository evidence. Teardown drains secret-safe artifacts, proves the
+workflow outcome, releases the reservation, and reaps or retains recovery state.
 
-- `dispatch` is not `launch`: dispatch accepts or forwards a request; launch
-  starts the host/container execution path.
-- `broker accepted` is not `container visible`.
-- `launch intent` is not `running engineer`.
-- `run` is not `issue`: an issue can receive many runs.
-- `workflow` is not `run`: workflow is the landing policy and comment family.
-- `landed` is not `process exited`: landing requires repo or PR evidence.
-- `submitted` and `merge-ready` are not `done`.
-- `blocked` is not `failed`.
-- `backpressure` is not a terminal failure.
-- `stop` is not `reap`.
-- `harness` is not `role`.
-- `cluster` is not `repository`: repository metadata is optional context and
-  never identifies or resolves a collaboration cluster.
-- `read-only` is not powerless: the director can supervise and broker work
-  without pushing its clone.
-- `release branch` is not `Forgejo release`.
+## Distinctions
 
-## Comment Markers
+* Dispatch accepts or forwards. Launch starts host/container execution.
+* Broker acceptance does not prove a container or harness is running.
+* A launch intent is not a running engineer.
+* A workflow is not a run. One issue may receive several runs.
+* Process exit is not landing. Landing needs Git or pull-request evidence.
+* `submitted`, `merge-ready`, and `done` are different workflow states.
+* `blocked` needs outside authority or conditions. `failed` attempted and did not land.
+* `stop` targets one run. `reap` applies policy. `cleanup` removes retained state.
+* `salvage` preserves a remote branch. `rescue` preserves verified Git objects.
+* Read-only means the clone cannot push. It does not remove typed broker authority.
+* A cluster is not a repository and is never resolved from repository metadata.
+* A release branch is not a published release or install channel.
 
-`WARD-WORKFLOW:` is the canonical first line for new Ward-authored workflow,
-reservation, review, QA, route, and terminal issue comments.
+## Comment compatibility
 
-`WARDED_WORKFLOW:` and older typed `WARD-OUTCOME:`, `WARD-RESERVATION:`,
-`WARD-DISPATCH:`, `WARD-QA:`, `WARD-STATUS:`, `WARD-REAP:`, and
-`WARD-TRIAGE:` headers are parser compatibility only.
-
-## Supporting Pages
-
-- [terminology-inventory.md](terminology-inventory.md) - sampled vocabulary by
-  concept.
-- [terminology-ambiguities.md](terminology-ambiguities.md) - overloaded and
-  collision-prone terms.
-- [terminology-model.md](terminology-model.md) - object, lifecycle, and
-  ownership model.
-- [terminology-analogies.md](terminology-analogies.md) - audience-oriented
-  explanation frames, including flight-deck framing.
-
-## Change Rule
-
-Add or update terminology here or in the supporting terminology pages before
-spreading a new synonym through docs, prompts, command output, or skills. Do not
-rename stable CLI commands as part of a terminology cleanup; file a separate
-issue for compatibility churn.
+New Ward-authored machine state starts with `WARD-WORKFLOW:`. Older
+`WARDED_WORKFLOW:` and typed `WARD-*` headers remain parser input only.

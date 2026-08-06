@@ -1,47 +1,24 @@
 ---
-doc_goal: Keep the ephemeral container model readable as a single page after the surrounding issue slices were collapsed away.
+doc_goal: Explain the ephemeral container model and route its durable host, lifecycle, and filesystem contracts.
 ---
-# ward container
+# Ward containers
 
-The container subsystem is the box that makes the agent half real.
+Ward gives each agent run a fresh clone and private harness home inside an
+ephemeral least-access container. The host stages only the selected launch
+assets, credential channel, read-only references, and writable runtime paths.
 
-- one container per run.
-- a fresh clone inside the box.
-- least access by default.
-- teardown is part of the contract, not an afterthought.
+The target workspace is authoritative for work. Shared substrate and context
+references are read-only. Engineer and QA receive a distinct Git-only
+credential plus role-bound broker access. Director receives its harness
+credential and broker capability without a transferable forge token.
 
-## The important bits
-
-- The workspace clone stays on disk only inside the container.
-- Read-only substrate checkouts can be mounted beside it.
-- Host launch assets and the short-lived credential env-file share a hidden,
-  platform-correct staging root with an operator-local override.
-- Engineer and QA env files carry the separate `WARD_FORGEJO_GIT_TOKEN` value
-  as in-container `FORGEJO_TOKEN` for Git only. Their tracker API reads and
-  typed writes use the role-bound dispatch broker capability.
-- The container is the wall that carries the feature from start to merge.
-
-## What the box does
-
-- it isolates the run from the host shell.
-- it gives the agent a writable workspace without handing it the whole host.
-- it lets the director read or stop a run without turning the host into a shell.
-- it keeps the teardown rules close to the launch rules.
-
-## What the box does not do
-
-- it does not replace repo policy.
-- it does not replace the agent workflow.
-- it does not make a bad target safe.
-
-## The release-era shape
-
-The old docs had separate pages for API, env, permissions, reaping, debug, and
-multi-repo behavior. Those details are now grouped into the smaller follow-on
-docs below so the overview can stay short.
+Teardown is part of the launch contract. Ward drains secret-safe artifacts,
+proves workflow landing, preserves unlanded committed Git history when needed,
+and then reaps or retains explicit recovery state.
 
 ## See also
 
-- [container-contract.md](container-contract.md) - mounts, env, permissions.
-- [container-lifecycle.md](container-lifecycle.md) - launch and teardown.
-- [container-substrate.md](container-substrate.md) - `/substrate` and grants.
+* [container-contract.md](container-contract.md) - mounts, env, credentials, and skills.
+* [container-lifecycle.md](container-lifecycle.md) - launch through cleanup.
+* [container-staging.md](container-staging.md) - host staging security.
+* [container-substrate.md](container-substrate.md) - workspace and references.

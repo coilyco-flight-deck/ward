@@ -1,41 +1,34 @@
 ---
-doc_goal: Keep the dispatch-health surface and its alert line in one durable place so the status-line injection, operator HUD, and alert rules do not drift apart.
+doc_goal: Define dispatch-health inputs, human and machine outputs, harness-native status rendering, and external alert-consumer boundary.
 ---
-# ward agent dispatch-health
+# Dispatch health
 
-`ward agent dispatch-health` summarizes live issue-thread lifecycle signals and
-the live engineer list. It does not read or refresh a local backlog ledger.
+`ward agent dispatch-health` combines live issue-thread lifecycle signals and
+the live engineer list. It does not maintain or refresh a backlog ledger.
 
-- Redispatch markers provide the queued and deferred counts.
-- Fresh reservations provide the in-flight count.
-- Stale prelaunch reservations provide the held count.
-- Trusted workflow comments provide submitted, merge-ready, blocked, and failed counts.
-- Container state provides running, partial-launch, launch-intent, cleanup-needed, and failed-before-start counts.
-- Duplicate refs, stale prelaunch holds, backpressure, and runaway launch rates remain explicit signals.
+* Redispatch markers provide queued and deferred counts.
+* Reservations provide in-flight and stale-held counts.
+* Trusted workflow records provide submitted, merge-ready, blocked, and failed counts.
+* Container evidence provides running, partial-launch, launch-intent,
+  cleanup-needed, and failed-before-start counts.
+* Duplicate refs, backpressure, and runaway launch rates remain explicit signals.
 
-## Surfaces
+Use the default human summary, `--line` for one stable
+`WARD-DISPATCH-HEALTH:` line, or `--json` for the versioned snapshot.
+`generated_at` is observation metadata, never orchestration state.
 
-- `ward agent dispatch-health` - human summary.
-- `ward agent dispatch-health --line` - the one-line status feed.
-- `ward agent dispatch-health --json` - the machine-readable snapshot.
+## Consumers
 
-The JSON schema remains versioned. `generated_at` is observation metadata, not
-orchestration state.
+Ward injects the live status command only into a harness whose typed manifest
+supports native status rendering. Claude currently does. Other harness config
+is unchanged.
 
-## Status line injection
-
-Ward only injects the live status line into harnesses whose manifest says they
-can render one. Claude is marked `StatusLine=true`. Other harnesses keep their
-base settings unchanged.
-
-## Alerts
-
-Alert integrations match the stable `WARD-DISPATCH-HEALTH:` summary line.
-Native desktop notification is best effort when an interactive desktop and
-local notifier exist. Hosted alert routing remains outside Ward.
+Interactive native desktop notification is a separate best-effort Ward output
+when a local notifier and desktop are available. Hosted alerting, dashboards,
+and other external consumers may parse the stable line or JSON, but their
+routing, credentials, and delivery are outside Ward.
 
 ## See also
 
-- [agent-director.md](agent-director.md) - attached supervision and queue JSON.
-- [agent-harnesses.md](agent-harnesses.md) - which harness can render the status line.
-- [agent-observability.md](agent-observability.md) - the log and envelope schema.
+* [agent-ops.md](agent-ops.md) - live evidence surfaces.
+* [agent-observability.md](agent-observability.md) - logs and schemas.

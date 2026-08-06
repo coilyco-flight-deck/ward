@@ -16,7 +16,7 @@ import (
 // mirror forgejoClient's verbs behind Tracker (auth from env, no token on argv).
 
 // Reads and state flips route through `gh api /repos/...` (REST budget), never
-// GraphQL `gh issue view/close/reopen` (ward#466; see docs/agent-github.md).
+// GraphQL `gh issue view/close/reopen` (ward#466; see docs/compat-surface.md).
 
 // githubClient drives GitHub through `gh`. r runs it audited; mode signs the
 // bodies it writes so GitHub comments carry the same attribution as Forgejo's.

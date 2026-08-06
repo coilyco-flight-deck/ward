@@ -1,80 +1,53 @@
 ---
-doc_goal: Give the supported harness axis in one place so launch docs can point at a single comparison instead of a pile of per-harness pages.
+doc_goal: Define every shipped harness adapter, host auth source, required model or endpoint input, preflight, and invocation shape.
 ---
-# ward agent harnesses
+# Agent harnesses
 
-`ward agent` can launch the same role through different harnesses.
+`--harness` and `--agent` select the same typed adapter. The adapter controls
+binary installation checks, credentials, context projection, smoke testing,
+invocation, and optional display capabilities. It does not alter Ward authority.
 
-- `claude` - the cloud subscription harness.
-- `codex` - the OpenAI Codex harness.
-- `goose` - the local model harness.
-- `opencode` - the Ollama-backed local harness.
+## Claude
 
-The harness choice affects credentials, preflight shape, and context level.
+* Reads the host subscription login from `~/.claude` and projects only the
+  required credential material into the private container home.
+* Verifies `claude` is on `PATH`, runs its host one-shot preflight, then invokes
+  one-shot work with `claude -p`.
+* Is currently the only adapter whose manifest enables Ward's injected live
+  dispatch-health status line.
 
-## Rule of thumb
+## Codex
 
-- Cloud harnesses usually need host-side credentials and a preflight check.
-- Local harnesses trade host-side auth for a local model endpoint check.
-- `--harness` and `--agent` are equivalent spellings.
+* Reads `~/.codex/auth.json`. On macOS, a missing or empty file falls back to
+  Codex CLI's `Codex Auth` login item in Keychain.
+* Resolves and serializes auth on the host, then writes it only into the private
+  container home. It verifies `codex` is on `PATH`.
+* Invokes headless work with `codex exec -- <prompt>` so dash-prefixed prompt
+  text cannot become a CLI option.
 
-Local harnesses have no Ward-owned model default. The baked policy,
-environment, or `--config agent.<harness>.model=<model>` must name the model.
-Opencode also requires `agent.opencode.endpoint`, `WARD_OLLAMA_URL`, or the
-matching `--config` override because its OpenAI-compatible endpoint is local to
-the deployment. Ward fails before launch when either required value is absent.
+## Goose
 
-## Harness notes
+* Verifies `goose` is on `PATH` and runs a host one-shot endpoint preflight.
+* Requires a model through `WARD_GOOSE_MODEL` or
+  `--config agent.goose.model=<model>`. Ward supplies no model default.
+* Invokes `goose run --no-session -t` and sends the prompt on stdin.
 
-### claude
+## OpenCode
 
-`claude` is the default cloud path. It uses the host subscription login and
-enters the container with the credential material ward seeds at launch.
-Its install step is self-contained and only verifies that `claude` is already
-on PATH.
+* Bootstrap installs `opencode` when absent and fails if it remains unavailable.
+* Requires `agent.opencode.model` plus `agent.opencode.endpoint`, with
+  `WARD_OPENCODE_MODEL` and `WARD_OLLAMA_URL` as environment spellings.
+* Probes the configured OpenAI-compatible `/v1/models` endpoint, invokes
+  `opencode run`, and adds Ward request-correlation headers.
 
-Claude is also the only shipped harness that currently renders the live
-dispatch-health status line. Ward detects that capability from the harness
-manifest and injects the status command only for supported harnesses.
+## Input ownership
 
-### codex
-
-`codex` is the OpenAI path. It resolves host auth from `~/.codex/auth.json` or,
-on macOS, Codex CLI's `Codex Auth` Keychain item. The container receives either
-source through the same private bootstrap credential channel.
-Its install step is self-contained and only verifies that `codex` is already
-on PATH.
-
-### goose
-
-`goose` is the local-model path. It talks to an Ollama endpoint and does not
-need the same cloud credential shape.
-Its install step is self-contained and only verifies that `goose` is already
-on PATH.
-
-### opencode
-
-`opencode` is the other local-model path. It shares the same Ollama-style
-endpoint model and is useful when you want a lean local loop.
-Its install step is required. Bootstrap attempts to install it and fails
-loudly if the binary is still missing afterward.
-
-## Context level
-
-The harness also picks the context level.
-
-- cloud harnesses tend to carry more host doctrine.
-- local harnesses tend to carry less host doctrine.
-- the container env exports the chosen level for the entrypoint.
-
-## Why this page exists
-
-The old tree had one page per harness family plus separate local-model pages.
-This page keeps the comparison in one place and lets the other docs stay short.
+Ward owns adapter mechanics. Deployment or explicit harness inputs own model,
+endpoint, reasoning, and display identity. Operator `default-harness` selects
+only the default adapter. Roles never participate in this merge.
 
 ## See also
 
-- [agent.md](agent.md) - the entrypoint.
-- [agent-lifecycle.md](agent-lifecycle.md) - launch-time checks.
-- [agent-dispatch-health.md](agent-dispatch-health.md) - the status line and alert feed.
-- [container-contract.md](container-contract.md) - the context and mount contract.
+* [config-source.md](config-source.md) - precedence.
+* [compat-surface.md](compat-surface.md) - provider matrix.
+* [container-contract.md](container-contract.md) - credential projection.

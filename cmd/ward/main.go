@@ -48,7 +48,7 @@ func run() int {
 	app := rootCommand()
 
 	// Unknown-verb fallback: `ward <leaf>` -> `ward exec <leaf>` for a declared
-	// leaf that isn't a top-level verb. See docs/verb-fallback.md, issue #87.
+	// leaf that isn't a top-level verb. See docs/exec-verb.md, issue #87.
 	os.Args = maybeRewriteToExec(os.Args, topLevelVerbs(app))
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
@@ -106,7 +106,7 @@ func rootCommand() *cli.Command {
 var rootValueFlags = map[string]bool{"--config": true}
 
 // topLevelVerbs is the set of names cli dispatches directly: every registered
-// command, its aliases, and the auto-added `help`. See docs/verb-fallback.md.
+// command, its aliases, and the auto-added `help`. See docs/exec-verb.md.
 func topLevelVerbs(app *cli.Command) map[string]bool {
 	verbs := map[string]bool{"help": true}
 	for _, c := range app.Commands {

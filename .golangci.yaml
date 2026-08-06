@@ -1,4 +1,4 @@
-# golangci-lint config for the cli-* family. See docs/golangci.md.
+# golangci-lint config for the cli-* family.
 
 version: "2"
 

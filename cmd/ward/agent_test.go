@@ -189,14 +189,14 @@ func TestAgentIssueRefShortcutURL(t *testing.T) {
 }
 
 // TestUntrustedOwnerErr covers ward#484: the refusal names the owner, the
-// accepted set, and points at docs/agent-trust-gate.md so it is a signpost.
+// accepted set, and points at docs/agent-lifecycle.md so it is a signpost.
 func TestUntrustedOwnerErr(t *testing.T) {
 	r := &Runner{}
 	msg := r.untrustedOwnerErr("warded", "evilcorp").Error()
 	for _, want := range []string{
 		`refusing untrusted owner "evilcorp"`,
-		"coilysiren",               // the accepted set is named
-		"docs/agent-trust-gate.md", // the signpost the issue asked for
+		"coilysiren",              // the accepted set is named
+		"docs/agent-lifecycle.md", // the signpost the issue asked for
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("untrustedOwnerErr missing %q\n---\n%s", want, msg)

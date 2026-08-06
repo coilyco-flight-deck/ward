@@ -2,7 +2,7 @@ repos:
 
   # BEGIN managed by agentic-os/scripts/apply-agentic-os-hooks.py
   - repo: https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os
-    rev: a8d87407a8ef9aa1c335854879794c22e10a3e3d
+    rev: ea1f408660ddd12e96d70af33d0a2c8165e51fc9
     hooks:
       - id: catalog-doc-size
       - id: catalog-trifecta

@@ -20,7 +20,7 @@ import (
 )
 
 // broker.go wires the hidden `ward container broker` daemon: the root credential
-// broker's main + socket lifecycle (ward#329 Unit B). See docs/broker.md.
+// broker's main + socket lifecycle (ward#329 Unit B). See docs/agent-dispatch-broker.md.
 
 const (
 	// envBrokerSocket names the socket both the daemon and the dropped agent read.
@@ -55,7 +55,7 @@ Started as root by the container entrypoint before the agent drops privilege, it
 holds the forgejo bot token (from FORGEJO_TOKEN) and serves the write-tier ops -
 file / edit / comment issue - through ward's core Forgejo adapter, authorizing
 each request against the write tier (cli-guard#167). The dropped explore agent
-dials the socket and asks; it never sees the credential. See docs/broker.md.`,
+dials the socket and asks; it never sees the credential. See docs/agent-dispatch-broker.md.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "socket",
@@ -120,7 +120,7 @@ func runContainerBroker(ctx context.Context, c *cli.Command) error {
 }
 
 // startCredentialBroker ports the old root broker lifecycle and fails closed.
-// See docs/broker.md for the read-only credential boundary (ward#1521).
+// See docs/agent-dispatch-broker.md for the read-only credential boundary (ward#1521).
 func (r *Runner) startCredentialBroker(ctx context.Context, e bootstrapEnv) error {
 	if !e.ReadOnly {
 		return nil

@@ -10,7 +10,7 @@ import (
 )
 
 // agent_engineer.go wires `ward agent engineer`, the detached-only implement-a-ticket
-// role (ward#347; the attach was dropped in ward#356). See docs/agent-engineer.md.
+// role (ward#347; the attach was dropped in ward#356). See docs/agent-roles.md.
 
 // agentEngineerFlags is the engineer flag set: the shared detached run flags
 // (+ --skip-preflight) and freeform instructions. No --watch/--new-tab (ward#356).
@@ -26,7 +26,7 @@ func agentEngineerFlags() []cli.Flag {
 }
 
 // agentEngineerCommand builds `ward agent engineer`: a ref carries a ticket detached,
-// freeform files one first then carries it (detached too). docs/agent-engineer.md.
+// freeform files one first then carries it (detached too). docs/agent-roles.md.
 func agentEngineerCommand() *cli.Command {
 	return &cli.Command{
 		Name: "engineer",

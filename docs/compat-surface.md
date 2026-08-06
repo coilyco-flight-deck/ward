@@ -1,72 +1,55 @@
 ---
-doc_goal: Map ward's compatibility seams to the real ports and reference adapters so a contributor can extend the right boundary and see what ward embeds instead of vendoring.
+doc_goal: Give a brand-explicit, source-aligned matrix of Ward's shipped providers, partial seams, auth sources, and explicit non-providers.
 ---
 # Compatibility surface
 
-ward stays small by pushing stack-specific behavior behind a few seams. This page is the release-facing matrix for the external systems ward can talk to today, plus the ones it explicitly does not.
+## Forges and trackers
 
-States mean:
+* Forgejo - shipped for checkout, issues, pull requests, Actions status, merge,
+  backpressure, and canonical release automation.
+* GitHub - shipped for checkout and issue-thread control. Forgejo-native PR
+  creation, merge/status gates, rerun, and open-PR backpressure are not shipped.
+* Shortcut - shipped as an issue tracker.
+* GitLab, Trello, Jira, and Linear - not Ward providers.
 
-- shipped - the adapter or guarded surface is in tree and part of the release
-- partial - only part of the provider surface is wired today
-- planned or deferred - tracked work, not shipped
-- not a ward provider - explicitly out of scope
+Tracker, checkout, and landing providers may differ. Ward resolves their typed
+adapters independently.
 
-## Git platforms / forges
+## Containers
 
-- Forgejo - shipped for Ward's native issue and PR control plane. `cmd/ward/forgejo_ops.go`.
-- GitHub - shipped for the issue-thread control plane. `cmd/ward/github_ops.go`.
-  PR creation, the Forgejo-native PR workflow, PR-status merge gate, rerun,
-  and open-PR backpressure remain Forgejo-only until GitHub grows matching
-  adapters; the gap is called out in the GitHub contract tests.
-- GitLab - not a ward provider. `CONTRIBUTING.md`.
+* Docker - shipped runtime.
+* Podman - not a Ward runtime.
 
-## Issue trackers
+## Harnesses
 
-- Forgejo, GitHub, Shortcut - shipped. `cmd/ward/forgejo_ops.go`, `cmd/ward/github_ops.go`, `cmd/ward/shortcut_ops.go`.
-- Trello - not a Ward tracker provider.
-- Jira, Linear - not a ward provider.
+* Claude, Codex, Goose, and OpenCode - shipped typed harness adapters.
+* Aider - not a Ward harness.
+* Ollama - supported as a Goose or OpenCode backend input, not as a harness.
 
-## Container runtimes
+See [agent-harnesses.md](agent-harnesses.md) for invocation, model, endpoint,
+and host-auth details.
 
-- Docker - shipped. `cmd/ward/container.go`, `docs/container.md`.
-- Podman - not a ward provider. `CONTRIBUTING.md`.
+## Auth and config sources
 
-## Agent harnesses
+* Forgejo broad API credential - broker process only. Engineer and QA use a
+  distinct Git token and role-bound typed broker operations.
+* Codex - `~/.codex/auth.json`, with the Codex CLI `Codex Auth` Keychain item
+  as the macOS fallback.
+* Claude - host subscription login under `~/.claude`.
+* GitHub - `WARD_GITHUB_TOKEN_SOURCE=env|gh|app`. Each is an explicit
+  user-provided source. App mode requires registered App inputs.
+* Shortcut - `SHORTCUT_API_TOKEN`.
+* Ward preferences - `~/.ward/config.yaml` and repository `.ward/ward.yaml`.
 
-- Claude, Codex, Goose, Opencode - shipped. `docs/agent-harnesses.md`, `docs/agent-claude.md`, `docs/agent-codex.md`, `docs/agent-goose.md`, `docs/agent-opencode.md`.
-- Aider - not a Ward harness.
-- Ollama - partial backend, not a harness. `docs/agent-harnesses.md`, `docs/agent-goose.md`, `docs/agent-opencode.md`.
+## Embedded and external behavior
 
-## Config and auth sources
-
-- Ward launch mechanics are typed product code. Provider-specific operator
-  configuration is outside Ward.
-- Compose directors use Ward's native sibling broker for authenticated Forgejo
-  operations. The broker snapshots the host-resolved token and exposes only
-  Ward's allowlisted request shapes, never the credential.
-- Codex host login - `~/.codex/auth.json` on every platform, with Codex CLI's
-  `Codex Auth` login-keychain item as the macOS fallback.
-- `~/.ward/config.yaml` - operator launch preferences.
-- `WARD_GITHUB_TOKEN_SOURCE`, `env`, `gh`, `app` - shipped GitHub token path. `cmd/ward/forge.go`, `cmd/ward/github_app.go`.
-- `SHORTCUT_API_TOKEN` - shipped operator input. `cmd/ward/shortcut_ops.go`, `cmd/ward/forgejo_ops.go`.
-
-## Adding your stack
-
-- GitHub + Issues - reuse the GitHub forge adapter, keep the current runtime, and only split the tracker seam if needed.
-- GitLab + Issues - add a forge adapter for GitLab, then keep or split the tracker seam to match the issue API.
-- GitHub + Trello - keep the GitHub forge adapter and add a Trello tracker adapter.
-- GitLab + Shortcut - add both the GitLab forge adapter and the Shortcut tracker adapter.
-- Any stack + podman - keep the higher-level launch flow and replace the container runtime seam.
-
-## On embedding
-
-Ward compiles its launch defaults and container payloads as Go values in
-`cmd/ward/container_payloads.go` and the consuming command code. It does not
-ship source-side asset bundles or vendor docker, git, or agent CLIs.
+Ward compiles harness adapters, launch defaults, container payloads, workflow
+roles, and broker policy as Go values. It does not vendor Docker, Git, or
+harness CLIs. Provider-specific operator automation, hosted alert routing, and
+fleet convergence are outside Ward.
 
 ## See also
 
-- [CONTRIBUTING.md](../CONTRIBUTING.md)
-- [agentsapi.md](agentsapi.md)
-- [container.md](container.md)
+* [architecture.md](architecture.md) - ownership and authority boundaries.
+* [agent-dispatch-broker.md](agent-dispatch-broker.md) - forge credential boundary.
+* [container.md](container.md) - runtime contract.

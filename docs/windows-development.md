@@ -1,3 +1,6 @@
+---
+doc_goal: Define Ward's native Windows test prerequisites, isolation, platform exceptions, and cross-compile lane.
+---
 # Windows development
 
 Ward's full unit-test lane runs on native Windows:

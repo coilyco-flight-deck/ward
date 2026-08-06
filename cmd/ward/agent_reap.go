@@ -53,7 +53,7 @@ handles the config pre-bake and diagnostics path.
   ward agent reap --idle 30m      # tighter threshold
   ward agent reap --interval 5m   # run as a standing daemon, sweeping every 5m
 
-See docs/agent-reap.md.`,
+See docs/agent-ops.md.`,
 		Flags: []cli.Flag{
 			&cli.DurationFlag{Name: "idle", Value: agentReapIdleDefault(), Usage: "stop an engineer idle at least this long (default 1h)"},
 			&cli.FloatFlag{Name: "max-cpu", Value: agentReapMaxCPUDefault(), Usage: "spare an idle engineer reading above this %CPU as a live build/test; pass a huge value to reap on idle alone"},

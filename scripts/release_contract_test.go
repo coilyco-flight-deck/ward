@@ -68,7 +68,7 @@ func TestReleasePipelineUsesDraftArtifacts(t *testing.T) {
 	promote := readRepoFile(t, ".forgejo/workflows/promote.yml")
 	release := readRepoFile(t, ".forgejo/workflows/release.yml")
 	docs := readRepoFile(t, "docs/release.md")
-	binaries := readRepoFile(t, "docs/release-binaries.md")
+	binaries := readRepoFile(t, "docs/release.md")
 
 	for _, want := range []string{
 		"draft-${{ github.sha }}",

@@ -91,12 +91,12 @@ func agentRoleDefinitions() (map[string]agentRoleDefinition, error) {
 var agentMetaCommands = map[string]bool{"run": true, "message": true, "cluster": true, "roster": true, "flags": true, "approval-plan": true, "reap": true, "reservations": true, "stop": true, "list": true, "logs": true, "dispatch": true, "issue": true, "dispatch-health": true, "review": true, "pr": true, "recover": true}
 
 // agentRosterRow is one rendered roster entry: the role, its tagline, its modes, and
-// the per-role detail doc it links to.
+// the consolidated role contract it links to.
 type agentRosterRow struct {
 	Role    string
 	Tagline string
 	Modes   string
-	Doc     string // the per-role detail doc, e.g. agent-engineer.md
+	Doc     string // the consolidated role contract.
 }
 
 // agentRosterRows enumerates the fixed workflow roster, minus the meta verbs,
@@ -124,7 +124,7 @@ func agentRosterRowsFromDefinitions(cmds []*cli.Command, defs map[string]agentRo
 		}
 		rows = append(rows, agentRosterRow{
 			Role: cmd.Name, Tagline: info.Tagline, Modes: info.Modes,
-			Doc: "agent-" + cmd.Name + ".md",
+			Doc: "agent-roles.md",
 		})
 	}
 	return rows, nil
@@ -149,14 +149,14 @@ func agentRosterMarkdown() (string, error) {
 	fmt.Fprintf(&b, "word selects workflow mechanics only. It never grants broker operations, credentials,\n")
 	fmt.Fprintf(&b, "mounts, network reach, models, identity, or merge authority. Run `ward agent roster`\n")
 	fmt.Fprintf(&b, "(`warded roster`) for this list live at the terminal, and the\n")
-	fmt.Fprintf(&b, "per-role docs each entry links to carry the prose detail. See\n")
+	fmt.Fprintf(&b, "role contract each entry links to carries the prose detail. See\n")
 	fmt.Fprintf(&b, "[agent.md](agent.md) for the umbrella and the `warded` public face.\n\n")
 	for _, row := range rows {
 		fmt.Fprintf(&b, "- [`warded %s`](%s) - %s Modes: %s\n", row.Role, row.Doc, row.Tagline, row.Modes)
 	}
 	fmt.Fprintf(&b, "\n## See also\n\n")
 	fmt.Fprintf(&b, "- [agent.md](agent.md) - the `ward agent` umbrella and the `warded` public face.\n")
-	fmt.Fprintf(&b, "- [agent-subcommands.md](agent-subcommands.md) - the roles compared, the pre-flight, the reaper backstop.\n")
+	fmt.Fprintf(&b, "- [agent-roles.md](agent-roles.md) - role behavior, limits, and the sealed worker boundary.\n")
 	return b.String(), nil
 }
 

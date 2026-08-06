@@ -87,7 +87,13 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 
 ## Release
 
-Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/workflows/release.yml`: `tag-bump` (minor bump; major hand-driven) + `create-release`, then `bump-tap-formula` rewrites the tap's formula `url`+`sha256` to the new tag (skip-CI marked), failing loudly if the write does not land. The GitHub mirror is a **read-only front door** - canonical `main`, tags, releases, and changelog all live on Forgejo. ward no longer runs an Actions workflow to mirror refs (the former `mirror-to-github.yml` is removed), so keeping the mirror's git refs current is out-of-band, not a release-pipeline step. The pipeline does best-effort publish the binary matrix to a same-tag GitHub release when `GITHUB_MIRROR_PAT` is set (unset, it skips loudly and the Forgejo release is unaffected).
+Forgejo is canonical. A push to `main` runs the promote gate, builds the
+checksummed binary matrix once as commit-scoped draft assets, refreshes the
+container release alias, and fast-forwards `release`. The release workflow
+consumes that exact promoted SHA, verifies and publishes the staged bytes
+without rebuilding, then updates install channels. The GitHub release is a
+verified mirror and public front door, not the canonical release record. Full
+contract: [docs/release.md](docs/release.md).
 
 Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 
@@ -106,7 +112,7 @@ the installed Ward binary.
 
 - [README.md](README.md) - human intro.
 - [docs/README.md](docs/README.md) - docs, by subsystem.
-- [docs/terminology.md](docs/terminology.md) - canonical vocabulary and analogy bank.
+- [docs/terminology.md](docs/terminology.md) - canonical vocabulary.
 - [docs/FEATURES.md](docs/FEATURES.md) - what ships today.
-- [docs/features-release-tooling.md](docs/features-release-tooling.md) - cross-repo tooling and release convention.
+- [docs/architecture.md](docs/architecture.md) - product and authority boundaries.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.

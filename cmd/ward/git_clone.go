@@ -39,7 +39,7 @@ var cloneValueFlags = map[string]bool{
 }
 
 // gitCloneCommand builds `ward git clone`, the destination-gated clone (raw
-// `git clone` is denied in the agent lockdown). See docs/git-clone.md.
+// `git clone` is denied in the agent lockdown). See docs/git-verbs.md.
 func gitCloneCommand() *cli.Command {
 	return &cli.Command{
 		Name:            "clone",
@@ -58,7 +58,7 @@ cwd/<basename-of-url>, since bare git clone lands in cwd) to an absolute
 path before the gate runs - which is why this is a Go verb, not a
 guardfile glob. A leading '-C <dir>' selects the base directory. The
 allowlist is baked into the binary; it is never read from disk. See
-docs/git-clone.md.`,
+docs/git-verbs.md.`,
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
 			return r.WrapVerb(verb.Spec{
@@ -73,7 +73,7 @@ docs/git-clone.md.`,
 }
 
 // runGitClone resolves the effective destination, runs the gate, then execs the
-// real `git clone` with the original argv. See docs/git-clone.md.
+// real `git clone` with the original argv. See docs/git-verbs.md.
 func (r *Runner) runGitClone(ctx context.Context, argv []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -161,7 +161,7 @@ func destFromCloneArgs(base, repoURL, cloneDir string) string {
 }
 
 // cloneGate refuses the clone unless the destination is under an ephemeral root
-// OR the repo is allowlisted - two independent checks. See docs/git-clone.md.
+// OR the repo is allowlisted - two independent checks. See docs/git-verbs.md.
 func cloneGate(repoURL, destAbs string, getenv func(string) string) error {
 	if destUnderEphemeral(destAbs, getenv) {
 		return nil

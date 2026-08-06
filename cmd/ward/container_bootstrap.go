@@ -41,7 +41,7 @@ type bootstrapEnv struct {
 	GooseModel    string
 	OllamaURL     string
 	// Cheapest codex posture by default (ward#379): mini model + low reasoning +
-	// verbosity, each overridable via WARD_CODEX_*. docs/agent-credentials.md.
+	// verbosity, each overridable via WARD_CODEX_*. docs/agent-harnesses.md.
 	CodexModel     string
 	CodexEffort    string
 	CodexVerbosity string
@@ -66,7 +66,7 @@ type bootstrapEnv struct {
 	Headless   bool
 	Ask        bool
 	// ReadOnly is the read-only surface session (WARD_READONLY, ward#293): revoke
-	// the push credential, compose the restriction. See docs/agent-surface.md.
+	// the push credential, compose the restriction. See docs/agent-director.md.
 	ReadOnly          bool
 	WardVersionSource string
 	WardVersion       string
@@ -833,7 +833,7 @@ func (r *Runner) bridgeDockerSocket(ctx context.Context, e bootstrapEnv, sock st
 }
 
 // ensureGitCredReadable re-asserts the credential perms stay readable by the
-// dropped agent and the root reaper; fails loud (ward#288, docs/agent-credentials.md).
+// dropped agent and the root reaper; fails loud (ward#288, docs/agent-harnesses.md).
 func (r *Runner) ensureGitCredReadable(e bootstrapEnv) error {
 	const f = forgejoGitCredentialsPath
 	if !fileExists(f) {
@@ -945,7 +945,7 @@ func (r *Runner) writeRunProvenance(ctx context.Context, work string, e bootstra
 // --- additional granted repos (ward#230): clone+operate beyond the target ----
 
 // cloneExtraRepos clones each granted extra repo as a full feature working copy
-// at /workspace/<owner>/<repo>; best-effort per repo. See docs/container-multi-repo.md.
+// at /workspace/<owner>/<repo>; best-effort per repo. See docs/container-substrate.md.
 func (r *Runner) cloneExtraRepos(ctx context.Context, e bootstrapEnv) {
 	if len(e.ExtraRepos) == 0 {
 		return
@@ -1102,7 +1102,7 @@ func (r *Runner) installPreCommitHooks(ctx context.Context, _ bootstrapEnv, work
 // --- read-only push guard (ward#299) -----------------------------------------
 
 // readOnlyPushGuardHook is the per-clone pre-push hook body: it fires before git
-// contacts the remote with the clear named wall (ward#299, agent-surface.md).
+// contacts the remote with the clear named wall (ward#299, agent-director.md).
 const readOnlyPushGuardHook = `#!/bin/sh
 # ward#299 read-only explore push guard (message layer; bypassable). See ward#315.
 echo "ward: read-only explore - this clone can't push (ward#293, ward#315)." >&2

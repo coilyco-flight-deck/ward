@@ -1,149 +1,105 @@
-# ward
+---
+doc_goal: Let a new adopter understand, install, preview, and navigate Ward without reading implementation history.
+---
+# Ward
 
-Ward is the governed execution layer for coding agents. It keeps each run in a fresh clone and least-access container, then supplies fixed issue, branch, PR, log, broker, and merge primitives with a durable audit trail. A harness-native goal chooses work and repeats. Ward does not run its own autonomous backlog scheduler.
+Ward is a governed execution layer for coding agents and repository commands.
+It runs agent work in fresh least-access containers, exposes fixed issue, Git,
+pull-request, broker, log, and recovery primitives, and records durable audit
+evidence. A harness-native goal chooses and repeats work. Ward does not run an
+autonomous backlog scheduler.
 
-## Why ward
+Use Ward when work is separable, concurrent, failure-prone, or needs a durable
+issue-to-landing trail. A single goal agent may be simpler for one coherent
+refactor through a tightly coupled subsystem.
 
-Use Ward when work breaks into separable streams and the harness needs governed primitives that remain safe when one stream stalls.
+## Product surfaces
 
-- concurrency for independent work streams.
-- resumability across interruptions and long-running work.
-- failure containment through fresh clones and isolated engineer containers.
-- auditability through issues, branches, PRs, logs, outcomes, and review trail.
-- role separation between director, engineer, QA, and review lanes.
-- reproducibility from declared context and containerized runs.
-- backlog throughput across separable tasks.
-- human interruptibility by issue and PR without losing one giant in-flight context.
+* `ward exec <verb>` runs a repository-declared command through argv and
+  repository-state checks.
+* `ward git ...` exposes governed version-control operations.
+* `ward audit ...` reads the append-only JSONL trail.
+* `ward agent ...`, also installed as `warded`, launches and operates isolated
+  agent runs.
 
-Ward is the better fit for parallel, separable, auditable, failure-prone work. A single strong goal agent can still be faster for one coherent refactor through a tight core subsystem.
+Roles select workflow behavior, harnesses select agent CLI mechanics, and
+workflows select landing evidence. None of those labels grants credentials,
+mounts, network, broker operations, or merge authority.
 
-If the orchestration itself is flaky, that is a Ward product bug, not an operator burden. The target model is still the one above.
+## Requirements
 
-`ward agent` launches an authenticated coding CLI (claude, codex, goose, ...) into an ephemeral, least-access container and drives it through an issue-to-merge workflow or an issue-to-PR workflow, while bounded by credential scoping and a durable audit trail. Functionally it is a typed harness driver. It knows how to launch each agent through its own CLI dialect, but the external product is the governed execution layer around it. That surface is exposed as **`warded`**, a thin symlink onto `ward agent`, and sits on the three-layer split covered below and in [`docs/architecture.md`](docs/architecture.md).
+The repository command path needs only Ward and a `.ward/ward.yaml`. Agent
+execution additionally needs Docker, a supported harness, its host auth or
+model endpoint, and tracker credentials for any issue or PR mutation.
 
-Ward's operational vocabulary is defined in [`docs/terminology.md`](docs/terminology.md). Use it when a term such as dispatch, launch, run, workflow, reservation, reap, drain, role, or harness could be read more than one way.
-
-## Who it's for
-
-- **A contributor (human or agent)** who wants every `build` / `test` / `lint` run argv-validated, audited, and gated on a clean tree - one wrapper instead of bare `make` / `go` / forge CLIs. Forge-agnostic: point it at any repo.
-- **An operator** running an autonomous agent fleet who wants each run boxed in a throwaway container, its reach bounded by an allowlist, and its whole session recorded - not a trusted shell.
-
-## What it requires
-
-- **macOS or Linux + Homebrew** to install the binary (see [Install](#install)).
-- **Docker** for the container agent flow - each `warded` run boots an ephemeral container, configures forge git auth inside it, runs the agent, and reaps it. The first run pulls one image, `forgejo.coilysiren.me/coilyco-flight-deck/ward:release` (release refreshes it). See [`docs/container.md`](docs/container.md) for the registry, tag policy, and how to pin off the moving tag.
-- **Forge credentials for agent automation** when `warded` is expected to move an issue, branch, or PR in a target repo. The plain verb gate does not need tracker access.
-
-The plain verb gate (`ward exec`, `ward git`, `ward audit`) needs none of the above - just the repo and its `.ward/ward.yaml`.
-
-## What it does
-
-Wraps a project's dev verbs behind cli-guard's policy gate. Every ward-managed repo is expected to declare the `build` / `test` / `install` triple in `.ward/ward.yaml`; many also expose `vet`, `lint`, `tidy`, and `cover`. Every invocation validates argv against a shell-metacharacter policy, writes one append-only JSONL audit row to `~/.ward/audit/<repo>.jsonl`, and gates repo verbs on either a clean-and-synced named branch or a clean, validated Forgejo Actions pull-request merge checkout, detached or temporarily named by CI. The audit row remains reconstructable from Git and CI evidence. See [`docs/exec-verb.md`](docs/exec-verb.md).
-
-**Enforcement depth is platform-conditional.** On **Linux** sandboxed verbs run inside cli-guard's sandbox jail, so the gate holds at arbitrary process depth. On **macOS and Windows** - what the brew-first path predominantly serves - enforcement is **depth-0** (the harness allowlist only): a child spawned by a gated verb can invoke a wrapped tool without re-entering the gate, a known limitation by design. See [`docs/exec-verb.md`](docs/exec-verb.md) (Enforcement depth by platform).
-
-Each repo declares its verbs (and an optional `security:` policy) in [`.ward/ward.yaml`](.ward/ward.yaml). For the field-by-field schema see [`docs/ward-yaml.md`](docs/ward-yaml.md). Agent launch mechanics are typed product code. Supported launch preferences come from `~/.ward/config.yaml`, repository YAML, explicit flags, and harness-owned environment variables. [`ward doctor`](docs/doctor.md) validates the resulting runtime settings.
+Supported hosts are macOS, Linux, and Windows. See the
+[compatibility matrix](docs/compat-surface.md) for exact provider support.
 
 ## Install
 
-Install from the release channel you prefer:
+Homebrew on macOS or Linux:
 
-- **Homebrew, on macOS and Linux.**
-  ```bash
-  brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-deck/homebrew-tap
-  brew install coilyco-flight-deck/tap/ward
-  ```
-- **Scoop, on Windows.**
-  ```powershell
-  scoop bucket add coilyco-flight-deck https://forgejo.coilysiren.me/coilyco-flight-deck/scoop-bucket
-  scoop install ward
-  ```
-- **From source.**
-  `make workspace` is the local path for ward itself. It resolves a sibling `cli-guard` checkout through `go.work`; see [docs/workspace.md](docs/workspace.md).
-
-The explicit-URL form is required because the release buckets are hosted outside GitHub. The Homebrew formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The Scoop bucket installs `ward` on Windows.
-
-**Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] by its canonical module path, so a plain `go build` needs that module host reachable.
-
-Each release ships the full `ward-{darwin,linux}-{amd64,arm64}` matrix + `SHA256SUMS`. Most install via Homebrew (above); GitHub readers can grab the mirrored checksummed binaries from [GitHub Releases](https://github.com/coilyco-flight-deck/ward/releases). Canonical release automation runs on [Forgejo][ward-forgejo].
-
-## Usage
-
-The audited verb gate, on any repo:
-
+```bash
+brew tap coilyco-flight-deck/tap https://forgejo.coilysiren.me/coilyco-flight-deck/homebrew-tap
+brew install coilyco-flight-deck/tap/ward
 ```
-ward exec build          # run a declared dev verb through the gate
+
+Scoop on Windows:
+
+```powershell
+scoop bucket add coilyco-flight-deck https://forgejo.coilysiren.me/coilyco-flight-deck/scoop-bucket
+scoop install ward
+```
+
+Source contributors use the [workspace contract](docs/workspace.md). Each
+release publishes a checksummed platform matrix. Forgejo is canonical and the
+GitHub release is a verified mirror.
+
+## First commands
+
+```bash
 ward exec test
-ward git commit -m ...   # concurrency-safe, audited git
-ward audit tail --follow # stream the audit log
-ward setup               # bootstrap and validate Ward configuration
-ward doctor              # validate Ward configuration
+ward git status
+ward audit tail --follow
+ward setup
+ward doctor
+warded engineer owner/repo#123 --print
 ```
 
-The agent driver, against the repo's authoritative issue thread. `warded` is a thin symlink onto `ward agent` - read it as a protective circle, the container bounding the agent's reach, not "warded off":
+`--print` resolves and validates an agent launch without starting a container.
+Use a fully qualified `owner/repo#N` in shells so `#` cannot begin a comment.
+The [first-run guide](docs/first-run.md) gives the complete safe sequence.
 
-```
-warded #98               # put an engineer on issue #98, fire-and-forget
-warded engineer #98      # ...spelled out; the engineer role runs detached
-warded director --repo coilyco-flight-deck/ward # read-only director
-warded director queue --org coilyco-flight-deck --json # stable live queue snapshot
-ward agent cluster start --harness codex # repository-independent broker rendezvous
-ward agent run --cluster codex-ab45 --harness codex --role critic --context-bundle /path/to/bundle "Review the proposal."
-```
+## Execution model
 
-Engineer runs are **detached**: the attach-and-watch `--watch` retired, so interactive work now lives on the [director](docs/agent-director.md) surface. New to the agent driver? [`docs/first-run.md`](docs/first-run.md) is the ordered path from zero to a verifiable `warded ... --print` dry run.
+Repository commands use the `cli-guard` engine for declaration, validation,
+routing, and audit. Agent execution adds typed harness adapters, fixed roles
+and workflows, reservations, a supervised broker, ephemeral containers,
+secret-safe artifacts, and verified teardown. See
+[architecture](docs/architecture.md) and [terminology](docs/terminology.md).
 
-`warded director --repo owner/name` reads one live queue snapshot and opens the attached read-only session. Harness-native goals own repetition, prioritization, and redispatch decisions.
+On Linux, governed commands can run inside the sandbox jail. macOS and Windows
+enforce the declared boundary at command entry. Containerized agent runs use
+the same least-access contract on every supported host.
 
 ## When a run breaks
 
-A `warded` run that failed or seemed to do nothing has a single symptom-indexed entry point: [`docs/troubleshooting.md`](docs/troubleshooting.md). It is indexed by **what you saw**, not by which subsystem failed - "launched then nothing happened", "never launched", "`ward exec` refused", "nothing landed on `main`" - and each row routes to the one diagnostic surface (the secret-safe `~/.ward/agent-logs-redacted/<container>/` drain, a NO-GO comment on the issue, or a host auth refresh) and the fix. Start there before opening any per-subsystem doc.
+Start with [troubleshooting](docs/troubleshooting.md). It maps the observed
+symptom to dispatch status, list state, secret-safe logs, issue-thread evidence,
+or repository audit, then names the supported remedy.
 
-## Two product layers
+## Status and support
 
-Ward's product boundary has two layers:
-
-- **[cli-guard][cli-guard]** - the **engine**. The policy-and-routing framework ward consumes (pinned via go.mod). Thin consumer, not a fork.
-- **`ward`** - the native **run-time control plane**. It provides `agent`, `container`, `exec`, reservations, reaping, and PR workflow. Its three workflow labels do not grant permissions.
-
-See [`docs/architecture.md`](docs/architecture.md).
-
-## Where to go next
-
-Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
-
-- **The verb gate** - [exec-verb.md](docs/exec-verb.md) (the gate), [verb-fallback.md](docs/verb-fallback.md), [git-verbs.md](docs/git-verbs.md), [audit.md](docs/audit.md), [doctor.md](docs/doctor.md). The boundary is the verb gate itself, plus the container edge in the agent flow ([container-contract.md](docs/container-contract.md)).
-- **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-qa.md](docs/agent-qa.md), [agent-lifecycle.md](docs/agent-lifecycle.md), [agent-ops.md](docs/agent-ops.md).
-- **The container** - [container.md](docs/container.md), [container-lifecycle.md](docs/container-lifecycle.md) (land-or-salvage on teardown), [container-substrate.md](docs/container-substrate.md).
-- **Terminology** - [terminology.md](docs/terminology.md) defines Ward's preferred operational terms, known non-equivalences, and analogy bank.
-- **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [golangci.md](docs/golangci.md).
-
-## Status
-
-v0.x, and early on purpose. ward is a single-maintainer tool in active internal use across the coilyco-flight-deck fleet, now opening up - so a small public audience (few stars, few forks) is expected for the stage, not decay. The high release count is the same: releases are automated per-merge by CI on every push to `main`, so the version is a build counter, not a maturity signal. Downstream consumers upgrade to the `ward` binary and `.ward` config on their own schedule. Minor API breaks ship in `main` with a note in the commit body, so pin a commit until v1.0.0.
-
-## Related
-
-- [cli-guard][cli-guard] - the underlying security-boundary framework.
-- [compat-surface.md](docs/compat-surface.md) - the release-facing matrix of shipped providers, operator-local sources, and explicit non-providers.
-
-## Support
-
-Start on GitHub: file bugs and feature requests with a [new issue][new-issue], and use the public mirror as the contributor front door. Ward's canonical development and release automation still run on [Forgejo][ward-forgejo], so maintainers carry accepted GitHub work across when needed. If you are working directly in the canonical repo, use that tracker and `closes #N` links. Conduct: [Code of Conduct](CODE_OF_CONDUCT.md). Security: [SECURITY.md]. License: [`LICENSE`](./LICENSE).
-
-[cli-guard]: https://github.com/coilyco-flight-deck/cli-guard
-[new-issue]: https://github.com/coilyco-flight-deck/ward/issues/new
-[ward-forgejo]: https://forgejo.coilysiren.me/coilyco-flight-deck/ward
+Ward is pre-1.0 and in active use. Minor compatibility changes can land before
+1.0, so downstream automation may pin a release. File public bugs and feature
+requests on the [GitHub mirror](https://github.com/coilyco-flight-deck/ward/issues/new).
+Canonical development and release automation run on
+[Forgejo](https://forgejo.coilysiren.me/coilyco-flight-deck/ward).
 
 ## See also
 
-- [docs/README.md](docs/README.md) - the docs index: every doc grouped by subsystem.
-- [docs/architecture.md](docs/architecture.md) - Ward's native boundary beside cli-guard.
-- [docs/terminology.md](docs/terminology.md) - Ward vocabulary, conceptual model, and analogy bank.
-- [AGENTS.md](AGENTS.md) - agent-facing operating rules.
-- [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
-- [docs/features-release-tooling.md](docs/features-release-tooling.md) - cross-repo tooling and release convention.
-- [docs/compat-surface.md](docs/compat-surface.md) - release-facing provider compatibility matrix.
-- [docs/doctor.md](docs/doctor.md) - runtime config validation.
-- [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
-- [docs/ward-yaml.md](docs/ward-yaml.md) - field-by-field `.ward/ward.yaml` schema reference.
+* [documentation index](docs/README.md) - every durable product contract.
+* [capabilities](docs/FEATURES.md) - major shipped inventory.
+* [agent rules](AGENTS.md) - repository operating doctrine.
+* [repository config](.ward/ward.yaml) - this repo's governed commands.
+* [repository schema](docs/ward-yaml.md) - complete `.ward/ward.yaml` reference.

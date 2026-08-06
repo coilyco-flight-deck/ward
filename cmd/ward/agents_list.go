@@ -11,7 +11,7 @@ import (
 )
 
 // agents_list.go is `ward agents list [--json]`: the stable read surface for
-// Ward's fixed harness adapters. See docs/agents-list.md.
+// Ward's fixed harness adapters. See docs/agent-harnesses.md.
 
 // agentsRosterJSON is the stable JSON shape `ward agents list --json` emits.
 // Keys are always present so a consumer sees one deterministic schema.

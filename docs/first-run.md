@@ -1,56 +1,57 @@
 ---
-doc_goal: Give a short, reliable path from zero to a first dry run without the old harness-slice detours.
+doc_goal: Take a new operator from installation through one non-mutating, verifiable agent launch preview.
 ---
-# first run
+# First run
 
-Start here for a first `warded` run.
+The first run should prove configuration, target resolution, harness
+selection, workflow selection, and container planning without launching work.
 
-## What you need
+## Prerequisites
 
-- Docker initialized and running. Check it with
-  `docker version --format '{{.Server.Version}}'`.
-- A reachable issue tracker for the target repo.
-- The repo's `.ward/ward.yaml` if you are using the dev-verb gate.
+* Install `ward` and confirm `ward --version` works.
+* Start Docker and confirm its server is reachable.
+* Authenticate the selected harness on the host.
+* Choose an open issue in a trusted repository.
 
-If you need a concrete repo target for examples that should actually resolve,
-use `coilysiren/example` or its GitHub URL. It is a public placeholder repo,
-not a deployment prerequisite.
+## Configure and validate
 
-## The safe first command
+1. Run `ward setup`. It creates `~/.ward/config.yaml` only when missing and
+   reports Docker readiness.
+2. Replace any `example-owner/example-repo` director scope in that file.
+3. Run `ward doctor`. Resolve every `FAIL` before continuing.
+4. From the target checkout, run:
 
-```bash
-warded engineer #98 --print
+   ```bash
+   warded engineer owner/repo#123 --print
+   ```
+
+   Replace the example ref with the chosen open issue. A shell-safe
+   `owner/repo#N` ref avoids treating `#N` as a shell comment.
+
+## Verify the preview
+
+The first line confirms exact resolution:
+
+```text
+ward agent: resolved issue ref owner/repo#123 -> owner/repo#123
 ```
 
-`--print` shows the launch without starting the container.
+The rendered plan then includes the title, repository, branch, workflow,
+container name, workspace mounts, correlation fields, image, and would-be
+Docker command. Its heading names the `engineer` role and selected harness.
 
-## What happens next
+`--print` may read local configuration, the issue and its comments, Docker
+state, and launch inputs. It may refresh Ward's disposable local launch-asset
+staging. It does not edit the issue or comments, reserve work, change the
+checkout, create or start a container, start a harness, push a branch, or open
+or merge a pull request. A refusal names the failing trust, target, config,
+auth, or Docker check.
 
-- `ward agent` resolves the role and harness.
-- The launch path posts the reservation and runs preflight.
-- The detached run writes audit and log output.
-
-## A good first pass
-
-1. start with `--print`.
-2. confirm the resolved ref.
-3. confirm the selected workflow.
-4. confirm the chosen harness.
-5. drop `--print` only after the command shape looks right.
-
-If you are starting from a fresh host-local setup, run `ward setup` once to
-create `~/.ward/config.yaml` and get a Docker initialization prompt if the
-daemon is not ready. For the director surface, an attached
-`warded director` with no `--repo` or `--org` prompts once for a repo or org
-default and saves it as `director.default-scope`.
-
-## What not to expect
-
-- this page is not the full launch reference.
-- it is not the container contract.
-- it is not the workflow policy.
+After the preview is correct, run the same command without `--print` to start
+the detached engineer.
 
 ## See also
 
-- [agent.md](agent.md) - the entrypoint.
-- [agent-lifecycle.md](agent-lifecycle.md) - the launch path.
+* [doctor.md](doctor.md) - checks and remedies.
+* [agent-lifecycle.md](agent-lifecycle.md) - full launch sequence.
+* [agent-harnesses.md](agent-harnesses.md) - host authentication sources.

@@ -13,7 +13,7 @@ func manifestWithAuth(auth, endpoint string) agentsapi.Manifest {
 }
 
 // agent_hostoneshot_test.go pins the ward#162 trust gate: ward's unsandboxed HOST
-// one-shot reads are refused to a local-model harness. See docs/agent-preflight-trust.md.
+// one-shot reads are refused to a local-model harness. See docs/agent-lifecycle.md.
 
 // TestHostOneShotTrustGate: cloud harnesses keep the host one-shot; local-model
 // harnesses (ollama/none auth) are barred, argv and all (ward#162).

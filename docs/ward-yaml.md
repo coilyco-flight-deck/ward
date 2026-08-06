@@ -1,49 +1,80 @@
 ---
-doc_goal: Keep the repo config schema readable after the docs collapse so adopters can still author `.ward/ward.yaml` from the public docs alone.
+doc_goal: Let an adopter author the complete supported `.ward/ward.yaml` schema from this page alone.
 ---
 # `.ward/ward.yaml`
 
-This file tells ward which repo verbs are allowed and how the gate behaves.
+Ward uses this file for commands, repository security, catalog metadata, and launch preferences.
 
-## Fields
+## Commands
 
-- `commands` - the allowed repo verbs.
-- `security` - optional policy settings for stricter runs.
-- `agent.workflow` - optional repository workflow override.
-- `agent.image` - optional repository container image override.
-- `agent.release-channel` - optional repository image tag override.
-
-## Typical shape
-
+`commands` maps string verb names to either a command string or an object:
 ```yaml
 commands:
-  build: make build
-  test: make test
-  lint: make lint
+  build: go build ./...
+  test:
+    run: go test ./...
+    description: Run unit tests.
+    allow_metacharacters: false
+    audit:
+      egress: false
+```
+
+`run` and `description` are strings. `run` is required for object form, split into
+argv, and validated. Both booleans default false. `description` defaults empty.
+
+## Security
+
+```yaml
 security:
-  allow:
-    - git status
+  protected_binaries:
+    - name: docker
+      mode: deny-direct
+      allowed_wrappers: [ward]
+      expected_real_paths: [/usr/local/bin/docker]
+      credential_env: [DOCKER_TOKEN]
+  sudo:
+    forbid_passwordless: true
+  hooks:
+    deny_bare_binaries: [docker]
+    route_hints:
+      docker: Use the declared Ward command.
+  forbidden_argv:
+    - description: deny destructive Git
+      matches_glob_any: ["git reset --hard*"]
+      hint: Use a recoverable Git operation.
+```
+
+Names, modes, descriptions, hints, and paths are strings. Plural fields are lists
+of strings, `route_hints` is a string map, and `forbid_passwordless` is boolean.
+An omitted mode defaults to `deny-direct`. Globs match the whole command segment.
+
+## Catalog and agent
+
+```yaml
+catalog:
+  description: Short repository description.
+  dependsOn: [forge.example/owner/repository]
 agent:
   workflow: pull-request
   image: registry.example/ward
   release-channel: release
 ```
 
-The real file can carry more verbs, but the shape stays simple: a command map
-plus optional security and agent launch preferences.
+`catalog.description` and all `agent` values are strings. `dependsOn` is a list of
+repository refs and supplies read-only context repositories. `agent` overrides
+operator defaults. Roles, credentials, permissions, networks, broker grants, and
+merge authority are not repository-configurable. Omitted sections are empty.
+Omitted agent values use operator settings, then compiled defaults shown above.
 
-## Rules
+## Validation
 
-- The file lives at the repo root under `.ward/ward.yaml`.
-- It is the whole contract for `ward exec` adoption.
-- Agent values override operator YAML and are overridden by explicit command
-  inputs.
-- Role profiles and authority settings are not valid repository configuration.
-- It does not configure provider-specific operator tooling.
+YAML type errors, invalid command argv, duplicate protected binaries,
+unsupported modes, invalid globs, and invalid workflows fail loading. Unknown
+fields consumed by neither Ward nor cli-guard have no effect and should be
+removed. Run `ward doctor`, then exercise a verb with `ward exec <verb>`.
 
 ## See also
 
-- [exec-verb.md](exec-verb.md) - how the gate uses the file.
-- [config-discovery.md](config-discovery.md) - how ward finds it.
-- [config-source.md](config-source.md) - runtime preference ownership.
-- [../.ward/README.md](../.ward/README.md) - repository config pointer.
+* [exec-verb.md](exec-verb.md) - execution contract.
+* [config-source.md](config-source.md) - discovery and precedence.
+* [../.ward/README.md](../.ward/README.md) - repository config pointer.

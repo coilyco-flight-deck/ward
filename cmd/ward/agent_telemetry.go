@@ -14,7 +14,7 @@ import (
 )
 
 // telemetryArgCap bounds a redacted arg's length so a pathological command can't
-// blow up an indexed attribute (cardinality/size discipline, log-schema.md).
+// blow up an indexed attribute (cardinality/size discipline, agent-observability.md).
 const telemetryArgCap = 512
 
 // redactionRules is the Warp custom_secret_regex_list ported to RE2 (lookahead-free,

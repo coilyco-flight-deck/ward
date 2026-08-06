@@ -1273,7 +1273,7 @@ func withBrokerForwardingDisabled(req dispatchBrokerRequest, fn func() error) er
 }
 
 // runDispatchBrokerStop resolves the stop target to one running engineer and
-// docker-stops it (ward#627); returns the stopped name (see docs/agent-stop.md).
+// docker-stops it (ward#627); returns the stopped name (see docs/agent-ops.md).
 func (r *Runner) runDispatchBrokerStop(ctx context.Context, req dispatchBrokerRequest) (string, error) {
 	name, err := r.resolveEngineerStopTarget(ctx, strings.TrimSpace(req.Target))
 	if err != nil {

@@ -1,5 +1,5 @@
 ---
-doc_goal: Give a reader the canonical, code-generated tree of every ward agent command and its direct flags, so the visible flag surface stays aligned with the binary without hand maintenance.
+doc_goal: Give a reader the canonical code-generated flags for Ward's selected operational agent command paths, deliberately omitting self-description and fixed PR or issue leaves documented by their parent contracts.
 ---
 # ward agent: the flag tree
 

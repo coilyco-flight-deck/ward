@@ -28,7 +28,7 @@ type repoCatalogEntry struct {
 }
 
 // classifyTaskInvocation decides ROUTE vs DIRECT from the positional + instructions-file
-// (ward#164; inline --instructions retired in ward#362). See docs/agent-engineer.md.
+// (ward#164; inline --instructions retired in ward#362). See docs/agent-roles.md.
 func classifyTaskInvocation(arg, file string) (route bool, repoArg string, err error) {
 	arg = strings.TrimSpace(arg)
 	file = strings.TrimSpace(file)
@@ -74,7 +74,7 @@ func taskRepoRef(arg string) (string, bool) {
 }
 
 // runAgentTaskRoute carries ROUTE mode (ward#164): intake -> survey -> scoped
-// child -> close intake -> carry. --print files nothing. See docs/agent-engineer.md.
+// child -> close intake -> carry. --print files nothing. See docs/agent-roles.md.
 func (r *Runner) runAgentTaskRoute(ctx context.Context, c *cli.Command, mode containerMode, taskText string) error {
 	label := agentCmdline(mode, "engineer")
 	taskText = strings.TrimSpace(taskText)

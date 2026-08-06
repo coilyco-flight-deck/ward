@@ -4,7 +4,7 @@
 // merge). Everything here is deterministic and free of subprocess, network, and
 // filesystem side effects so the gate logic is exhaustively unit-testable; the
 // cmd/ward side (agent_review.go) wires the fleet roster, the reviewer
-// subprocesses, and the persisted sidecar log onto it. See docs/dispatch-review.md.
+// subprocesses, and the persisted sidecar log onto it. See docs/agent-workflow.md.
 package reviewpanel
 
 import (
@@ -28,7 +28,7 @@ const (
 )
 
 // Class is the autonomy/risk class that tiers the quorum threshold (ward#134),
-// designed to later key off the triage filter's per-issue label. docs/dispatch-review.md.
+// designed to later key off the triage filter's per-issue label. docs/agent-workflow.md.
 type Class string
 
 const (

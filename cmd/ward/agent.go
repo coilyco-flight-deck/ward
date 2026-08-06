@@ -154,7 +154,7 @@ func carryIssueBanner(ref agentIssueRef) string {
 }
 
 // cloneAnchorLine tells the in-container agent it is standing IN the fresh clone
-// now - files are its cwd, to read not assume (ward#384; docs/agent-frontload.md).
+// now - files are its cwd, to read not assume (ward#384; docs/agent-lifecycle.md).
 func cloneAnchorLine(ref agentIssueRef) string {
 	return fmt.Sprintf(
 		"You are reading this INSIDE that container, standing in a fresh clone of %s/%s at "+
@@ -468,7 +468,7 @@ func headlessWorkflowFailureCommentClause(ref agentIssueRef, wf workflowMode) st
 }
 
 // reviewGateClause wires the pre-landing adversarial review panel into a headless
-// seed (ward#134): run `ward agent review` before landing. docs/dispatch-review.md.
+// seed (ward#134): run `ward agent review` before landing. docs/agent-workflow.md.
 func reviewGateClause(ref agentIssueRef, wf workflowMode) string {
 	noun := workflowReviewNoun(ref.Forge)
 	landing := "open the " + noun
@@ -807,22 +807,22 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// emits exact canonical content for a trusted collaborator to authorize.
 			agentApprovalPlanCommand(),
 			// reap is a maintenance verb, not a startup role: the host-side
-			// idle-killer for wedged engineer containers (#376). docs/agent-reap.md.
+			// idle-killer for wedged engineer containers (#376). docs/agent-ops.md.
 			agentReapCommand(),
 			// reservations is cache maintenance, not a startup role: it clears the
-			// disposable local reservation directory. docs/agent-reservation-cache.md.
+			// disposable local reservation directory. docs/agent-reservation.md.
 			agentReservationCacheCommand(),
 			// stop is a control verb, not a startup role: a director surface stops
-			// one running engineer through the dispatch broker (ward#627). docs/agent-stop.md.
+			// one running engineer through the dispatch broker (ward#627). docs/agent-ops.md.
 			agentStopCommand(),
 			// list is a read verb, not a startup role: a director surface lists
-			// running engineer containers through the dispatch broker. docs/agent-list.md.
+			// running engineer containers through the dispatch broker. docs/agent-ops.md.
 			agentListCommand(),
 			// logs is a read verb, not a startup role: a director surface reads one
-			// engineer's logs through the dispatch broker. docs/agent-logs.md.
+			// engineer's logs through the dispatch broker. docs/agent-ops.md.
 			agentLogsCommand(),
 			// dispatch exposes the durable broker request lifecycle after the
-			// originating terminal disconnects. docs/agent-dispatch-lifecycle.md.
+			// originating terminal disconnects. docs/agent-dispatch-broker.md.
 			dispatchCommand(),
 			// issue carries brokered issue writes for read-only director surfaces,
 			// and never creates a reservation or dispatches a worker.
@@ -837,7 +837,7 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			// failed engineer container is removed (ward#1515).
 			agentRecoverCommand(),
 			// review is the pre-landing adversarial-review gate, not a startup role
-			// (ward#134): a diff must survive a multi-model panel. docs/dispatch-review.md.
+			// (ward#134): a diff must survive a multi-model panel. docs/agent-workflow.md.
 			agentReviewCommand(),
 		},
 	}
@@ -888,7 +888,7 @@ func agentSurfaceFlags() []cli.Flag {
 		&cli.StringSliceFlag{Name: "repo", Usage: "grant the agent an additional writable repo to clone + operate against (owner/name; repeatable). Cloned as a full feature copy at /workspace/<owner>/<repo> (ward#1526)."},
 		&cli.StringFlag{Name: "details", Usage: "extra operator instructions woven into the seeded prompt + pre-flight read (overrides the issue text on conflict)"},
 		// --review-class tiers the pre-landing review panel and rides in as
-		// WARD_REVIEW_CLASS (ward#134). See docs/dispatch-review.md.
+		// WARD_REVIEW_CLASS (ward#134). See docs/agent-workflow.md.
 		&cli.StringFlag{Name: "review-class", Usage: "autonomy class for the pre-landing review panel: lint-cleanup|default|refactor (default default; ward#134)"},
 		&cli.BoolFlag{Name: "skip-review", Aliases: []string{"no-review-gate"}, Usage: "skip wiring the in-container review gate into the seed (ward#134); the run lands without the panel"},
 		&cli.BoolFlag{Name: "github", Usage: "treat a bare owner/repo#N ref as a GitHub issue (clone/push + comments + PR on GitHub via a user-supplied token; ward#489). A github.com URL infers this automatically."},
@@ -1056,7 +1056,7 @@ func (r *Runner) resolveAgentWork(ctx context.Context, c *cli.Command, mode cont
 		return resolvedWork{}, fmt.Errorf("%s: %w", label, err)
 	}
 	// --github forces a bare owner/repo#N onto the GitHub forge (a github.com URL
-	// already parses there on its own; ward#489). See docs/agent-github.md.
+	// already parses there on its own; ward#489). See docs/compat-surface.md.
 	if c.Bool("github") {
 		ref.Forge = forgeGitHub
 		if !looksLikeExplicitForgejoIssueRef(c.Args().First()) {
@@ -1896,7 +1896,7 @@ func pathUnderSnap(p string) bool {
 }
 
 // snapDockerRemediation names the cause (snap's private /tmp) and the fix (native
-// docker-ce), making the raw exit-125 ENOENT actionable. docs/container-env.md.
+// docker-ce), making the raw exit-125 ENOENT actionable. docs/container-contract.md.
 func snapDockerRemediation(path string) string {
 	return fmt.Sprintf(
 		"ward container: docker on PATH is the snap package (%s), which runs the docker CLI under a "+
@@ -1911,7 +1911,7 @@ func snapDockerRemediation(path string) string {
 }
 
 // dispatchDockerState captures the signals deciding whether an in-container sibling
-// dispatch can reach docker (ward#321); see docs/agent-surface.md.
+// dispatch can reach docker (ward#321); see docs/agent-director.md.
 type dispatchDockerState struct {
 	inContainer  bool
 	dockerOnPath bool
@@ -1949,7 +1949,7 @@ func (s dispatchDockerState) blocked() (bool, string) {
 	default:
 		detail = "no dispatch broker service is attached (WARD_DISPATCH_BROKER_ADDR unset) and the image carries no docker client, so neither dispatch path is available"
 	}
-	return true, fmt.Sprintf("%s - %s. A director surface container dispatches over its supervised broker service. A plain container needs a docker client in the image. See docs/agent-surface.md", base, detail)
+	return true, fmt.Sprintf("%s - %s. A director surface container dispatches over its supervised broker service. A plain container needs a docker client in the image. See docs/agent-director.md", base, detail)
 }
 
 // preflightVerdict is ward's read of the agent's pre-flight self-assessment.
@@ -2964,10 +2964,10 @@ func (r *Runner) ownerAllowed(owner string) bool {
 }
 
 // untrustedOwnerErr is the trust-gate refusal shared by every dispatch surface:
-// it names the accepted set and points at docs/agent-trust-gate.md (ward#484).
+// it names the accepted set and points at docs/agent-lifecycle.md (ward#484).
 func (r *Runner) untrustedOwnerErr(label, owner string) error {
 	return exitcode.New(dispatchUntrustedOwner, "untrusted_owner",
-		fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s). This build dispatches only for its configured trusted owners - see docs/agent-trust-gate.md",
+		fmt.Errorf("%s: refusing untrusted owner %q (allowed: %s). This build dispatches only for its configured trusted owners - see docs/agent-lifecycle.md",
 			label, owner, strings.Join(r.trustedOwners(), ", ")), "")
 }
 

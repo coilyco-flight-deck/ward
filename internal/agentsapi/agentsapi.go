@@ -1,5 +1,5 @@
 // Package agentsapi is ward's agent-agnostic contract (ward#410, Phase 1 of
-// ward#401): types only, no behaviour. See docs/agentsapi.md.
+// ward#401): types only, no behaviour. See docs/agent-harnesses.md.
 package agentsapi
 
 import "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"

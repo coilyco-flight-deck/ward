@@ -15,7 +15,7 @@ import (
 var errNoConfig = errors.New("no .ward/ward.yaml or .coily/coily.yaml reachable from cwd")
 
 // configCandidate names the per-level filenames ward accepts.
-// See docs/config-discovery.md.
+// See docs/config-source.md.
 type configCandidate struct {
 	dir  string
 	file string
@@ -50,7 +50,7 @@ func preParseConfigFlag(args []string) string {
 }
 
 // resolveConfigPath picks the config path by explicit > env > walk-up
-// precedence. See docs/config-discovery.md.
+// precedence. See docs/config-source.md.
 func resolveConfigPath(explicit, env, cwd string) (string, error) {
 	switch {
 	case explicit != "":
@@ -62,7 +62,7 @@ func resolveConfigPath(explicit, env, cwd string) (string, error) {
 	}
 }
 
-// discoverConfig walks up from start to find an allowlist. See docs/config-discovery.md.
+// discoverConfig walks up from start to find an allowlist. See docs/config-source.md.
 func discoverConfig(start string) (string, error) {
 	dir, err := filepath.Abs(start)
 	if err != nil {
@@ -88,7 +88,7 @@ func discoverConfig(start string) (string, error) {
 }
 
 // loadDefault resolves the config path via resolveConfigPath and parses it.
-// See docs/config-discovery.md.
+// See docs/config-source.md.
 func loadDefault() (*repocfg.Config, error) {
 	cwd, err := os.Getwd()
 	if err != nil {

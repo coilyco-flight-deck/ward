@@ -1,80 +1,51 @@
 ---
-doc_goal: Collapse the container API, env, and permission contract into a single durable reference for the ephemeral run box.
+doc_goal: Define the complete host-to-container contract for mounts, environment, credentials, permissions, context, and skill projection.
 ---
-# ward container contract
+# Container contract
 
-The container contract is small.
+## Writable state
 
-- The workspace clone is the run's working tree.
-- The container gets only the mounts and env it needs.
-- The entrypoint controls the runtime path from launch to teardown.
-- Claude in Chrome stays explicitly disabled in the Claude Code container
-  harness baseline.
+The target clone, private harness home, caches, `/scratch`, and run state are
+writable inside the run. Additional writable repositories require an explicit
+workflow grant. A read-only director clone has a disabled push URL and cannot
+land local commits.
 
-## What the contract covers
+## Read-only inputs
 
-- `WARD_*` environment variables.
-- the read-only director's Compose broker address and its credential boundary.
-- bind mounts and read-only surfaces.
-- the optional read-only generic context-bundle handoff.
-- the permission shape the container itself can use.
-- the per-harness context level.
+Ward mounts staged entrypoint and doctrine, shared substrate, optional context
+bundle and `/refs` repositories, and selected host inputs read-only. The
+container never inherits the operator's whole home, host checkout, hooks, or
+harness configuration.
 
-## How to read it
+## Environment and credentials
 
-- `WARD_*` values are launch-time inputs, not repo config.
-- mounts tell you what the container can touch.
-- permissions tell you what the container can do.
-- context level tells you how much doctrine the harness gets.
+`WARD_*` values are launch-time runtime inputs, not repository config. Ward
+uses a short-lived secured env file for credential handoff and does not render
+credentials into Compose YAML, argv, printable environment, or audit rows.
 
-The contract is the boundary between the host and the run. If a value needs to
-change the container's behavior, it belongs here or in the launch docs, not in
-the repo's `.ward/ward.yaml`.
+Engineer and QA receive `WARD_FORGEJO_GIT_TOKEN` as their in-container Git
+credential and use a role-bound broker capability for tracker operations.
+Director receives its harness credential, `WARD_DISPATCH_BROKER_ADDR`, and a
+master capability. The broad forge token exists only in the broker process.
 
-## Host staging
+## Instructions and skills
 
-Per-run assets and the credential-bearing Docker env-file share one
-platform-correct host root. Operator overrides, Windows ACL verification,
-drive-sharing validation, and old profile-root migration are specified in
+Bootstrap creates the selected harness's native instruction file and skill
+root in its private home. Compiled Ward doctrine and any validated context
+bundle are projected there. Host-installed or host-converged skills and hooks
+do not cross the container boundary.
+
+## Permissions
+
+Roles and context cannot change mounts, environment, credentials, network,
+broker grants, or merge authority. Typed launch code fixes those properties.
+Harness-specific settings may change invocation or display behavior only.
+
+Per-run assets and the credential env file share the secured root in
 [container-staging.md](container-staging.md).
-
-## Context bundle
-
-`--context-bundle <path>` adds one explicit, read-only context input. Ward
-validates its strict role-bound manifest and path allowlist before Docker
-starts, mounts it at `/opt/ward-context-bundle`, and exports that fixed path as
-`WARD_CONTEXT_BUNDLE`. Container startup revalidates the bundle and projects
-the selected agent layout into the private agent home before launch.
-
-The manifest carries verified, owner-qualified repository identities. Ward maps
-real host checkouts read-only at `/refs/<owner>/<repository>` and rejects unsafe
-or missing selections before launch. Bundles cannot name paths or request writes.
-
-An optional validated `bin/` is exposed as `WARD_CONTEXT_TOOLS` and appended
-after the image's existing `PATH`. The bundle changes context and tool
-availability only. It grants no authority or runtime capability. See
-[context-bundle.md](context-bundle.md) for the full schema, ownership, and
-failure contract.
-
-## Read-only director credentials
-
-`WARD_READONLY=1` starts the privileged Compose broker and exports
-`WARD_DISPATCH_BROKER_ADDR` plus a per-stack capability to the director.
-`FORGEJO_TOKEN` exists only in the broker service environment. It is absent
-from the director container environment, dropped process, argv, and projected
-home. Ward's native Forgejo client sends only explicitly allowlisted request
-shapes through the broker. See [broker.md](broker.md) for authorization and
-failure behavior.
-
-## What it does not cover
-
-- feature work belongs in the agent docs.
-- host-side launch preferences belong in operator YAML.
-- repo policy belongs in `.ward/ward.yaml`.
 
 ## See also
 
-- [container.md](container.md) - the overview.
-- [container-lifecycle.md](container-lifecycle.md) - launch and teardown.
-- [container-substrate.md](container-substrate.md) - `/substrate` and multi-repo.
-- [context-bundle.md](context-bundle.md) - the optional context and tool handoff.
+* [context-bundle.md](context-bundle.md) - optional context projection.
+* [agent-dispatch-broker.md](agent-dispatch-broker.md) - broker credential boundary.
+* [container-substrate.md](container-substrate.md) - filesystem layout.

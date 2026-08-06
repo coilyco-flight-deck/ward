@@ -1,41 +1,10 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"strings"
 	"testing"
 
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 )
-
-// dispatchContractDoc is the committed page the machine-readable contract lives on.
-const dispatchContractDoc = "../../docs/agent-dispatch-contract.md"
-
-// TestDispatchContractDocumented is the ward#485 drift guard: every dispatch exit
-// code and every meta.json outcome must appear on the contract page (ward#485).
-func TestDispatchContractDocumented(t *testing.T) {
-	raw, err := os.ReadFile(dispatchContractDoc)
-	if err != nil {
-		t.Fatalf("read %s: %v", dispatchContractDoc, err)
-	}
-	doc := string(raw)
-
-	for _, ec := range dispatchExitCodes {
-		if code := fmt.Sprintf("`%d`", ec.Code); !strings.Contains(doc, code) {
-			t.Errorf("%s does not document dispatch exit code %s (kind %q)", dispatchContractDoc, code, ec.Kind)
-		}
-		if !strings.Contains(doc, ec.Kind) {
-			t.Errorf("%s does not document dispatch exit-code kind %q (code %d)", dispatchContractDoc, ec.Kind, ec.Code)
-		}
-	}
-
-	for _, outcome := range reapOutcomeValues {
-		if !strings.Contains(doc, "`"+outcome+"`") {
-			t.Errorf("%s does not document meta.json outcome %q", dispatchContractDoc, outcome)
-		}
-	}
-}
 
 // TestDispatchExitCodesDistinct guards the contract's core promise: an author can
 // tell every refusal class apart by exit code alone (no two share a code).

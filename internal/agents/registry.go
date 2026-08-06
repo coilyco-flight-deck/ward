@@ -3,7 +3,7 @@
 // through, retiring the scattered `switch e.Mode` once call sites cut over
 // (Phase 3). The agents it serves own their concrete install and capability
 // behavior in the harness packages; core wires them at dispatch.
-// See docs/agentsapi.md.
+// See docs/agent-harnesses.md.
 package agents
 
 import (

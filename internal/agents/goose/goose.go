@@ -1,6 +1,7 @@
 // Package goose is the goose harness's agentsapi.Agent (ward#401 Phase 3,
 // following ward#412). It owns goose's inert data record AND its config-compose
-// behaviour (provider/model + host-resolved ollama endpoint). See docs/agentsapi.md.
+// behaviour, including provider, model, and host-resolved endpoint. See
+// docs/agent-harnesses.md.
 package goose
 
 import (

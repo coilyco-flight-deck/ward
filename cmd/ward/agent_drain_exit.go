@@ -10,8 +10,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// agent_drain_exit.go is the ward#510 "shortly after exit" drain point: a detached
-// waiter that drains a run the moment its container exits. See docs/drain-timing.md.
+// agent_drain_exit.go is the detached exit-drain point.
+// It drains on container exit; see docs/agent-observability.md.
 
 // drainWaiterArgv is the argv the detached waiter re-enters ward with. Pure, so a
 // test pins that it routes to the hidden `container drain-exit <name>` leaf.
@@ -19,8 +19,8 @@ func drainWaiterArgv(name string) []string {
 	return []string{"container", "drain-exit", name}
 }
 
-// containerDrainExitCommand wires the hidden `container drain-exit <name>` leaf: the
-// detached waiter that blocks on the exit and drains the run (docs/drain-timing.md).
+// containerDrainExitCommand wires the hidden exit-drain leaf.
+// It blocks then drains; see docs/agent-observability.md.
 func containerDrainExitCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "drain-exit",
@@ -65,8 +65,8 @@ func (r *Runner) drainOnExit(ctx context.Context, name string) {
 	}
 }
 
-// spawnDrainWaiter starts the detached `container drain-exit <name>` grandchild that
-// drains the run the moment it exits - best-effort (ward#510; docs/drain-timing.md).
+// spawnDrainWaiter starts the detached exit-drain grandchild.
+// It is best-effort; see docs/agent-observability.md.
 func (r *Runner) spawnDrainWaiter(name string) {
 	exe, err := os.Executable()
 	if err != nil {

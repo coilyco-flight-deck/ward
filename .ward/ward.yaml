@@ -1,6 +1,5 @@
 # Repository catalog metadata.
-# The security: block below is required per the retired ward doctor surface
-# inventory; ward dogfoods it. Field reference: docs/ward-yaml.md.
+# Ward dogfoods the security contract documented in docs/ward-yaml.md.
 catalog:
   description: "ward - a contributor-facing cli-guard consumer with native agent control-plane commands."
   dependsOn:

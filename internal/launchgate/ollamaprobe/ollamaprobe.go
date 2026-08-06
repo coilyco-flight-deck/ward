@@ -3,7 +3,7 @@
 // backend fails loud before launch instead of hanging the dispatched container.
 // It is the goose/opencode analog of claude's auth smoke test (ward#487, mirroring
 // ward#222): claude probes its credential, the local harnesses probe their model
-// host. See docs/agent-local-harnesses.md.
+// host. See docs/agent-harnesses.md.
 package ollamaprobe
 
 import (

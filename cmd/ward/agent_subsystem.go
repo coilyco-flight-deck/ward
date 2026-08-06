@@ -6,10 +6,10 @@ import (
 )
 
 // agent_subsystem.go is the dispatch-side complement to the front-load doctrine
-// "Front-load the context you know you need" (ward#236); see docs/agent-frontload.md.
+// "Front-load the context you know you need" (ward#236); see docs/agent-lifecycle.md.
 
 // subsystemPointerRepo scopes the ward-specific keyword map to ward's own clone;
-// any other carried repo is a silent no-op (docs/agent-frontload.md).
+// any other carried repo is a silent no-op (docs/agent-lifecycle.md).
 const subsystemPointerRepo = "coilyco-flight-deck/ward"
 
 // subsystemPointer maps a ward subsystem to the keywords that name it in an
@@ -32,7 +32,7 @@ var agentSubsystemPointers = []subsystemPointer{
 	{
 		label:    "ward agent dispatch + headless pre-flight",
 		keywords: []string{"ward agent", "headless", "pre-flight", "preflight", "warded", "agent-dispatch"},
-		paths:    []string{"docs/agent.md", "docs/agent-preflight.md", ".agents/skills/tooling-ward-agent/SKILL.md"},
+		paths:    []string{"docs/agent.md", "docs/agent-lifecycle.md", ".agents/skills/tooling-ward-agent/SKILL.md"},
 	},
 	{
 		label: "placeholder setup + restart loop",

@@ -15,7 +15,7 @@ var rawForgejoTokenReads = []string{
 }
 
 // rawForgejoTokenSites is the audited allowlist of files permitted a raw read.
-// Keep it in lockstep with docs/forgejo-token-audit.md (ward#239).
+// Keep it in lockstep with docs/agent-dispatch-broker.md (ward#239).
 var rawForgejoTokenSites = map[string]string{
 	// Resolver chokepoints - the sanctioned path every forge consumer funnels through.
 	"native_support.go": "forgejoTokenResolver: native broker-first auth provider (director broker, else env)",
@@ -27,7 +27,7 @@ var rawForgejoTokenSites = map[string]string{
 }
 
 // TestNoNewRawForgejoTokenReads fails when a non-test .go file reads the raw
-// Forgejo token and is not audited (ward#239). See docs/forgejo-token-audit.md.
+// Forgejo token and is not audited (ward#239). See docs/agent-dispatch-broker.md.
 func TestNoNewRawForgejoTokenReads(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -56,7 +56,7 @@ func TestNoNewRawForgejoTokenReads(t *testing.T) {
 		if _, ok := rawForgejoTokenSites[name]; !ok {
 			t.Errorf("%s reads the raw Forgejo token but is not an audited site. Route through "+
 				"forgejoTokenResolver / resolveForgejoToken (broker-first), or add it to "+
-				"rawForgejoTokenSites + docs/forgejo-token-audit.md. See ward#239.", name)
+				"rawForgejoTokenSites + docs/agent-dispatch-broker.md. See ward#239.", name)
 		}
 	}
 
@@ -64,7 +64,7 @@ func TestNoNewRawForgejoTokenReads(t *testing.T) {
 	for name := range rawForgejoTokenSites {
 		if !found[name] {
 			t.Errorf("%s is allowlisted but no longer reads the raw token; drop it from "+
-				"rawForgejoTokenSites + docs/forgejo-token-audit.md. See ward#239.", name)
+				"rawForgejoTokenSites + docs/agent-dispatch-broker.md. See ward#239.", name)
 		}
 	}
 }

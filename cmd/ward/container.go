@@ -141,7 +141,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		return upPlan{}, err
 	}
 	// extraRepoGrant reads the --repo grant on the agent surfaces and --with-repo on
-	// director (ward#280, ward#362; docs/container-multi-repo.md).
+	// director (ward#280, ward#362; docs/container-substrate.md).
 	extra, err := parseExtraRepos(extraRepoGrant(c), repo)
 	if err != nil {
 		return upPlan{}, err
@@ -525,7 +525,7 @@ func (r *Runner) liveContainerAssetDirs(ctx context.Context) (map[string]bool, b
 }
 
 // sweepStaleContainers host-side-reclaims exited ward containers' writable layers
-// before a run, keeping the recent containerReapTTL (docs/container-cleanup.md).
+// before a run, keeping the recent containerReapTTL (docs/container-lifecycle.md).
 func (r *Runner) sweepStaleContainers(ctx context.Context) {
 	out, err := r.dockerCapture(ctx, dockerExitedListArgv()...)
 	if err != nil {

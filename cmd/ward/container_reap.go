@@ -20,7 +20,7 @@ import (
 )
 
 // container_reap.go is the side-effecting half of the container reaper: the
-// verb the entrypoint runs on every agent exit. See docs/container-reap.md.
+// verb the entrypoint runs on every agent exit. See docs/container-lifecycle.md.
 
 // reapEnv is the container-supplied context the reaper reads. All of it is set
 // by the entrypoint; FORGEJO_TOKEN is the same push token git already uses.
@@ -32,7 +32,7 @@ type reapEnv struct {
 	Token string
 	Forge forge
 	// Container is WARD_CONTAINER_NAME, the run correlation id stamped on the reap
-	// surface (ward#517). See docs/container-lifecycle-logs.md.
+	// surface (ward#517). See docs/container-lifecycle.md.
 	Container string
 	// UpAt is the container's RFC3339 start stamp (WARD_CONTAINER_UP), diffed
 	// against reap time to report the baked PAT's age on a salvage (ward#103).
@@ -194,7 +194,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	fmt.Fprintln(os.Stderr, "ward container reap: fetch origin done")
 	if !refExists(ctx, r, work) {
 		// Empty repo (no base branch): establish main from a clean run rather than
-		// salvage it just for starting empty (ward#599, docs/container-reap.md).
+		// salvage it just for starting empty (ward#599, docs/container-lifecycle.md).
 		return r.reapEstablishMain(ctx, work, env, statusSnapshot, releaseReservation, commitState)
 	}
 
@@ -212,8 +212,8 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		return nil
 	}
 
-	// Nothing to reap comes FIRST, ahead of every salvage gate: a clean tree with
-	// HEAD already in origin/main is done, not salvage (ward#518, docs/container-reap.md).
+	// Nothing to reap comes first: clean HEAD on origin/main is done, not salvage.
+	// See docs/container-lifecycle.md.
 	residual := revCount(ctx, r, work, "origin/main..HEAD")
 	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
 	cleanTree := strings.TrimSpace(statusSnapshot) == ""
@@ -291,7 +291,7 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 const gitEmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 // reapEstablishMain lands the empty-repo case (origin/main absent): create main
-// from a clean, run-owned commit rather than salvage. See docs/container-reap.md.
+// from a clean, run-owned commit rather than salvage. See docs/container-lifecycle.md.
 func (r *Runner) reapEstablishMain(ctx context.Context, work string, env reapEnv, statusSnapshot string, releaseReservation bool, commitState string) error {
 	// No origin/main to diff against, so the whole HEAD history is residual work.
 	residual := revCount(ctx, r, work, "HEAD")
@@ -812,7 +812,7 @@ func (r *Runner) salvagePullRequestWouldBeEmpty(ctx context.Context, work string
 }
 
 // fileSalvageIssue posts the salvage notice: a carried run comments on its own
-// issue, a freeform run files a standalone one (ward#518, docs/container-reap.md).
+// issue, a freeform run files a standalone one (ward#518, docs/container-lifecycle.md).
 func (r *Runner) fileSalvageIssue(ctx context.Context, env reapEnv, report salvageReport) error {
 	if env.Token == "" {
 		return fmt.Errorf("no FORGEJO_TOKEN to file a salvage issue")

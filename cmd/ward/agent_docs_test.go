@@ -2,19 +2,24 @@ package main
 
 import (
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/coilyco-flight-deck/ward/internal/agents"
 )
 
-// TestAgentDocsCoverRegistry fails when a registered harness has no matching
-// docs/agent-<name>.md page. It mirrors the self-curing roster drift pattern.
-func TestAgentDocsCoverRegistry(t *testing.T) {
+// TestAgentHarnessContractCoversRegistry derives the shipped harness inventory
+// from the registry and keeps the consolidated compatibility contract honest.
+func TestAgentHarnessContractCoversRegistry(t *testing.T) {
+	const path = "../../docs/agent-harnesses.md"
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	doc := strings.ToLower(string(raw))
 	for name := range agents.Registry() {
-		path := filepath.Clean(filepath.Join("..", "..", "docs", "agent-"+name+".md"))
-		if _, err := os.Stat(path); err != nil {
-			t.Errorf("registered agent %q is missing %s", name, path)
+		if !strings.Contains(doc, name) {
+			t.Errorf("registered harness %q is absent from %s", name, path)
 		}
 	}
 }

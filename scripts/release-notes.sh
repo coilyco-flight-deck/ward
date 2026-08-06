@@ -8,7 +8,7 @@
 # into a template that leads with a one-line "does this affect you" verdict,
 # surfaces breaking/behavior changes first, groups features and fixes, and folds
 # routine internal churn (refactors, docs, chores, tests) under a collapsed
-# <details> so it stays present but out of the way. See docs/release-notes.md.
+# <details> so it stays present but out of the way. See docs/release.md.
 #
 # Input: one `%h<TAB>%s` line per commit on stdin (short hash, subject). Produce
 # it with `git log --pretty=format:'%h%x09%s' <range>`. Subjects are single-line,
@@ -45,7 +45,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 # One awk pass categorises each line and renders the template; buckets are
-# newline-joined strings printed by END. See docs/release-notes.md.
+# newline-joined strings printed by END. See docs/release.md.
 awk -v prev_tag="$prev_tag" -v new_tag="$new_tag" \
     -v compare_url="$compare_url" -v breaking_hashes="$breaking_hashes" '
   BEGIN {
@@ -126,7 +126,7 @@ awk -v prev_tag="$prev_tag" -v new_tag="$new_tag" \
     }
 
     # Standing install note: every release attaches Linux-only ward binaries,
-    # unexplained next to the notes until now. See docs/release-notes.md, ward#442.
+    # unexplained next to the notes until now. See docs/release.md, ward#442.
     print "## Install"
     print ""
     print "The attached `ward-linux-{amd64,arm64}` binaries exist for the container agent path - `ward agent` runs ward inside ephemeral Linux containers. Humans install ward on every OS via Homebrew (`brew install coilyco-flight-deck/tap/ward`), which is why there are no darwin assets here."

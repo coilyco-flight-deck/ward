@@ -12,7 +12,7 @@ import (
 )
 
 // agent_gate.go: the interactive pre-launch gate before the seedless TUI (ward#366).
-// See docs/agent-gate.md for the full behavior, affordances, and seams.
+// See docs/agent-lifecycle.md for the full behavior, affordances, and seams.
 
 // gateTerminalAttached is the TTY probe, behind a seam so tests drive the gated
 // path without a real terminal. Production is the real terminalAttached.
@@ -26,7 +26,7 @@ const (
 )
 
 // wardDowngradeGuard refuses a container ward pin older than the dispatching host: it
-// ships an older, buggy reaper (docs/agent-ward-downgrade.md, ward#529). allow opts in.
+// ships an older, buggy reaper (docs/agent-lifecycle.md, ward#529). allow opts in.
 func wardDowngradeGuard(resolved, host string, allow bool) error {
 	if !version.Behind(resolved, host) {
 		return nil // equal, newer, or nothing to compare against - fine.

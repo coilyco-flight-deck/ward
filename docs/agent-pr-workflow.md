@@ -1,54 +1,56 @@
 ---
-doc_goal: Describe the native PR-workflow tools and their fixed workflow gate.
+doc_goal: Define Ward's complete native pull-request status, wait, logs, recovery, actor gate, and mutation contract.
 ---
-# ward agent pr
+# Pull-request operations
 
-`ward agent pr` is native Ward code on the compiled Forgejo client. It does not
-load a role profile or external policy bundle.
+`ward agent pr` uses Ward's compiled forge client. Read-only director calls
+forward through the supervised broker. Host and worker calls run in process
+with their own allowed credential surface.
 
-## The verbs
+## Verbs
 
-- `ward agent pr status <owner/repo#N> [--json]` - per-PR structured CI status with combined status, required status, latest runs, and log hooks.
-- `ward agent pr wait <owner/repo#N> [--timeout D] [--interval D] [--head SHA] [--json]` - poll the same status object until the required status turns green.
-- `ward agent pr logs <owner/repo#N> [--context NAME]` - follow the status object's executable log hook for the chosen context or the first failing one; unavailable placeholder hooks stay blocked instead of 404ing.
-- `ward agent pr close <owner/repo#N> --reason TEXT [--supersedes REF]` - close one PR with explicit intent, head-pinned and postcondition checked.
-- `ward agent pr reopen <owner/repo#N>` - reopen one closed-unmerged PR with the same head-pinned postcondition check.
-- `ward agent pr recover <owner/repo#N>` - diagnose a closed-unmerged PR and report the head SHA, linked issue, and next safe action.
-- `ward agent pr merge <owner/repo#N> [--style STYLE]` - merge one PR with permission gate, live required-status gate, head pinning, style resolution, repo-default delete-branch propagation, and merged-state check.
-- `ward agent pr runs [owner/repo] [--limit N]` - Actions runs with per-run conclusions.
-- `ward agent pr rerun <owner/repo> <run-id>` - rerun one Actions run. The pinned Forgejo API has no rerun operation yet, so this degrades loudly with the manual retrigger fallback.
+* `status <owner/repo#N> [--json]` returns PR, head, required and combined CI,
+  contexts, current-head runs, log hooks, repair class, and next action.
+* `wait <owner/repo#N> [--timeout D] [--interval D] [--head SHA] [--json]`
+  exits 0 on green, 1 on terminal red or head mismatch, 124 on timeout, and 2
+  on usage or auth failure.
+* `logs <owner/repo#N> [--context NAME]` follows the selected status object's
+  executable log hook. Unavailable placeholder hooks remain blocked.
+* `recover <owner/repo#N>` diagnoses a closed-unmerged PR and names its head,
+  linked issue, and next safe action.
+* `close ... --reason TEXT [--supersedes REF]` and `reopen ...` are head-pinned
+  and require postcondition checks.
+* `merge ... [--style STYLE]` enforces workflow, permission, live required
+  status, head pin, merge style, branch deletion, and `merged: true`.
+* `runs [owner/repo]` reads current runs. `rerun <owner/repo> <run-id>` fails
+  loudly with a manual fallback where the forge API lacks rerun support.
 
-## The workflow gate
+## Workflow and revision gates
 
-Status, logs, runs, recovery, and rerun are fixed operations. Close, reopen,
-and merge require the PR's `pull-request-and-merge` workflow marker. The acting
-role string is opaque metadata and cannot grant or attenuate an operation.
+Status, logs, runs, recovery, and rerun are fixed reads or actions. Close,
+reopen, and merge require `pull-request-and-merge` machine state. The director
+merge composite additionally requires thread workflow state, reviewed-and-ready
+authorization, current CI, and an exact-revision QA verdict when configured.
 
-A PR names its mode with the `ward.workflow:` marker stamped into a
-`pull-request-and-merge` PR body. `ward agent pr recover` treats
-`state: closed`, `merged: false` as recovery and points to the next safe action.
+A closed-unmerged PR is failure, not landing. Recovery may reopen it, re-read
+the live gates, retry once, and again require `merged: true`. Head drift blocks
+the retry.
 
-See [agent-human-feedback.md](agent-human-feedback.md).
+## Human feedback and actor authority
 
-## Where it runs
+Machine state is admitted by authenticated author and fixed record kind, not
+marker-shaped prose. Deployment configures exact trusted collaborators and one
+automation actor. Their identities must be present and disjoint. Only the
+automation actor can mint Ward machine records. A trusted collaborator's prose
+is human input even when it resembles a marker.
 
-- On a read-only director surface, each verb forwards through the supervised
-  dispatch broker, and broker Ward re-checks the workflow gate before touching
-  the forge.
-- Everywhere else (host, engineer container), the verb runs in-process against the Forgejo API.
-
-The status, wait, and log follow-up object is documented in
-[agent-pr-status-object.md](agent-pr-status-object.md).
-
-The `ward agent director merge` composite keeps its stricter thread-driven
-policy (`WARD-WORKFLOW:`, review, QA verdict). `ward agent pr merge` is the
-operator-driven single-PR tool under the same status and workflow gates.
-
-The recovery and execution-placement details live in [agent-pr-workflow-recovery.md](agent-pr-workflow-recovery.md).
+External issue or PR text enters model prompts only after a trusted
+collaborator approves an exact snapshot and the director broker seals it with
+`ward agent issue approve`. Any edit, missing selected comment, actor-policy
+change, or later unacknowledged input invalidates the snapshot.
 
 ## See also
 
-- [agent-director.md](agent-director.md) - the read-only director lane.
-- [agent-dispatch-broker.md](agent-dispatch-broker.md) - the broker channel.
-- [agent-workflow.md](agent-workflow.md) - the workflow-mode model.
-- [agent-roles.md](agent-roles.md) - role semantics.
+* [agent-workflow.md](agent-workflow.md) - landing modes and review.
+* [agent-dispatch-broker.md](agent-dispatch-broker.md) - credential and actor checks.
+* [agent-roles.md](agent-roles.md) - QA revision contract.

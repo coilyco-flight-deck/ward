@@ -1,77 +1,52 @@
 ---
-doc_goal: Define Ward's provider-neutral, authority-free context-bundle contract for ephemeral agent containers.
+doc_goal: Define the complete provider-neutral, authority-free context bundle schema, projection, repository references, tools, and ownership boundary.
 ---
-# context-bundle handoff
+# Context bundle
 
-Ward can launch an agent surface with one materialized generic context bundle:
-
-```bash
-warded engineer owner/repo#123 --context-bundle /path/to/bundle
-```
-
-The same contract supplies role context to a repository-free peer:
-
-```bash
-ward agent run --cluster codex-ab45 --harness codex --role critic --context-bundle /path/to/bundle "Review it."
-```
-
-The bundle is a directory with this shape:
+`--context-bundle <directory>` adds one materialized read-only input to a
+repository-backed role or repository-free peer.
 
 ```text
 context-bundle.json
-home/<selected instruction and skill root>
+home/<selected instruction file and skill root>
 bin/<optional executable tools>
 ```
 
-The strict manifest binds the context to the selected Ward role and agent:
+The strict `ward.context-bundle.v1` manifest binds `role`, `agent`, and a
+sorted, deduplicated, nonempty list of safe `owner/repository` identities.
+Unknown fields and requests for permissions, credentials, network, source
+paths, or capabilities are rejected.
 
-```json
-{
-  "format": "ward.context-bundle.v1",
-  "role": "engineer",
-  "agent": "codex",
-  "repositories": ["example/reference-one", "example/reference-two"]
-}
-```
+## Home projection
 
-Ward rejects unknown fields. A bundle cannot declare permissions, credentials,
-network, source paths, or capabilities. `repositories` is required, nonempty,
-strictly sorted, deduplicated, and limited to safe `owner/repository` identities.
-See [repository references](context-bundle-repositories.md). Ward owns authority.
+Each harness accepts only its instruction load point and skill root. Ward
+rejects other paths, symlinks, special files, nested tools, and non-executable
+tools. Bootstrap revalidates the read-only mount before copying allowed files
+into the private agent home, then appends Ward's authority document outside
+the immutable bundle.
 
-## Accepted home projection
+An optional `bin/` becomes `WARD_CONTEXT_TOOLS` after the image's existing
+`PATH`, so it cannot shadow image or harness binaries.
 
-Ward accepts only the selected agent's instruction file and skill root:
+## Repository references
 
-* `claude` - `.claude/CLAUDE.md` and `.claude/skills/`
-* `codex` - `.codex/AGENTS.md` and `.agents/skills/`
-* `goose` - `.config/goose/.goosehints` and `.agents/skills/`
-* `opencode` - `.config/opencode/AGENTS.md` and `.agents/skills/`
+For repository-backed launches, `$PROJECTS_ROOT` or the current checkout
+selects the projects root. Each manifest identity must resolve to a real
+directory at its exact owner-qualified path without symlinks or escape.
+Validated checkouts mount read-only at `/refs/<owner>/<repository>`.
 
-Every bundle must provide the selected instruction file. Ward rejects other
-paths, symlinks, special files, nested tools, and non-executable tools. Bootstrap
-revalidates the read-only mount before copying accepted files to the agent home.
+Repository-free peers retain bundle metadata but do not derive repository
+mounts. Their scratch and private runtime homes are writable. Their bundle and
+substrate remain read-only.
 
-Ward keeps its authority document outside the immutable bundle. After bundle
-projection, Ward appends it to the selected instruction load point. The agent
-sees both selected context and the enforced authority boundary.
+## Ownership
 
-For a repository-free peer, repository targeting stays absent. Bundle and
-substrate are read-only. Scratch, private homes, and runtime state are writable.
+The producer owns context selection and materialization. Ward owns validation,
+mapping, private-home projection, failure policy, credentials, permissions,
+network, filesystem authority, and teardown. A director bundle belongs only
+to that director and is not forwarded into nested engineers.
 
-If `bin/` contains tools, Ward exposes the read-only directory after the image's
-existing `PATH`. A bundled tool cannot shadow an image or harness binary.
+## See also
 
-On `warded director`, the bundle belongs to the director's own surface and is
-not forwarded to engineers. Role-specific child bundles need their own host
-launches. Ward refuses a bundle-backed nested dispatch because Docker cannot
-preserve the parent container's host source as a read-only bind.
-
-## Ownership boundary
-
-* A producer owns context selection, skill generation, and materialization.
-* Ward owns manifest validation, exact read-only mapping, private home projection,
-  failure policy, credentials, permissions, network, filesystem authority, and teardown.
-* Ward does not invoke or import a context producer.
-* The bundle grants no command, credential, network, permission, or writable
-  filesystem capability.
+* [container-contract.md](container-contract.md) - mount and authority boundary.
+* [agent-peer-collaboration.md](agent-peer-collaboration.md) - repository-free peers.

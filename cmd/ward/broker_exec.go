@@ -15,11 +15,11 @@ import (
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/credseed"
 )
 
-// broker_exec.go is the privileged half of ward's root credential broker: the
-// injected broker.Executor + broker.Authorizer (ward#329). See docs/broker.md.
+// broker_exec.go is the privileged root-broker executor and authorizer.
+// See docs/agent-dispatch-broker.md.
 
 // wardKdlWriteExecutor is the broker.Executor: it mutates Forgejo through ward's
-// typed core adapter, holding the bot token in memory (docs/broker.md).
+// typed core adapter, holding the bot token in memory (docs/agent-dispatch-broker.md).
 type wardKdlWriteExecutor struct {
 	// token is retained for test fixtures and one-shot direct construction. The
 	// production daemon always installs credential instead.

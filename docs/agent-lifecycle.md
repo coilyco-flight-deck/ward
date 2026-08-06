@@ -1,80 +1,59 @@
 ---
-doc_goal: Compress the launch path into one release-era guide so a reader can tell what has to be true before a run starts and what is recorded when it does.
+doc_goal: Define the source-aligned agent path from target resolution through launch checks, container visibility, workflow evidence, and teardown.
 ---
-# ward agent lifecycle
+# Agent lifecycle
 
-The repository workflow launch path is short and explicit. Vocabulary lives in
-[terminology.md](terminology.md).
+1. Resolve an issue, pull request, repository scope, or freeform task.
+2. Resolve role, harness, workflow, context bundle, image, and version.
+3. Validate config, target authority, role/harness compatibility, and trust.
+4. Re-read reservation, branch continuation, pull-request backpressure, and
+   capacity because these can drift while dispatch waits.
+5. Run harness install and host preflight, then launch-adjacent image, network,
+   auth, and smoke checks.
+6. Persist the reservation and launch intent, create the ephemeral container,
+   and start the harness.
+7. Record logs, candidate evidence, workflow outcome, reservation release, and
+   secret-safe teardown artifacts.
 
-1. Resolve the issue or ref.
-2. Run the harness install step and verify the selected binary is available.
-3. Run the preflight that matches the role and harness.
-4. Post or refresh the reservation comment.
-5. Launch the ephemeral container.
-6. Hand off to the selected workflow.
+Broker request parsing and transport checks happen before forwarding. The
+preflight owns trust, issue-facing refusal, and host checks. Driftable
+reservation, branch, PR-pressure, and capacity gates are checked at broker
+admission and again immediately before launch.
 
-A repository-free peer validates its cluster and role-bound bundle, confirms
-the broker, then launches with read-only inputs and writable runtime paths. It
-performs no repo inference, clone, allowlisting, reservation, workflow, or
-Forgejo projection. `--repo owner/name` selects the workflow above.
+## Bypasses and preview
 
-## What the launch path enforces
+* `--print` renders the resolved launch and starts nothing.
+* `--skip-smoke-test` skips only the in-container harness smoke test.
+  `WARD_SMOKE_TEST_SKIP=1` is its direct-launch environment alias.
+* `--skip-preflight` also bypasses host preflight, reservation recheck wait,
+  launch-adjacent probes, and review gate. It does not create authority.
+* `--override-reservation` and `--override-capacity` are separate explicit
+  recoveries. Never use either to collide with visible live work.
 
-- The target must be trusted for the selected forge policy.
-- A reserved issue stays reserved until the run finishes or times out.
-- The repo must still have room under the three-engineer working cap, which
-  composes with the open-PR backpressure gate. Harness-native goals can dispatch
-  across repositories while those launch-time limits remain authoritative.
-- A missing harness binary or failed install aborts before the run starts.
-- The run writes one auditable trail, not a silent shell session.
-- `--print` shows the launch without starting it.
+## Refusal outcomes
 
-## Check placement
+Ward keeps launch failure, untrusted owner, reservation conflict, no-go,
+wrong repository, closed issue, and mode ceiling distinct in errors, exit
+codes, dispatch artifacts, and tracker records.
 
-See [agent-check-placement.md](agent-check-placement.md) for the current broker-time vs pre-flight matrix.
+## Split repositories and credentials
 
-- The driftable guards - reservation conflict, open-PR pressure, branch-state / continuation shape, and capacity - are re-read at launch time so queued work does not start against stale state.
-- The broker handles request-shape and transport gating before the launch is forwarded.
-- The pre-flight owns the issue-facing refusal path, the trust gate, and the host-side probes that can still fail after the queue wait.
+Tracker, checkout, and landing providers may differ. Ward resolves each typed
+adapter independently. Host credentials are resolved before launch. Engineer
+and QA receive only the Git credential channel plus role-bound broker access.
+Director receives its selected harness channel and master broker capability,
+but no transferable forge credential.
 
-## Credentials and context
+## Completion
 
-Host-side credentials are resolved before the container starts. Engineer and
-QA runs receive the existing Git and harness channels. A Compose director gets
-only its selected harness channel and broker capability. Its sibling broker
-alone receives the Forgejo credential. A repository-free collaboration peer
-receives its harness channel and broker capability, with no Git or Forgejo
-credential. Each run inherits its selected context level and mount set.
-
-## Split-stack repositories
-
-Tracker, checkout, and landing are separate. See [agent-split-stack.md](agent-split-stack.md).
-
-## Common launch checks
-
-- issue ownership matches the configured trust list.
-- the repo is the expected repo.
-- the harness install hook completed successfully and left the binary on PATH.
-- the selected harness can reach its credential source or endpoint.
-- the reservation comment still belongs to this run.
-
-If any of those checks fail, the launch should stop before the container does
-real work.
-
-## What gets recorded
-
-- the resolved ref.
-- the role and harness.
-- the selected workflow.
-- the container identity.
-- the final outcome.
-
-Troubleshooting and the issue thread use that record to explain a run.
+A process exit is not completion. The selected workflow decides whether main,
+a pull request, or a remote branch is required. Teardown preserves unlanded
+committed Git history before cleanup and never reopens work already proven on
+the landing target.
 
 ## See also
 
-- [first-run.md](first-run.md) - the first dry run.
-- [agent-harnesses.md](agent-harnesses.md) - harness differences.
-- [agent-roles.md](agent-roles.md) - which role does what.
-- [agent-workflow.md](agent-workflow.md) - how the run lands.
-- [terminology.md](terminology.md) - lifecycle vocabulary and conceptual model.
+* [agent-reservation.md](agent-reservation.md) - reservation authority.
+* [agent-dispatch-broker.md](agent-dispatch-broker.md) - broker milestones.
+* [agent-workflow.md](agent-workflow.md) - landing evidence.
+* [container-lifecycle.md](container-lifecycle.md) - drain and recovery.

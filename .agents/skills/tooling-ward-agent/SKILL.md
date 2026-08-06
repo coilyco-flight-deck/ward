@@ -1,61 +1,54 @@
 ---
 name: tooling-ward-agent
-description: Normalize a dictated ward agent phrase to owner/repo#N and dispatch the detached engineer. Triggers - ward agent, dispatch, fire an agent, spawn an agent, fan out.
+description: Normalize one dictated Ward issue reference and dispatch its detached engineer through the current governed agent surface.
 ---
 
-# tooling-ward-agent
+# Dispatch one Ward engineer
 
-`ward agent <role> <ref>` is a privileged op: it spins an ephemeral container that fresh-clones the repo and carries the repo's authoritative issue thread to merge under `bypassPermissions`. Mis-parsing a dictated ref silently sends an agent at the wrong issue. This skill normalizes a dictated reference into a canonical `owner/repo#N` and dispatches the engineer (successor to `ward dispatch`/`ward drive`; ward#174, ward#282; roster rename ward#347). Canonical in `coilyco-flight-deck/ward` (ward#286).
+Use this skill when Kai asks to dispatch, spawn, fire, or fan out one already
+filed issue. It resolves one exact issue and launches one detached engineer. It
+does not slice work, author issue bodies, run an autonomous queue, or open an
+interactive engineer.
 
-Terminology: [`../../../docs/terminology.md`](../../../docs/terminology.md).
+## Resolve the reference
 
-## Assumptions
+Accept an explicit `owner/repo#N`, issue URL, or a bare `#N` inside the target
+checkout. For dictated aliases, apply only the collision rules in
+[`references/normalization.md`](references/normalization.md). If they do not
+produce one exact repository, ask for `owner/repo` rather than guessing or
+querying an external inventory.
 
-Fan-out happens *before* this skill (`writing-to-issues`/`tooling-sidequest` sliced the work and filed the issues). This skill takes one dictated reference to one already-open issue, resolves it, dispatches the engineer, hands off - it does not slice work or create issues.
+Read the issue title and state through Ward's director queue or the current
+harness's tracker read surface. Refuse a closed issue, unresolved repository,
+untrusted owner, or failed lookup. A unique explicit match needs no second
+confirmation when Kai already asked to dispatch it.
 
-## When to fire
+## Dispatch
 
-Any user phrase containing "dispatch", "agent", or "spawn" plus a numeric tail. Also "fan out" and "run claude on" paired with an issue. **Interactive-intent phrasing** ("open one for me", "let me iterate on this", "HITL this") no longer maps to engineer - it is detached-only (ward#356); route that to the `director`, out of this skill's scope.
-
-Do NOT fire when the user already typed a clean `owner/repo#N` or an issue URL - pass straight through to `ward agent`. A bare `#N` from inside a repo checkout also passes straight through: `ward agent` infers `owner/repo` from the cwd's git origin (ward#282).
-
-## Step 1: resolve the repository identity
-
-Use an explicit `owner/repo`, an issue URL, or the current checkout's origin. A
-bare `#N` inside the target checkout needs no rewriting because `ward agent`
-resolves the origin itself. For dictated aliases, use only the collision table
-in [`references/normalization.md`](references/normalization.md). If that table
-does not produce one exact repository, ask for `owner/repo` instead of querying
-an external inventory or guessing.
-
-## Step 2: resolve the ref
-
-Lowercase the repo tokens and strip filler, hyphens, and spaces before applying
-the exact collision table. The owner comes from the matched entry, never from a
-fixed default. The full filler list and voice-collision table live in
-[`references/normalization.md`](references/normalization.md).
-
-## Step 3: confirm, or refuse and explain
-
-Confirm one line with the issue title from Ward's read-only director queue
-(`ward agent director queue --repo <owner/repo> --json`) or the current
-harness's tracker read surface for a non-Forgejo ref:
-
-> Resolved: `coilyco-flight-deck/ward#125` - "<title>". Send an agent?
-
-Skip confirmation only on a unique, unambiguous match. Refuse, naming the
-failing condition, if the issue is closed, the owner is outside the configured
-trust set, the repository did not resolve, or the lookup errors.
-
-## Step 4: dispatch the engineer
-
-`ward agent <role> <ref>` takes a role (`engineer`|`director`|`qa`; ward#347, ward#353) and `--harness` picks the harness (default claude; `--agent` is an equal spelling, ward#660). This skill dispatches **`engineer`**, which is **detached / autonomous only** (ward#356): a bare ref runs it fire-and-forget; the PR is the review gate. No attach surface - hands-on work is the `director`, not this skill. Heuristics + examples: [`references/surfaces.md`](references/surfaces.md).
+Run the detached engineer:
 
 ```bash
-ward agent engineer coilyco-flight-deck/<repo>#<N>           # detached, fire-and-forget
+ward agent engineer owner/repo#123
 ```
 
-## Out of scope
+`--harness claude|codex|goose|opencode` selects a typed harness when Kai names
+one. A bare ref without the role word selects the same engineer behavior.
+Return after Ward accepts or refuses the launch. The returning command is not
+proof the run finished. Use `ward agent dispatch status`, `ward agent list`,
+and `ward agent logs` for later observation.
 
-* Container model, clone, seeding, reservation, reaper, audit (owned by `ward agent`).
-* Authoring the issue body (Kai's job); slicing work into issues (`writing-to-issues`, `tooling-sidequest`).
+Interactive supervision is the attached read-only director:
+
+```bash
+ward agent director --repo owner/repo
+```
+
+The director reads live state and exposes governed primitives. It does not run
+an autonomous polling or prioritization loop.
+
+## Boundaries
+
+Ward owns trust, reservation, capacity, preflight, credentials, clone,
+container, workflow, audit, and teardown. Do not bypass those checks in this
+skill. Use [`tooling-warded-execution-model`](../tooling-warded-execution-model/SKILL.md)
+for lifecycle or ownership questions.

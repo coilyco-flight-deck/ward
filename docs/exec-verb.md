@@ -14,7 +14,8 @@ doc_goal: Give the dev-verb gate a compact release-era reference so contributors
 - a Forgejo Actions pull-request merge checkout is admitted when it is clean
   and its environment, event payload, origin, workspace, HEAD, and two merge
   parents agree. It may be detached or temporarily named by CI.
-- unknown verbs fall back to `ward exec` routing.
+- a declared command typed as `ward <verb>` falls back to `ward exec <verb>`
+  only when `<verb>` is not a registered top-level command.
 
 The Forgejo Actions path requires `FORGEJO_ACTIONS`, `GITHUB_ACTIONS`, and `CI` to be
 true. Ward matches the repository and server to `origin`, verifies
@@ -63,4 +64,4 @@ The command you type is not a free shell. It is a checked, logged repo verb.
 
 - [ward-yaml.md](ward-yaml.md) - the repo config schema.
 - [audit.md](audit.md) - the audit log format.
-- [verb-fallback.md](verb-fallback.md) - the fallback rule.
+- [git-verbs.md](git-verbs.md) - governed Git operations.

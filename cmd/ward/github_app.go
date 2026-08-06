@@ -20,7 +20,7 @@ import (
 )
 
 // github_app.go mints a short-lived, repo-scoped GitHub App installation token for the
-// WARD_GITHUB_TOKEN_SOURCE=app dispatch arm (ward#534). See docs/github-token.md.
+// WARD_GITHUB_TOKEN_SOURCE=app dispatch arm (ward#534). See docs/compat-surface.md.
 
 const (
 	// envGitHubAppID names the numeric App ID (the JWT `iss`), operator-supplied.
@@ -42,7 +42,7 @@ func (r *Runner) resolveGitHubTokenFromApp(ctx context.Context, owner, repo stri
 		return "", fmt.Errorf(
 			"ward: WARD_GITHUB_TOKEN_SOURCE=app needs %s (the App ID) and %s (the App private key PEM) - "+
 				"set both from operator config, or switch to WARD_GITHUB_TOKEN_SOURCE=env or gh. "+
-				"app mode is gated on a registered GitHub App (ward#534). See docs/github-token.md",
+				"app mode is gated on a registered GitHub App (ward#534). See docs/compat-surface.md",
 			envGitHubAppID, envGitHubAppPrivateKey)
 	}
 	if owner == "" || repo == "" {

@@ -1,71 +1,45 @@
 ---
 name: tooling-warded-execution-model
-description: The warded-agent execution model - container lifecycle, roles, /workspace vs /substrate, and whether a fleet/hook/doctrine fix belongs in ward's container assets or a host ansible role.
+description: Route Ward execution-model questions and changes to the owning human contract, agent procedure, repository, and container or host layer.
 ---
 
-# tooling-warded-execution-model
+# Ward execution model
 
-`ward agent` (public face `warded`) runs a **container-exclusive** fleet: every
-agent run is a throwaway box, not a converged-host process. Assuming host
-ansible owns fleet config or hooks is **wrong inside ward** and routes fixes to
-the wrong repo. Dispatch is the sibling
-[`tooling-ward-agent`](../tooling-ward-agent/SKILL.md); this skill is the model
-under that verb, written from ward's `docs/` and `cmd/ward/`.
+Use this skill when a request depends on where Ward behavior lives, what a
+container can access, how a run reaches durable completion, or whether a
+config, hook, doctrine, recovery, or rollout belongs in Ward or host
+automation. Use `tooling-ward-agent` instead when the task is only to dispatch
+one existing issue.
 
-Terminology: [`../../../docs/terminology.md`](../../../docs/terminology.md).
+## Human dispatcher contract
 
-## When to fire
+Route a human to one current supported contract, not to silent implementation
+states or historical issue pages.
 
-- You are about to file or land **fleet-shaped work** - a config, a rollout, a hook, a
-  permission policy, agent doctrine - and need to decide *which repo owns it*.
-- You are reasoning about what a warded agent **may and may not do** (push, dispatch) or
-  **why** a run salvaged, parked, or read as blocked.
-- Anyone asks how the container lifecycle, `/workspace` vs `/substrate`, or the director's
-  surface session work (detail in
-  [`references/lifecycle-and-roles.md`](references/lifecycle-and-roles.md)).
+* Product and authority boundary - [`architecture.md`](../../../docs/architecture.md).
+* Roles, harnesses, and launch - [`agent.md`](../../../docs/agent.md) and
+  [`agent-lifecycle.md`](../../../docs/agent-lifecycle.md).
+* Run observation and recovery - [`agent-ops.md`](../../../docs/agent-ops.md)
+  and [`troubleshooting.md`](../../../docs/troubleshooting.md).
+* Host/container access - [`container-contract.md`](../../../docs/container-contract.md)
+  and [`container-substrate.md`](../../../docs/container-substrate.md).
+* Config ownership - [`config-source.md`](../../../docs/config-source.md).
 
-Do **not** fire to *dispatch* an agent - that is `tooling-ward-agent`. This skill informs
-the where/why; it resolves no refs.
+If a human cannot configure, observe, depend on, maintain, or use a detail for
+recovery, do not invent a human-facing contract for it. Keep immediate command
+shape in help/errors and silent mechanics in code, comments, and tests.
 
-## Host-ansible surface vs ward-container surface (the decision)
+## Agent operating procedure
 
-This is the miss the skill exists to fix. Fleet config has **two** homes, and the wrong
-default is to assume the first:
+Follow [`references/operating-procedure.md`](references/operating-procedure.md)
+before filing or changing execution-shaped work. It is the one procedure for
+layer ownership, documentation placement, source grounding, and validation.
 
-- **Host ansible** (the **infrastructure** repo) converges the *operator's own* laptop or
-  server harness - `~/.claude/CLAUDE.md`, host hooks, host permissions - via roles like
-  `agent-compose` and `claude-hooks`. It persists on a long-lived host.
-- **ward** composes everything an **agent inside a container** reads, fresh on every
-  bring-up; nothing the host converges reaches it. The staged entrypoint and
-  doctrine are declared in `cmd/ward/container_payloads.go`;
-  `cmd/ward/container_bootstrap.go` owns typed settings and context
-  composition, and
-  `cmd/ward/agent_director_surface.go` (`WARD_READONLY`).
+## Fixed facts
 
-The container **does not inherit the host's converged hooks or settings**: Ward writes the
-agent's `~/.claude/settings.json` from typed Go policy and composes its context from
-compiled payloads each bring-up. So a fix to *how a warded agent behaves* - its
-permissions, its Stop/hook behavior, its doctrine - lands in **Ward's payload or
-bootstrap code**, not a host ansible role. The
-concrete miss: a "stop asking permission" fix was first filed against the `claude-hooks`
-ansible role, when the real surface was ward's container bootstrap (infrastructure#408 →
-ward#354). Full surface map: [`references/host-vs-container.md`](references/host-vs-container.md).
-
-### The rule, plainly
-
-> **Before filing host-shaped work** (config, rollout, fleet convergence, hooks, doctrine),
-> determine whether the **warded-container path is the actual home first**. For a
-> container-exclusive fleet it usually is. Ask: *does this change what an agent reads or is
-> allowed to do **inside a ward container**?* If yes → the payload or composing Go in
-> `cmd/ward/`, in **ward**. If it only changes the **operator's host harness** → the
-> infrastructure ansible role. Infrastructure is downstream of ward, so a ward-concept fix
-> homed there inverts the dependency.
-
-## Out of scope / see also
-
-- Lifecycle, the three roles, `/workspace` vs `/substrate`, the director's surface -
-  [`references/lifecycle-and-roles.md`](references/lifecycle-and-roles.md).
-- Resolving a dictated ref and firing a run -
-  [`tooling-ward-agent`](../tooling-ward-agent/SKILL.md).
-- Pre-flight, reservation, credentials seeding - ward's `docs/agent-preflight.md`,
-  `docs/agent-reservation.md`, `docs/agent-credentials.md`.
+* Every agent run uses an ephemeral container. The host checkout is not its workspace.
+* The target workspace is writable. Substrate, context bundles, and repository references are read-only unless explicitly granted.
+* Roles and context grant no authority.
+* Issue threads and remote Git or PR evidence outlive disposable containers.
+* Ward owns container behavior. Host convergence owns only the operator's
+  long-lived harness outside Ward.
