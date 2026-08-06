@@ -1,64 +1,61 @@
-# ward features
+# Ward capabilities
 
-Inventory of what `ward` ships today.
+Inventory of the major capabilities Ward ships today.
 
-## Core gate
+## Governed repository commands and audit
 
-- `ward exec` - gated repo verbs, including validated Forgejo CI pull-request merge checkouts.
-- `ward audit` - append-only trail.
-- `ward git` - audited git.
-- `ward setup` - local bootstrap + policy check.
-- `ward doctor` - config validation.
-- `source-doc-refs` - source-comment doc-path validation.
-- [`.ward/ward.yaml` schema](ward-yaml.md) and [Windows tests](windows-development.md).
+* `ward exec` runs repository-declared commands through validation and records
+  every invocation. `ward git` applies the same governed boundary to version
+  control operations. See [repository commands](exec-verb.md),
+  [configuration](ward-yaml.md), and [audit](audit.md).
 
-## Agent surface
+## Isolated least-access agent execution
 
-- **`ward agent`** - the guarded execution layer.
-- **`warded`** - the symlinked public face.
-- Typed harness adapters and fixed workflows. Role metadata grants no authority.
-- `ward agent director queue` / `status` - read-only live queue view with a stable versioned JSON schema.
-- Read-only Forgejo issue-comment guard.
-- Reservation and dispatch comment cleanup.
-- Harness install hooks for claude, codex, goose, and opencode.
-- Authority-free context bundles and read-only `/refs` mounts. See [context-bundle.md](context-bundle.md).
-- Native tracker and forge adapters.
-- Launch-intent vs running-engineer split in list, dispatch-health, reap, and director.
-- Issue-thread-backed reservations with disposable cache and `ward agent reservations clear`.
-- Open-PR backpressure gate.
-- Issue-scoped director snapshot and attached read-only surface. Harness-native goals own repetition and dispatch judgment.
-- Compose broker with durable cluster/request IDs, restart recovery, sibling
-  launch, lifecycle status, and Forgejo RPC. See [agent-dispatch-lifecycle.md](agent-dispatch-lifecycle.md).
-- Broker-only clusters with scoped lifecycle verbs. See [agent-clusters.md](agent-clusters.md).
-- Generic peers with broker IDs, messages, roster labels, and context plans. See
-  [agent-peer-collaboration.md](agent-peer-collaboration.md).
-- PR-workflow tools with fixed workflow gates. See [agent-pr-workflow.md](agent-pr-workflow.md).
-- PR close/reopen/recovery and repair classification.
-- Secret-safe agent archives with exact-value and RE2 redaction. See [agent-observability.md](agent-observability.md).
-- Director reads one live startup snapshot and persists no orchestration ledger.
-- `ward agent issue create` files through the director broker without dispatch.
-- Actor admission seals exact external snapshots. Agent tracker writes use
-  role-bound typed broker actions and Git-only credentials. See [agent-human-feedback.md](agent-human-feedback.md).
-- Dispatch-health, PR repair input, and logs artifact selector.
+* Each run receives an ephemeral workspace, a private harness home, only its
+  required credentials and mounts, and teardown tied to the launch contract.
+  See [container overview](container.md) and
+  [container contract](container-contract.md).
 
-## Container surface
+## Role selection and fixed landing workflows
 
-- The ephemeral run box. See [container.md](container.md),
-  [container-contract.md](container-contract.md), and [container-lifecycle.md](container-lifecycle.md).
-- Claude in Chrome browser computer-use is disabled for Claude Code containers.
-- Optional bundles stay authority-free. Ward retains credentials and launch authority.
+* Fixed roles select execution behavior without granting authority. Fixed
+  workflows determine whether work lands directly, through a review-gated
+  change request, or on a remote branch. See [roles](agent-roles.md) and
+  [landing workflows](agent-workflow.md).
 
-## Release and docs
+## Durable dispatch, capacity, reservation, and restart recovery
 
-- Two-stage gated promotion and release. See [release.md](release.md).
-- [compat-surface.md](compat-surface.md) - the release-facing provider matrix.
-- [release.md](release.md) and [release-binaries.md](release-binaries.md).
-- [homebrew-build.md](homebrew-build.md), [golangci.md](golangci.md), and
-  [troubleshooting.md](troubleshooting.md).
+* Issue-backed reservations, launch capacity, backpressure, durable request
+  identities, and restart reconciliation keep detached dispatch observable and
+  recoverable. See [agent lifecycle](agent-lifecycle.md) and
+  [dispatch lifecycle](agent-dispatch-lifecycle.md).
+
+## Read-only supervision, lifecycle status, logs, and cleanup
+
+* Read-only supervision exposes queue and run status, secret-safe logs, and
+  scoped stop and cleanup operations without granting repository mutation.
+  See [agent operations](agent-ops.md), [director](agent-director.md), and
+  [observability](agent-observability.md).
+
+## Revision-bound independent verification
+
+* Independent verification inspects an exact candidate revision and records a
+  structured verdict. A later landing gate accepts the verdict only while it
+  still matches the current candidate. See [QA verification](agent-qa.md) and
+  [landing workflows](agent-workflow.md).
+
+## Authority-free context handoff and brokered collaboration
+
+* Validated context bundles carry selected instructions and tools without
+  credentials or permissions. Brokered peers add authenticated messaging and
+  durable identities without making role names authoritative. See
+  [context bundles](context-bundle.md) and
+  [brokered collaboration](agent-peer-collaboration.md).
 
 ## See also
 
-- [../README.md](../README.md) - front page
-- [../AGENTS.md](../AGENTS.md) - operating rules.
-- [features-release-tooling.md](features-release-tooling.md) - release tooling.
-- [../.ward/ward.yaml](../.ward/ward.yaml) - repo allowlist.
+* [README](../README.md) - product and adopter boundary.
+* [AGENTS](../AGENTS.md) - repository operating rules.
+* [repository configuration](../.ward/ward.yaml) - governed command allowlist.
+* [catalog convention](features-release-tooling.md) - required catalog links.
+* [compatibility matrix](compat-surface.md) - provider support and limitations.
