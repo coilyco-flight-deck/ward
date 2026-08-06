@@ -43,6 +43,7 @@ const (
 	agentLogArtifactMeta       agentLogArtifact = "meta"
 	agentLogArtifactFriction   agentLogArtifact = "friction"
 	agentLogArtifactDispatch   agentLogArtifact = "dispatch"
+	agentLogArtifactRelease    agentLogArtifact = "release"
 )
 
 type agentLogsResolveOptions struct {
@@ -61,8 +62,10 @@ func parseAgentLogArtifact(s string) (agentLogArtifact, error) {
 		return agentLogArtifactFriction, nil
 	case agentLogArtifactDispatch:
 		return agentLogArtifactDispatch, nil
+	case agentLogArtifactRelease:
+		return agentLogArtifactRelease, nil
 	default:
-		return "", fmt.Errorf("unknown --artifact %q (allowed: console, transcript, meta, friction, dispatch)", s)
+		return "", fmt.Errorf("unknown --artifact %q (allowed: console, transcript, meta, friction, dispatch, release)", s)
 	}
 }
 
@@ -190,8 +193,8 @@ director surface is attached, or host-side otherwise. It resolves the target the
 way ` + "`ward agent stop`" + ` does: issue ref or container name. When a live engineer
 container is running it prefers ` + "`docker logs`" + `, and when an exited container has a
 completed archive it prefers the drained secret-safe host archive at ~/.ward/agent-logs-redacted/<container>/.
-Use --artifact to read console, transcript, meta, friction, or the secret-safe dispatch
-wrapper. With no target, it discovers the current Ward director Compose
+Use --artifact to read console, transcript, meta, friction, the secret-safe dispatch
+wrapper, or a typed release sidecar. With no target, it discovers the current Ward director Compose
 project and prints the last 100 lines for every container in that group. The chosen
 source is printed before the body streams.
 
@@ -200,13 +203,14 @@ source is printed before the body streams.
   ward agent logs coilyco-flight-deck/ward#692 --artifact meta
   ward agent logs coilyco-flight-deck/ward#692 --artifact friction
   ward agent logs coilyco-flight-deck/ward#692 --artifact dispatch
+  ward agent logs <dispatch-request-id> --artifact release
   ward agent logs engineer-goose-ward-692
   ward agent logs coilyco-flight-deck/ward#692 --tail 200
   ward agent logs coilyco-flight-deck/ward#692 --follow`,
 		Flags: []cli.Flag{
 			&cli.IntFlag{Name: "tail", Usage: "show the last N lines when reading logs (0 means all lines)"},
 			&cli.BoolFlag{Name: "follow", Usage: "follow live docker logs instead of taking a snapshot"},
-			&cli.StringFlag{Name: "artifact", Usage: "artifact to read: console, transcript, meta, friction, dispatch", Value: string(agentLogArtifactConsole)},
+			&cli.StringFlag{Name: "artifact", Usage: "artifact to read: console, transcript, meta, friction, dispatch, release", Value: string(agentLogArtifactConsole)},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			r := newRunner()
@@ -353,8 +357,22 @@ func resolveAgentLogsSourceForRequestID(target string, tail int, follow bool, op
 	if err != nil {
 		return agentLogSource{}, true, err
 	}
+	if opts.artifact() == agentLogArtifactRelease {
+		dir, pathErr := validatedDispatchLifecycleArtifactDir(journal.Paths.Dir)
+		if pathErr != nil {
+			return agentLogSource{}, true, pathErr
+		}
+		path := filepath.Join(dir, releaseArtifactFile)
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				return agentLogSource{}, true, fmt.Errorf("dispatch request %s has no release artifact", target)
+			}
+			return agentLogSource{}, true, err
+		}
+		return agentLogSource{Kind: agentLogSourceFile, Label: "release artifact path", Path: path, Tail: tail, Follow: follow}, true, nil
+	}
 	if opts.artifact() != agentLogArtifactConsole && opts.artifact() != agentLogArtifactDispatch {
-		return agentLogSource{}, true, fmt.Errorf("request ids support console or dispatch artifacts")
+		return agentLogSource{}, true, fmt.Errorf("request ids support console, dispatch, or release artifacts")
 	}
 	return agentLogSource{Kind: agentLogSourceFile, Path: journal.Paths.ConsolePath, Tail: tail, Follow: follow}, true, nil
 }
@@ -373,6 +391,8 @@ func (r *Runner) resolveAgentLogsSourceForIssue(ctx context.Context, ref agentIs
 		return r.frictionReportSourceForIssue(ref)
 	case agentLogArtifactDispatch:
 		return dispatchArtifactSourceForRef(ref, tail, follow)
+	case agentLogArtifactRelease:
+		return releaseArtifactSourceForRef(ref, tail, follow)
 	default:
 		return agentLogSource{}, fmt.Errorf("unknown artifact %q", opts.artifact())
 	}
@@ -459,6 +479,8 @@ func (r *Runner) resolveAgentNamedArtifactSource(name string, tail int, follow b
 		return r.frictionReportSourceForName(name)
 	case agentLogArtifactDispatch:
 		return r.resolveDispatchArtifactSourceForName(name, tail, follow)
+	case agentLogArtifactRelease:
+		return releaseArtifactSourceForName(name, tail, follow)
 	default:
 		return agentLogSource{}, fmt.Errorf("unknown artifact %q", opts.artifact())
 	}
@@ -722,7 +744,7 @@ func archivedAgentArtifactFile(artifact agentLogArtifact) (canonicalName, legacy
 		return drainTranscriptFile, drainTranscriptRedactedFile, "transcript path", nil
 	case agentLogArtifactMeta:
 		return drainMetaFile, drainMetaFile, "meta path", nil
-	case agentLogArtifactFriction, agentLogArtifactDispatch:
+	case agentLogArtifactFriction, agentLogArtifactDispatch, agentLogArtifactRelease:
 		return "", "", "", fmt.Errorf("artifact %q is not a drained file artifact", artifact)
 	default:
 		return "", "", "", fmt.Errorf("artifact %q is not a drained file artifact", artifact)

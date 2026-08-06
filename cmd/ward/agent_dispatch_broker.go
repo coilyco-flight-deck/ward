@@ -184,6 +184,11 @@ const (
 	// dispatchActionMessageReceive returns messages addressed to the authenticated
 	// caller, or broadcast to every agent in the broker group.
 	dispatchActionMessageReceive = "message-receive"
+	// Release actions carry the typed Director-to-Ops handoff and terminal result.
+	dispatchActionReleaseCandidate = "release-candidate"
+	dispatchActionReleaseRetry     = "release-retry"
+	dispatchActionReleaseResult    = "release-result"
+	dispatchActionReleaseReceive   = "release-receive"
 )
 
 const staleLaunchCleanupResultPrefix = "stale-launch-cleared:"
@@ -263,6 +268,9 @@ type dispatchBrokerRequest struct {
 	Message      string `json:"message,omitempty"`
 	Conversation string `json:"conversation,omitempty"`
 	After        string `json:"after,omitempty"`
+	// Release carries only provider-neutral release contract fields. The broker
+	// stamps caller identity, role, cluster, and dispatch provenance.
+	Release *releaseBrokerPayload `json:"release,omitempty"`
 	// JournalPath, ResumeContainer, and Recovery are broker-local recovery state.
 	// They never cross the protocol or enter the token-stripped request journal.
 	JournalPath       string `json:"-"`
@@ -298,8 +306,9 @@ type dispatchBrokerResponse struct {
 	Body        []byte `json:"body,omitempty"`
 	ContentType string `json:"content_type,omitempty"`
 	// ErrorKind distinguishes broker authentication, network, and policy errors.
-	ErrorKind string                  `json:"error_kind,omitempty"`
-	Messages  []dispatchBrokerMessage `json:"messages,omitempty"`
+	ErrorKind      string                  `json:"error_kind,omitempty"`
+	Messages       []dispatchBrokerMessage `json:"messages,omitempty"`
+	ReleaseRecords []releaseArtifactRecord `json:"release_records,omitempty"`
 }
 
 // dispatchStdioMu serializes the process-global os.Stdout/os.Stderr swap that keeps
@@ -428,6 +437,10 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		r.runDispatchBrokerMessageReceive(conn, req)
 		return
 	}
+	if releaseDispatchAction(req.Action) {
+		r.runDispatchBrokerRelease(conn, req)
+		return
+	}
 	if dispatchAction(req.Action) == dispatchActionForgejo {
 		if masterCaller {
 			// The master capability inherits authority from the service environment.
@@ -481,7 +494,9 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 
 func dispatchBrokerChildActionAllowed(req dispatchBrokerRequest) bool {
 	switch dispatchAction(req.Action) {
-	case dispatchActionMessageSend, dispatchActionMessageReceive:
+	case dispatchActionMessageSend, dispatchActionMessageReceive,
+		dispatchActionReleaseCandidate, dispatchActionReleaseRetry,
+		dispatchActionReleaseResult, dispatchActionReleaseReceive:
 		return true
 	case dispatchActionForgejo:
 		return req.Forgejo != nil && (req.Forgejo.Method == http.MethodGet || req.Forgejo.Method == http.MethodHead)
@@ -1572,7 +1587,7 @@ func redirectStdioToLog(logf io.Writer) func() {
 	}
 }
 
-func validateDispatchBrokerRequest(req dispatchBrokerRequest) error {
+func validateDispatchBrokerRequest(req dispatchBrokerRequest) error { //nolint:cyclop // central typed broker routing deliberately enumerates every action
 	switch dispatchAction(req.Action) {
 	case dispatchActionPing:
 		return nil
@@ -1592,10 +1607,23 @@ func validateDispatchBrokerRequest(req dispatchBrokerRequest) error {
 		return validateDispatchBrokerMessageSend(req)
 	case dispatchActionMessageReceive:
 		return validateDispatchBrokerMessageReceive(req)
+	case dispatchActionReleaseCandidate, dispatchActionReleaseRetry,
+		dispatchActionReleaseResult, dispatchActionReleaseReceive:
+		return validateDispatchBrokerRelease(req)
 	case dispatchActionPlan, dispatchActionLaunch:
 		return validateDispatchBrokerLaunchAction(req)
 	default:
 		return fmt.Errorf("dispatch broker: action %q refused", req.Action)
+	}
+}
+
+func releaseDispatchAction(action string) bool {
+	switch dispatchAction(action) {
+	case dispatchActionReleaseCandidate, dispatchActionReleaseRetry,
+		dispatchActionReleaseResult, dispatchActionReleaseReceive:
+		return true
+	default:
+		return false
 	}
 }
 

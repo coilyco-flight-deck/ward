@@ -20,7 +20,8 @@ remain visible but do not count as running capacity.
 `ward agent logs <target>` prefers live container output, then the drained
 secret-safe archive. A target may be a run/container, issue ref, peer id, or
 dispatch request. `--artifact` selects `console`, `transcript`, `meta`,
-`friction`, or `dispatch`. Ward never falls back to a retired raw archive.
+`friction`, `dispatch`, or the typed `release` sidecar. Ward never falls back
+to a retired raw archive.
 
 ## Stop and reap
 
@@ -46,4 +47,5 @@ surfaces forward supported operations through the supervised broker.
 * [agent-dispatch-health.md](agent-dispatch-health.md) - health summary.
 * [agent-reservation.md](agent-reservation.md) - stale launch recovery.
 * [agent-observability.md](agent-observability.md) - artifact schemas.
+* [agent-release.md](agent-release.md) - Director-to-Ops release contract.
 * [troubleshooting.md](troubleshooting.md) - symptom-to-remedy map.

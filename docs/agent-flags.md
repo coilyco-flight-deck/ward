@@ -53,6 +53,21 @@ doc_goal: Give a reader the canonical code-generated flags for Ward's selected o
 ## `ward agent message receive`
 
 - --after, --conversation, --json
+## `ward agent release`
+
+- No direct flags.
+## `ward agent release candidate`
+
+- --to, --file
+## `ward agent release retry`
+
+- --candidate, --starting-deploy-commit
+## `ward agent release result`
+
+- --file
+## `ward agent release receive`
+
+- --after
 ## `ward agent approval-plan`
 
 - --pr, --comment-id

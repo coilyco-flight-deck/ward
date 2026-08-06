@@ -797,6 +797,7 @@ trusted owner.`, agentHarnessChoices(), defaultAgentMode()),
 			agentRunCommand(),
 			agentClusterCommand(),
 			agentMessageCommand(),
+			agentReleaseCommand(),
 			// roster is a self-describe verb, not a startup role: it prints the
 			// flat list of the roles above (ward#348). See docs/agent-roster.md.
 			agentRosterCommand(),

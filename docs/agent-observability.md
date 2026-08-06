@@ -14,6 +14,13 @@ Each completed drain writes one secret-safe directory under
 Broker wrapper artifacts live under the `dispatch/` subtree and follow the
 same redaction path. Ward has no raw-artifact fallback.
 
+An Ops peer that receives a typed release candidate gains a `release.jsonl`
+sidecar in its dispatch artifact directory. The sidecar retains candidate,
+attempt, terminal result, reason code, Ward correlation, and evidence digest
+records. It excludes input files, commands, paths, URLs, environment values,
+credentials, and raw operational output. See
+[agent-release.md](agent-release.md).
+
 ## Redaction and envelopes
 
 Before persistence or rendering, Ward applies built-in credential patterns,
@@ -48,4 +55,5 @@ renders. It does not retroactively migrate or sanitize retired raw archives at
 ## See also
 
 * [agent-ops.md](agent-ops.md) - artifact selectors.
+* [agent-release.md](agent-release.md) - typed release artifact contract.
 * [troubleshooting.md](troubleshooting.md) - evidence and remedies.

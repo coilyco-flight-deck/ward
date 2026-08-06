@@ -55,6 +55,10 @@ reservation, workflow, review, dispatch, or QA operations. QA can mint only QA
 records. Approval requires the director's master capability and a trusted
 human's exact intent snapshot.
 
+The provider-neutral [release contract](agent-release.md) stamps Director and
+Ops identities and records immutable candidates, outcomes, and evidence
+digests. It grants no operation authority.
+
 ## Supervision and teardown
 
 Docker supervises the broker with `restart: unless-stopped`. Closing an
