@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -106,6 +107,26 @@ var dispatchBrokerLaunch = func(ctx context.Context, req dispatchBrokerRequest) 
 	}
 }
 
+// dispatchBrokerPlan resolves validated --print requests synchronously and
+// captures host-side command output without entering launch admission.
+var dispatchBrokerPlan = func(ctx context.Context, req dispatchBrokerRequest) ([]byte, error) {
+	var cmd *cli.Command
+	switch req.Role {
+	case roleEngineer:
+		cmd = agentEngineerCommand()
+	case roleQA:
+		cmd = agentQACommand()
+	default:
+		cmd = agentRunCommand()
+	}
+	var out bytes.Buffer
+	cmd.Writer = &out
+	if err := cmd.Run(ctx, req.Argv); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
 // dispatchBrokerVisibilityTimeout bounds the post-launch wait for a forwarded
 // engineer run to show up in the director-facing list.
 var dispatchBrokerVisibilityTimeout = 10 * time.Second
@@ -118,6 +139,9 @@ const (
 	// dispatchActionLaunch is the default action: launch a sibling engineer/QA
 	// run. An empty Action normalizes to it, keeping older launch requests byte-compatible.
 	dispatchActionLaunch = "launch"
+	// dispatchActionPlan resolves --print synchronously without entering launch
+	// admission, minting a request id, or creating durable dispatch state.
+	dispatchActionPlan = "plan"
 	// dispatchActionStop stops one engineer or clears one confirmed stale issue-ref
 	// launch record. The action accepts no launch argv (ward#627, ward#1502).
 	dispatchActionStop = "stop"
@@ -376,6 +400,10 @@ func (r *Runner) handleHostDispatchBrokerConn(ctx context.Context, conn net.Conn
 		writeDispatchBrokerAuthFailure(conn)
 		return
 	}
+	if dispatchAction(req.Action) == dispatchActionPlan {
+		r.runDispatchBrokerPlan(ctx, conn, req)
+		return
+	}
 	if dispatchAction(req.Action) == dispatchActionPing {
 		writeDispatchBrokerResponse(conn, nil)
 		return
@@ -459,10 +487,38 @@ func dispatchBrokerChildActionAllowed(req dispatchBrokerRequest) bool {
 		return req.Forgejo != nil && (req.Forgejo.Method == http.MethodGet || req.Forgejo.Method == http.MethodHead)
 	case dispatchActionTrackerMutation:
 		return true
-	case dispatchActionLaunch:
+	case dispatchActionLaunch, dispatchActionPlan:
 		return req.Role != roleEngineer && req.Role != roleQA && len(req.Argv) > 0 && req.Argv[0] == "run"
 	default:
 		return false
+	}
+}
+
+func (r *Runner) runDispatchBrokerPlan(ctx context.Context, conn net.Conn, req dispatchBrokerRequest) {
+	if err := validateDispatchBrokerRequest(req); err != nil {
+		writeDispatchBrokerPlanResponse(conn, nil, err)
+		return
+	}
+	var body []byte
+	err := withBrokerForwardingDisabled(req, func() error {
+		var err error
+		body, err = dispatchBrokerPlan(ctx, req)
+		return err
+	})
+	writeDispatchBrokerPlanResponse(conn, body, err)
+}
+
+func writeDispatchBrokerPlanResponse(conn net.Conn, body []byte, err error) {
+	resp := dispatchBrokerResponse{
+		OK:          err == nil,
+		Body:        body,
+		ContentType: "text/plain; charset=utf-8",
+	}
+	if err != nil {
+		resp.Error = err.Error()
+	}
+	if data, marshalErr := json.Marshal(resp); marshalErr == nil {
+		_, _ = conn.Write(data)
 	}
 }
 
@@ -1248,7 +1304,7 @@ func withBrokerForwardingDisabled(req dispatchBrokerRequest, fn func() error) er
 			saved[key] = savedEnv{value: v, set: true}
 		}
 	}
-	for _, key := range cleared {
+	for _, key := range append(append([]string{}, cleared...), requestKeys...) {
 		_ = os.Unsetenv(key)
 	}
 	if req.RequestID != "" {
@@ -1536,11 +1592,59 @@ func validateDispatchBrokerRequest(req dispatchBrokerRequest) error {
 		return validateDispatchBrokerMessageSend(req)
 	case dispatchActionMessageReceive:
 		return validateDispatchBrokerMessageReceive(req)
-	case dispatchActionLaunch:
-		return validateDispatchBrokerLaunch(req)
+	case dispatchActionPlan, dispatchActionLaunch:
+		return validateDispatchBrokerLaunchAction(req)
 	default:
 		return fmt.Errorf("dispatch broker: action %q refused", req.Action)
 	}
+}
+
+func validateDispatchBrokerLaunchAction(req dispatchBrokerRequest) error {
+	if dispatchAction(req.Action) == dispatchActionPlan {
+		return validateDispatchBrokerPlan(req)
+	}
+	return validateDispatchBrokerLaunch(req)
+}
+
+func validateDispatchBrokerPlan(req dispatchBrokerRequest) error {
+	if strings.TrimSpace(req.RequestID) != "" {
+		return fmt.Errorf("dispatch broker: plan takes no launch request id")
+	}
+	if err := validateDispatchBrokerLaunchShape(req); err != nil {
+		return err
+	}
+	if !dispatchBrokerArgvHasPrintFlag(req) {
+		return fmt.Errorf("dispatch broker: plan requires --print")
+	}
+	return nil
+}
+
+func dispatchBrokerArgvHasPrintFlag(req dispatchBrokerRequest) bool {
+	valueFlags := map[string]bool{
+		"--role": true, "--agent-id": true, "--cluster": true, "--repo": true,
+		"--harness": true, "--agent": true, "--config": true, "--image": true,
+		"--tag": true, "--ward-version": true, "--context-bundle": true,
+		"--workflow": true, "--details": true, "--branch": true,
+		"--family": true, "--thoroughness": true, "--depth": true,
+	}
+	start := 1
+	if req.Role == roleEngineer || req.Role == roleQA {
+		start = 2
+	}
+	for i := start; i < len(req.Argv); i++ {
+		arg := req.Argv[i]
+		if !strings.HasPrefix(arg, "-") {
+			return false
+		}
+		if valueFlags[arg] {
+			i++
+			continue
+		}
+		if arg == "--print" {
+			return true
+		}
+	}
+	return false
 }
 
 // dispatchStopTargetRe bounds a stop's container-name target to docker's own
@@ -1632,7 +1736,17 @@ func validateDispatchBrokerList(req dispatchBrokerRequest) error {
 
 // validateDispatchBrokerLaunch is the launch-request shape (the original narrow API):
 // an engineer/QA role, an argv led by that role, and an issue ref (ward#378).
-func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error { //nolint:gocyclo,cyclop
+func validateDispatchBrokerLaunch(req dispatchBrokerRequest) error {
+	if err := validateDispatchBrokerLaunchShape(req); err != nil {
+		return err
+	}
+	if dispatchBrokerArgvHasPrintFlag(req) {
+		return fmt.Errorf("dispatch broker: launch refuses --print; use the synchronous plan action")
+	}
+	return nil
+}
+
+func validateDispatchBrokerLaunchShape(req dispatchBrokerRequest) error { //nolint:gocyclo,cyclop
 	if req.Target != "" {
 		return fmt.Errorf("dispatch broker: launch takes no stop target, got %q", req.Target)
 	}
@@ -1865,12 +1979,23 @@ func (r *Runner) maybeForwardAgentDispatchToHostBroker(ctx context.Context, c *c
 		return false, nil
 	}
 	req := dispatchBrokerRequest{
-		RequestID: newDispatchBrokerRequestID(),
 		Role:      role,
 		Argv:      argv,
 		Requester: strings.TrimSpace(os.Getenv("WARD_CONTAINER_NAME")),
 		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
+	if c.Bool("print") {
+		req.Action = dispatchActionPlan
+		body, err := sendDispatchBrokerPlanRequest(ctx, addr, req)
+		if err != nil {
+			return true, err
+		}
+		if _, err := agentCommandWriter(c).Write(body); err != nil {
+			return true, fmt.Errorf("dispatch broker: write plan response: %w", err)
+		}
+		return true, nil
+	}
+	req.RequestID = newDispatchBrokerRequestID()
 	logPath, err := sendDispatchBrokerLaunchRequest(ctx, addr, req)
 	if err != nil {
 		if logPath != "" {
@@ -2144,13 +2269,21 @@ func sendDispatchBrokerLaunchRequest(ctx context.Context, addr string, req dispa
 	return resp.LogPath, err
 }
 
+func sendDispatchBrokerPlanRequest(ctx context.Context, addr string, req dispatchBrokerRequest) ([]byte, error) {
+	resp, _, err := sendDispatchBrokerRequestAttempt(ctx, addr, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Body, nil
+}
+
 func sendDispatchBrokerLaunchAdmission(ctx context.Context, addr string, req dispatchBrokerRequest) (dispatchBrokerResponse, error) {
 	if strings.TrimSpace(req.RequestID) == "" {
 		req.RequestID = newDispatchBrokerRequestID()
 	}
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
-		resp, retry, err := sendDispatchBrokerLaunchAttempt(ctx, addr, req)
+		resp, retry, err := sendDispatchBrokerRequestAttempt(ctx, addr, req)
 		if err == nil || !retry || ctx.Err() != nil {
 			return resp, err
 		}
@@ -2159,7 +2292,7 @@ func sendDispatchBrokerLaunchAdmission(ctx context.Context, addr string, req dis
 	return dispatchBrokerResponse{}, lastErr
 }
 
-func sendDispatchBrokerLaunchAttempt(ctx context.Context, addr string, req dispatchBrokerRequest) (dispatchBrokerResponse, bool, error) {
+func sendDispatchBrokerRequestAttempt(ctx context.Context, addr string, req dispatchBrokerRequest) (dispatchBrokerResponse, bool, error) {
 	conn, err := dialDispatchBroker(ctx, addr)
 	if err != nil {
 		return dispatchBrokerResponse{}, false, dispatchBrokerDialDiagnostic(addr, err)

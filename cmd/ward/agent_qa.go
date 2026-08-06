@@ -366,6 +366,7 @@ func printAgentQAPlan(c *cli.Command, mode containerMode, ref agentIssueRef, tit
 	}
 	plan = qaResearchPlan(plan, ref)
 	var b strings.Builder
+	writePlanOnlyBanner(&b)
 	fmt.Fprintf(&b, "# %s (print)\n", agentCmdline(mode, "qa"))
 	fmt.Fprintf(&b, "qa: agent runs a read-only, captured inspection in a fresh ephemeral container\n")
 	fmt.Fprintf(&b, "repo:   %s\n", ref.repoSlug())

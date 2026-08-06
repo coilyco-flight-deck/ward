@@ -30,7 +30,9 @@ ward agent run --cluster codex-ab45 --harness codex --role critic \
 
 A bare issue ref selects engineer. Freeform engineer text files an issue before
 launch. Engineer and QA are detached. Director is an attached read-only
-surface. `--print` renders the resolved plan and launches nothing.
+surface. Engineer `--print` renders the resolved plan and launches nothing.
+Brokered preview returns that host plan synchronously without creating a
+durable dispatch request.
 
 ## Contracts
 

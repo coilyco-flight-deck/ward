@@ -22,7 +22,10 @@ admission and again immediately before launch.
 
 ## Bypasses and preview
 
-* `--print` renders the resolved launch and starts nothing.
+* Engineer `--print` renders the resolved host plan and starts nothing. Local
+  and brokered previews skip launch admission, staging, reservation,
+  backpressure, capacity, Docker-readiness, preflight, and recovery. Brokered
+  preview is a synchronous plan request with no durable dispatch state.
 * `--skip-smoke-test` skips only the in-container harness smoke test.
   `WARD_SMOKE_TEST_SKIP=1` is its direct-launch environment alias.
 * `--skip-preflight` also bypasses host preflight, reservation recheck wait,

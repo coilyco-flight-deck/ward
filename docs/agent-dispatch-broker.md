@@ -7,13 +7,28 @@ A collaboration cluster starts one independently supervised Compose broker.
 Its `<harness>-<ab12>` cluster id is the Compose project, lifecycle key, and
 `ward.cluster` label. Repository metadata never identifies a cluster.
 
+## Plan-only requests
+
+`warded engineer <ref> --print` crosses the read-only director boundary as a
+synchronous `plan` request. The host resolves the same issue, configuration,
+harness, workflow, image, version, mounts, and command as a local preview, then
+returns that rendered plan directly to the requesting terminal. The output
+starts with `PLAN ONLY - no launch was accepted`.
+
+A plan request has no request id and never enters launch admission. It creates
+no request journal, dispatch artifact, peer admission, reservation, launch
+assets, issue comment, container, or harness process. It also skips launch-only
+backpressure, capacity, Docker-readiness, preflight, and recovery checks. Plan
+errors return synchronously. A launch action carrying `--print` is rejected so
+the preview cannot silently fall back into durable dispatch.
+
 ## Durable dispatch
 
-The caller mints a request id before the first dial. The broker validates the
-role, action, argv, capability, version, transport, and cluster, then persists
-a token-stripped request journal and artifact under `~/.ward`. Retrying the
-same id and launch shape returns the existing result. Reusing the id with a
-different shape is rejected.
+A launch caller mints a request id before the first dial. The broker validates
+the role, action, argv, capability, version, transport, and cluster, then
+persists a token-stripped request journal and artifact under `~/.ward`.
+Retrying the same id and launch shape returns the existing result. Reusing the
+id with a different shape is rejected.
 
 Public states are `queued`, `accepted`, `launching`, `running`,
 `cleanup-needed`, `completed`, `blocked`, `failed`, and `interrupted`.

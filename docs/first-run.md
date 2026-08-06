@@ -30,22 +30,23 @@ selection, workflow selection, and container planning without launching work.
 
 ## Verify the preview
 
-The first line confirms exact resolution:
+The plan body starts with an explicit non-launch status:
 
 ```text
-ward agent: resolved issue ref owner/repo#123 -> owner/repo#123
+PLAN ONLY - no launch was accepted
 ```
 
 The rendered plan then includes the title, repository, branch, workflow,
 container name, workspace mounts, correlation fields, image, and would-be
 Docker command. Its heading names the `engineer` role and selected harness.
 
-`--print` may read local configuration, the issue and its comments, Docker
-state, and launch inputs. It may refresh Ward's disposable local launch-asset
-staging. It does not edit the issue or comments, reserve work, change the
-checkout, create or start a container, start a harness, push a branch, or open
-or merge a pull request. A refusal names the failing trust, target, config,
-auth, or Docker check.
+`--print` may read local configuration, the issue and its comments, and launch
+inputs. It does not enter launch admission, refresh launch-asset staging, edit
+the issue or comments, reserve work, consume capacity, change the checkout,
+create or start a container, start a harness, push a branch, or open or merge a
+pull request. A refusal names the failing trust, target, config, or auth check.
+The same contract applies when a read-only director sends the preview through
+the dispatch broker.
 
 After the preview is correct, run the same command without `--print` to start
 the detached engineer.

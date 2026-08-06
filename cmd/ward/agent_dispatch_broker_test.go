@@ -117,6 +117,24 @@ func TestDispatchBrokerValidatesNarrowAPI(t *testing.T) {
 	if err := validateDispatchBrokerRequest(qa); err != nil {
 		t.Errorf("valid qa dispatch refused: %v", err)
 	}
+	plan := dispatchBrokerRequest{
+		Action: dispatchActionPlan,
+		Role:   roleEngineer,
+		Argv:   []string{"engineer", "coilyco-flight-deck/ward#1", "--harness", "claude", "--print"},
+	}
+	if err := validateDispatchBrokerRequest(plan); err != nil {
+		t.Errorf("valid synchronous plan refused: %v", err)
+	}
+	for _, req := range []dispatchBrokerRequest{
+		{Action: dispatchActionPlan, RequestID: "0123456789abcdef", Role: roleEngineer, Argv: plan.Argv},
+		{Action: dispatchActionPlan, Role: roleEngineer, Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--harness", "claude"}},
+		{Action: dispatchActionPlan, Role: roleEngineer, Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--details", "--print"}},
+		{Role: roleEngineer, Argv: plan.Argv},
+	} {
+		if err := validateDispatchBrokerRequest(req); err == nil {
+			t.Errorf("invalid plan/launch boundary accepted: %+v", req)
+		}
+	}
 	// --agent is an equal first-class spelling of --harness (ward#660).
 	equal := dispatchBrokerRequest{Role: "engineer", Argv: []string{"engineer", "coilyco-flight-deck/ward#1", "--agent", "claude"}}
 	if err := validateDispatchBrokerRequest(equal); err != nil {
@@ -959,12 +977,116 @@ func TestForwardAgentDispatchToHostBrokerSendsCanonicalRequest(t *testing.T) {
 	if req.Token != "nonce-123" {
 		t.Errorf("forwarded token = %q, want the per-launch nonce", req.Token)
 	}
+	if dispatchAction(req.Action) != dispatchActionLaunch || req.RequestID == "" {
+		t.Errorf("non-print request action=%q request_id=%q, want a durable launch admission", req.Action, req.RequestID)
+	}
 	want := []string{"engineer", forgejoBaseURL + "/coilyco-flight-deck/ward/issues/378", "--harness", "claude", "--workflow", "merge-remote-main", "--details", "repair after PR #357", "--override-capacity", "--skip-preflight", "--skip-review"}
 	if !reflect.DeepEqual(req.Argv, want) {
 		t.Errorf("forwarded argv = %v, want %v", req.Argv, want)
 	}
 	if got := atomic.LoadInt32(&accepted); got != 1 {
 		t.Fatalf("broker accepted %d connections, want 1", got)
+	}
+}
+
+func TestForwardAgentDispatchPrintUsesSynchronousPlan(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen broker: %v", err)
+	}
+	defer ln.Close()
+
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	serveDispatchBrokerRequests(t, ln, func(conn net.Conn, req dispatchBrokerRequest) {
+		gotReq <- req
+		_ = json.NewEncoder(conn).Encode(dispatchBrokerResponse{
+			OK: true, Body: []byte("PLAN ONLY - no launch was accepted\nresolved host plan\n"),
+		})
+	})
+
+	t.Setenv(envDispatchBrokerAddr, ln.Addr().String())
+	t.Setenv(envDispatchBrokerToken, "nonce-plan")
+	t.Setenv("WARD_READONLY", "1")
+	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#1593", "--harness", "codex", "--print",
+	})
+	var out bytes.Buffer
+	cmd.Root().Writer = &out
+
+	forwarded, err := (&Runner{}).maybeForwardAgentDispatchToHostBroker(t.Context(), cmd, roleEngineer, modeCodex)
+	if err != nil {
+		t.Fatalf("forward print plan: %v", err)
+	}
+	if !forwarded {
+		t.Fatal("print plan did not forward despite broker env")
+	}
+	req := <-gotReq
+	if req.Action != dispatchActionPlan || req.RequestID != "" {
+		t.Fatalf("print request action=%q request_id=%q, want synchronous plan with no request id", req.Action, req.RequestID)
+	}
+	if !dispatchBrokerArgvHasPrintFlag(req) {
+		t.Fatalf("print request lost --print: %v", req.Argv)
+	}
+	if got := out.String(); got != "PLAN ONLY - no launch was accepted\nresolved host plan\n" {
+		t.Fatalf("terminal output = %q, want broker plan body verbatim", got)
+	}
+}
+
+func TestHostDispatchBrokerPlanBypassesLaunchAdmission(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	origPlan := dispatchBrokerPlan
+	origLaunch := dispatchBrokerLaunch
+	t.Cleanup(func() {
+		dispatchBrokerPlan = origPlan
+		dispatchBrokerLaunch = origLaunch
+	})
+	gotReq := make(chan dispatchBrokerRequest, 1)
+	dispatchBrokerPlan = func(_ context.Context, req dispatchBrokerRequest) ([]byte, error) {
+		gotReq <- req
+		return []byte("PLAN ONLY - no launch was accepted\n"), nil
+	}
+	var launches int32
+	dispatchBrokerLaunch = func(context.Context, dispatchBrokerRequest) error {
+		atomic.AddInt32(&launches, 1)
+		return nil
+	}
+
+	server, client := net.Pipe()
+	done := make(chan struct{})
+	go func() {
+		(&Runner{}).handleHostDispatchBrokerConn(t.Context(), server, "director-codex-host", "secret")
+		close(done)
+	}()
+	req := dispatchBrokerRequest{
+		Action: dispatchActionPlan,
+		Role:   roleEngineer,
+		Argv:   []string{"engineer", "coilyco-flight-deck/ward#1593", "--harness", "codex", "--print"},
+		Token:  "secret",
+	}
+	if err := json.NewEncoder(client).Encode(req); err != nil {
+		t.Fatalf("encode plan request: %v", err)
+	}
+	var resp dispatchBrokerResponse
+	if err := json.NewDecoder(client).Decode(&resp); err != nil {
+		t.Fatalf("decode plan response: %v", err)
+	}
+	_ = client.Close()
+	<-done
+
+	served := <-gotReq
+	if served.RequestID != "" || served.Action != dispatchActionPlan {
+		t.Fatalf("served request action=%q request_id=%q", served.Action, served.RequestID)
+	}
+	if !resp.OK || string(resp.Body) != "PLAN ONLY - no launch was accepted\n" {
+		t.Fatalf("plan response = %+v", resp)
+	}
+	if got := atomic.LoadInt32(&launches); got != 0 {
+		t.Fatalf("plan entered launch hook %d times", got)
+	}
+	if _, err := os.Stat(agentLogsDir()); !os.IsNotExist(err) {
+		t.Fatalf("plan created dispatch artifacts under %s", agentLogsDir())
 	}
 }
 

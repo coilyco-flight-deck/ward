@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -29,6 +31,7 @@ func TestPrintAgentPlanShowsAgentProxyAndCorrelation(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
+		"PLAN ONLY - no launch was accepted",
 		"agent-proxy: http://host.docker.internal:8082/v1",
 		"WARD_RUN_ID=engineer-opencode-ward-861",
 		"WARD_HARNESS=opencode",
@@ -40,6 +43,42 @@ func TestPrintAgentPlanShowsAgentProxyAndCorrelation(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("printAgentPlan output missing %q\n---\n%s", want, got)
+		}
+	}
+}
+
+func TestLocalAgentPrintSkipsLaunchAdmissionAndStaging(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	staging := filepath.Join(t.TempDir(), "launch-staging")
+	t.Setenv(envStagingDir, staging)
+	t.Setenv("WARD_GIT_NAME", "Ward Test")
+	t.Setenv("WARD_GIT_EMAIL", "ward-test@example.invalid")
+	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{
+		"engineer", "coilyco-flight-deck/ward#1593", "--harness", "codex", "--print", "--skip-review",
+	})
+	var out bytes.Buffer
+	cmd.Root().Writer = &out
+	w := resolvedWork{
+		Ref:      agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 1593},
+		Title:    "Make brokered print a real preview",
+		Seed:     "synthetic seed",
+		Workflow: workflowDirectToMain,
+	}
+	if err := (&Runner{}).launchAgentContainer(t.Context(), cmd, modeCodex, "engineer", w, "", preflightOutcome{}, ""); err != nil {
+		t.Fatalf("local print: %v", err)
+	}
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Fatalf("local print created launch staging at %s", staging)
+	}
+	got := out.String()
+	for _, want := range []string{"PLAN ONLY - no launch was accepted", previewContainerAssetsDir} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("local print output missing %q\n---\n%s", want, got)
+		}
+	}
+	for _, forbidden := range []string{"broker Ward launch started", "launch accepted", "startup is pending"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("local print output contains launch language %q\n---\n%s", forbidden, got)
 		}
 	}
 }

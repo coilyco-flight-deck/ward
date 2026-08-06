@@ -1460,9 +1460,11 @@ func (r *Runner) runAgentWork(ctx context.Context, c *cli.Command, mode containe
 	if err := r.runAgentWorkPreLaunchChecks(ctx, c, mode, surface, label, w); err != nil {
 		return err
 	}
-	workerName := issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: w.Ref.Owner, Name: w.Ref.Repo}, w.Ref.Number)
-	if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, overrideReservation(c)); err != nil {
-		return err
+	if !c.Bool("print") {
+		workerName := issueScopedContainerName(roleEngineer, mode, targetRepo{Owner: w.Ref.Owner, Name: w.Ref.Repo}, w.Ref.Number)
+		if err := r.precheckLiveIssueWorker(ctx, label, w.Ref, workerName, overrideReservation(c)); err != nil {
+			return err
+		}
 	}
 	justification, preflightRead, preflightVerdict, err := r.resolveLaunchPreflight(ctx, c, mode, surface, w)
 	if err != nil {
@@ -2210,44 +2212,47 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	ref, title, seed := w.Ref, w.Title, w.Seed
 	decisionLog := brokeredDispatchActive()
 	decisionWriter := dispatchDecisionWriter(decisionLog)
+	preview := c.Bool("print")
 
-	// Fail a doomed in-container dispatch loudly at bring-up, not at the raw
-	// `exec: "docker"` lookup later (ward#321); --print warns but still renders.
-	if blocked, reason := currentDispatchDockerState().blocked(); blocked {
-		if c.Bool("print") {
-			writef(os.Stderr, "%s: warning: %s\n", label, reason)
-		} else {
+	// Fail doomed launches at bring-up, not the raw `exec: "docker"` lookup
+	// later (ward#321). Preview never enters launch-only admission.
+	if !preview {
+		if blocked, reason := currentDispatchDockerState().blocked(); blocked {
 			logDispatchDecision(os.Stderr, "host", "docker-access", "refused: %s", firstLine(reason))
 			return fmt.Errorf("%s: %s", label, reason)
+		} else if decisionLog {
+			logDispatchDecision(os.Stderr, "host", "docker-access", "passed")
 		}
-	} else if decisionLog {
-		logDispatchDecision(os.Stderr, "host", "docker-access", "passed")
 	}
 
-	if decisionLog {
+	if decisionLog && !preview {
 		logDispatchDecision(os.Stderr, "host", "backpressure-open-pr", "checking pre-plan repo queue gate")
 	}
-	if err := r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w); err != nil {
-		if decisionLog {
-			logDispatchDecision(os.Stderr, "host", "backpressure-open-pr", "deferred: %s", firstLine(err.Error()))
+	if !preview {
+		if err := r.maybeLaunchOpenPRBackpressure(ctx, label, w.Ref.repoSlug(), c, w); err != nil {
+			if decisionLog {
+				logDispatchDecision(os.Stderr, "host", "backpressure-open-pr", "deferred: %s", firstLine(err.Error()))
+			}
+			return err
 		}
-		return err
 	}
-	if decisionLog {
+	if decisionLog && !preview {
 		logDispatchDecision(os.Stderr, "host", "backpressure-open-pr", "passed")
 		logDispatchDecision(os.Stderr, "host", "backpressure-repo-engineers", "checking pre-plan active engineer gate")
 	}
-	if err := r.maybeLaunchRepoEngineerBackpressure(ctx, label, w.Ref, c); err != nil {
-		if decisionLog {
-			logDispatchDecision(os.Stderr, "host", "backpressure-repo-engineers", "deferred: %s", firstLine(err.Error()))
+	if !preview {
+		if err := r.maybeLaunchRepoEngineerBackpressure(ctx, label, w.Ref, c); err != nil {
+			if decisionLog {
+				logDispatchDecision(os.Stderr, "host", "backpressure-repo-engineers", "deferred: %s", firstLine(err.Error()))
+			}
+			return err
 		}
-		return err
 	}
-	if decisionLog {
+	if decisionLog && !preview {
 		logDispatchDecision(os.Stderr, "host", "backpressure-repo-engineers", "passed")
 		logDispatchDecision(os.Stderr, "host", "capacity", "checking global engineer limit override=%t", c.Bool("override-capacity"))
 	}
-	if !c.Bool("print") {
+	if !preview {
 		if err := r.enforceEngineerContainerLimit(ctx, label, c.Bool("override-capacity")); err != nil {
 			if decisionLog {
 				logDispatchDecision(os.Stderr, "host", "capacity", "deferred: %s", firstLine(err.Error()))
@@ -2255,21 +2260,25 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 			return err
 		}
 	}
-	if decisionLog {
+	if decisionLog && !preview {
 		logDispatchDecision(os.Stderr, "host", "capacity", "passed")
 		logDispatchDecision(os.Stderr, "host", "assets", "staging ward assets version=%s source=%s", emptyDefault(strings.TrimSpace(c.String("ward-version")), Version), emptyDefault(c.String("ward-source"), "package"))
 	}
 
-	// A detached run leaves its assets for the next sweep (it cannot delete the
-	// still-mounted dir on return), so the cleanup hook is discarded.
-	assetsDir, _, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
-	if err != nil {
-		if decisionLog {
-			logDispatchDecision(os.Stderr, "host", "assets", "failed: %s", firstLine(err.Error()))
+	assetsDir := previewContainerAssetsDir
+	if !preview {
+		// A detached run leaves its assets for the next sweep (it cannot delete the
+		// still-mounted dir on return), so the cleanup hook is discarded.
+		var err error
+		assetsDir, _, err = writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+		if err != nil {
+			if decisionLog {
+				logDispatchDecision(os.Stderr, "host", "assets", "failed: %s", firstLine(err.Error()))
+			}
+			return err
 		}
-		return err
 	}
-	if decisionLog {
+	if decisionLog && !preview {
 		logDispatchDecision(os.Stderr, "host", "assets", "ready at %s", assetsDir)
 	}
 
@@ -2284,12 +2293,11 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 		logDispatchDecision(os.Stderr, "host", "plan", "container=%s image=%s branch=%s workflow=%s ward=%s",
 			plan.Name, plan.Image, plan.Branch, plan.Workflow.orDefault(), wardVersionLaunchLabel(plan.WardVersion, plan.WardVersionSource))
 	}
-	writef(os.Stderr, "%s: launch plan ready for %s (container=%s branch=%s readOnly=%t)\n",
-		label, ref, plan.Name, plan.Branch, c.Bool("detach"))
-
-	if c.Bool("print") {
+	if preview {
 		return printAgentPlan(c, plan, ref, title, seed, surface)
 	}
+	writef(os.Stderr, "%s: launch plan ready for %s (container=%s branch=%s readOnly=%t)\n",
+		label, ref, plan.Name, plan.Branch, c.Bool("detach"))
 
 	// Echo the issue title so the operator sees *what* this run carries, not just the
 	// opaque ref number - the one line saying the right issue is in flight (ward#307).
@@ -2889,6 +2897,7 @@ func printAgentTaskPlan(c *cli.Command, mode containerMode, repo targetRepo, tit
 	plan.Name = fmt.Sprintf("%s-%s-%s-<N>", roleEngineer, mode, safeRepoName(repo))
 
 	var b strings.Builder
+	writePlanOnlyBanner(&b)
 	writef(&b, "# %s (print)\n", agentCmdline(mode, "engineer"))
 	writef(&b, "headless: agent runs detached in print mode (-p)\n")
 	writef(&b, "repo:    %s\n", repo.slug())
@@ -2979,6 +2988,7 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 		out = os.Stdout
 	}
 	var b strings.Builder
+	writePlanOnlyBanner(&b)
 	writef(&b, "# %s (print)\n", agentCmdline(p.Mode, surface))
 	if p.Headless {
 		writef(&b, "headless: agent runs detached in print mode (-p)\n")
@@ -3016,4 +3026,10 @@ func printAgentPlan(c *cli.Command, p upPlan, ref agentIssueRef, title, seed, su
 	writef(&b, "docker %s\n", strings.Join(dockerCreateArgv(p, "<ward-forgejo-token-envfile>"), " "))
 	_, err := io.WriteString(out, b.String())
 	return err
+}
+
+const previewContainerAssetsDir = "<ward-launch-assets>"
+
+func writePlanOnlyBanner(w io.Writer) {
+	writef(w, "PLAN ONLY - no launch was accepted\n")
 }

@@ -84,7 +84,7 @@ func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode conta
 	if !r.ownerAllowed(repo.Owner) {
 		return r.untrustedOwnerErr("ward agent run", repo.Owner)
 	}
-	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+	assetsDir, cleanupAssets, err := resolveAgentPlanAssets(ctx, r, c)
 	if err != nil {
 		return fmt.Errorf("ward agent run: %w", err)
 	}
@@ -120,6 +120,7 @@ func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode conta
 		if out == nil {
 			out = os.Stdout
 		}
+		writePlanOnlyBanner(out)
 		return json.NewEncoder(out).Encode(map[string]any{
 			"agent_id":  plan.AgentID,
 			"role":      plan.Role,
@@ -146,7 +147,7 @@ func (r *Runner) runGenericAgent(ctx context.Context, c *cli.Command, mode conta
 }
 
 func (r *Runner) runCollaborationAgent(ctx context.Context, c *cli.Command, mode containerMode, role, agentID, clusterID, work string) error {
-	assetsDir, cleanupAssets, err := writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
+	assetsDir, cleanupAssets, err := resolveAgentPlanAssets(ctx, r, c)
 	if err != nil {
 		return fmt.Errorf("ward agent run: %w", err)
 	}
@@ -168,6 +169,7 @@ func (r *Runner) runCollaborationAgent(ctx context.Context, c *cli.Command, mode
 		plan.Name = config.SanitizeSlug(previewID + "-" + plan.ClusterID)
 		applyDispatchBrokerAttachment(&plan, stack, "<broker-minted-peer-capability>")
 		plan.AgentArgs = []string{work + "\n\n" + genericPeerMessagingPrompt(plan.AgentID)}
+		writePlanOnlyBanner(agentCommandWriter(c))
 		return json.NewEncoder(agentCommandWriter(c)).Encode(map[string]any{
 			"agent_id":      plan.AgentID,
 			"cluster_id":    plan.ClusterID,
@@ -205,6 +207,13 @@ func (r *Runner) runCollaborationAgent(ctx context.Context, c *cli.Command, mode
 	}
 	writef(agentCommandWriter(c), "%s\n", plan.AgentID)
 	return nil
+}
+
+func resolveAgentPlanAssets(ctx context.Context, r *Runner, c *cli.Command) (string, func(), error) {
+	if c.Bool("print") {
+		return previewContainerAssetsDir, func() {}, nil
+	}
+	return writeContainerAssets(ctx, r, c.String("ward-source"), strings.TrimSpace(c.String("ward-version")))
 }
 
 func buildCollaborationPlan(c *cli.Command, mode containerMode, role, agentID, clusterID, work, assetsDir string) (upPlan, error) {
@@ -414,12 +423,23 @@ func (r *Runner) maybeForwardGenericAgent(ctx context.Context, c *cli.Command, m
 	}
 	argv = append(argv, work)
 	req := dispatchBrokerRequest{
-		RequestID: newDispatchBrokerRequestID(),
-		Role:      role,
-		AgentID:   agentID,
-		Argv:      argv,
-		Token:     strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
+		Role:    role,
+		AgentID: agentID,
+		Argv:    argv,
+		Token:   strings.TrimSpace(os.Getenv(envDispatchBrokerToken)),
 	}
+	if c.Bool("print") {
+		req.Action = dispatchActionPlan
+		body, err := sendDispatchBrokerPlanRequest(ctx, addr, req)
+		if err != nil {
+			return true, err
+		}
+		if _, err := agentCommandWriter(c).Write(body); err != nil {
+			return true, fmt.Errorf("dispatch broker: write plan response: %w", err)
+		}
+		return true, nil
+	}
+	req.RequestID = newDispatchBrokerRequestID()
 	resp, err := sendDispatchBrokerLaunchAdmission(ctx, addr, req)
 	if err != nil {
 		return true, err
