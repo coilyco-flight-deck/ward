@@ -19,7 +19,7 @@ const fatIssueJSON = `{
   "body": "the body",
   "user": {"login": "coilysiren", "email": "secret@example.com", "description": "a long bio", "avatar_url": "https://x/y.png", "followers_count": 99},
   "labels": [{"name": "P1", "color": "ff0000", "description": "high"}],
-  "assignees": [{"login": "coilyco-ops", "email": "bot@example.com", "description": "bot bio"}]
+  "assignees": [{"login": "coilyco-ops", "email": "robot@fixtures.invalid", "description": "bot bio"}]
 }`
 
 // fatCommentsJSON repeats the same full profile in every comment - the bloat the

@@ -20,6 +20,14 @@ ward git clone <url> [directory]
 Commit uses Ward's concurrency-safe commit path. Network verbs use the
 resolved forge credential channel without writing tokens to argv or audit.
 
+Ward asks Git to resolve both author and committer identity and runs every
+Ward-created commit with `user.useConfigOnly=true`. Repository-local config,
+global config, and `GIT_AUTHOR_*` or `GIT_COMMITTER_*` environment values keep
+Git's native precedence. If either identity is incomplete, Ward fails before
+staging or commit creation and explains the supported configuration sources.
+Ward never writes `user.name` or `user.email` and never guesses from the
+operating-system username or hostname.
+
 ## Clone gate
 
 `ward git clone` admits a clone when either:

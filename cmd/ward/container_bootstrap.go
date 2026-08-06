@@ -136,32 +136,29 @@ func readBootstrapEnv() (bootstrapEnv, error) { //nolint:gocyclo,cyclop // repos
 	role := os.Getenv("WARD_ROLE")
 	mode := envOr("WARD_MODE", launch.DefaultAgent)
 	identity := containerMode(mode).defaultAgentIdentity()
-	attribution := launch.Attribution
 	e := bootstrapEnv{
-		TargetOwner:    os.Getenv("WARD_TARGET_OWNER"),
-		TargetName:     os.Getenv("WARD_TARGET_NAME"),
-		ForgejoBase:    os.Getenv("WARD_FORGEJO_BASE"),
-		Mode:           mode,
-		Container:      os.Getenv("WARD_CONTAINER_NAME"),
-		Issue:          0,
-		Agent:          envOr("WARD_AGENT", string(modeClaude)),
-		ContextLevel:   envOr("WARD_CONTEXT_LEVEL", "2"),
-		GitCache:       envOr("WARD_GITCACHE", "/gitcache"),
-		ContextSrc:     envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
-		OpencodeModel:  os.Getenv("WARD_OPENCODE_MODEL"),
-		GooseModel:     os.Getenv("WARD_GOOSE_MODEL"),
-		OllamaURL:      os.Getenv("WARD_OLLAMA_URL"),
-		CodexModel:     os.Getenv("WARD_CODEX_MODEL"),
-		CodexEffort:    os.Getenv("WARD_CODEX_REASONING_EFFORT"),
-		CodexVerbosity: os.Getenv("WARD_CODEX_VERBOSITY"),
-		ClaudeModel:    os.Getenv("WARD_CLAUDE_MODEL"),
-		ClaudeEffort:   os.Getenv("WARD_CLAUDE_REASONING_EFFORT"),
-		// Bot attribution: email is the load-bearing Forgejo match (ward#245); both
-		// default from the fleet manifest's defaults.attribution.
+		TargetOwner:       os.Getenv("WARD_TARGET_OWNER"),
+		TargetName:        os.Getenv("WARD_TARGET_NAME"),
+		ForgejoBase:       os.Getenv("WARD_FORGEJO_BASE"),
+		Mode:              mode,
+		Container:         os.Getenv("WARD_CONTAINER_NAME"),
+		Issue:             0,
+		Agent:             envOr("WARD_AGENT", string(modeClaude)),
+		ContextLevel:      envOr("WARD_CONTEXT_LEVEL", "2"),
+		GitCache:          envOr("WARD_GITCACHE", "/gitcache"),
+		ContextSrc:        envOr("WARD_CONTEXT_SRC", "/opt/ward-context"),
+		OpencodeModel:     os.Getenv("WARD_OPENCODE_MODEL"),
+		GooseModel:        os.Getenv("WARD_GOOSE_MODEL"),
+		OllamaURL:         os.Getenv("WARD_OLLAMA_URL"),
+		CodexModel:        os.Getenv("WARD_CODEX_MODEL"),
+		CodexEffort:       os.Getenv("WARD_CODEX_REASONING_EFFORT"),
+		CodexVerbosity:    os.Getenv("WARD_CODEX_VERBOSITY"),
+		ClaudeModel:       os.Getenv("WARD_CLAUDE_MODEL"),
+		ClaudeEffort:      os.Getenv("WARD_CLAUDE_REASONING_EFFORT"),
 		AgentDisplayName:  envOr(envAgentDisplayName, identity.Name),
 		AgentPronouns:     envOr(envAgentPronouns, identity.Pronouns),
-		GitUserName:       envOr("WARD_GIT_NAME", attribution.Name),
-		GitUserEmail:      envOr("WARD_GIT_EMAIL", attribution.Email),
+		GitUserName:       os.Getenv("WARD_GIT_NAME"),
+		GitUserEmail:      os.Getenv("WARD_GIT_EMAIL"),
 		Role:              role,
 		AgentUID:          envOr("WARD_AGENT_UID", "1000"),
 		AgentGID:          envOr("WARD_AGENT_GID", "1000"),
@@ -418,6 +415,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	echoAgentConfigGo(e, rc, mode)
 
 	if !e.Collaboration {
+		applyWardGitIdentityFallback(e.GitUserName, e.GitUserEmail)
 		r.configureGitAuth(ctx, e)
 	}
 	blog("bootstrap installer start: %s", mode)
@@ -732,13 +730,12 @@ case "${1:-}" in
 esac
 `
 
-// configureGitAuth ports configure_git_auth: --system git identity + a
-// read-only credential helper readable by root (reaper) and the dropped agent group.
+// configureGitAuth installs fail-closed system Git policy plus a read-only
+// credential helper readable by root (reaper) and the dropped agent group.
 func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
-	_ = r.Runner.Exec(ctx, "git", "config", "--system", "user.name", e.GitUserName)
-	_ = r.Runner.Exec(ctx, "git", "config", "--system", "user.email", e.GitUserEmail)
-	_ = r.Runner.Exec(ctx, "git", "config", "--system", "init.defaultBranch", "main")
-	_ = r.Runner.Exec(ctx, "git", "config", "--system", "--add", "safe.directory", "*")
+	for _, args := range gitSystemPolicyArgs() {
+		_ = r.Runner.Exec(ctx, "git", args...)
+	}
 	token := os.Getenv("FORGEJO_TOKEN")
 	if token == "" {
 		blog("no FORGEJO_TOKEN: clone/push will only work for anonymous repos")
@@ -763,6 +760,14 @@ func (r *Runner) configureGitAuth(ctx context.Context, e bootstrapEnv) {
 		_ = os.Chown(forgejoGitCredentialsPath, 0, gid)
 	}
 	_ = os.Chmod(forgejoGitCredentialsPath, 0o640)
+}
+
+func gitSystemPolicyArgs() [][]string {
+	return [][]string{
+		{"config", "--system", "user.useConfigOnly", "true"},
+		{"config", "--system", "init.defaultBranch", "main"},
+		{"config", "--system", "--add", "safe.directory", "*"},
+	}
 }
 
 // revokePushCredential drops this clone's push wiring; root retains its token.

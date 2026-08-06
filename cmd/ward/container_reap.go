@@ -404,13 +404,23 @@ func (r *Runner) captureAndCommitResidualRepo(ctx context.Context, work, mode, s
 	statusBytes, _ := r.Runner.Capture(ctx, "git", "-C", work, "status", "--porcelain")
 	status := filterReapResidualStatus(string(statusBytes))
 	fmt.Fprintf(os.Stderr, "ward container reap: capture residual status for %s (%s)\n", work, slug)
+	if strings.TrimSpace(status) != "" {
+		if err := validateGitCommitIdentity(ctx, r.Runner, work); err != nil {
+			fmt.Fprintf(os.Stderr, "ward container reap: residual commit refused before staging: %v\n", err)
+			return status
+		}
+	}
 	_ = r.Runner.Exec(ctx, "git", "-C", work, "add", "-A", "--", ".", ":(exclude)"+runProvenanceFile)
 	if hasStagedChanges(ctx, r, work) {
 		// Tag the subject with the mode and carry the agent attribution as a
 		// Co-Authored-By trailer (ward#155), naming who produced the work.
 		msg := fmt.Sprintf("ward-container: residual %s work on %s\n\n%s",
 			mode, slug, containerMode(mode).commitTrailer())
-		if cerr := r.Runner.Exec(ctx, "git", "-C", work, "commit", "--no-verify", "-m", msg); cerr != nil {
+		cerr := validateGitCommitIdentity(ctx, r.Runner, work)
+		if cerr == nil {
+			cerr = r.Runner.Exec(ctx, "git", gitUseConfigOnlyArgv(work, "commit", "--no-verify", "-m", msg)...)
+		}
+		if cerr != nil {
 			fmt.Fprintf(os.Stderr, "ward container reap: residual commit failed: %v\n", cerr)
 		} else {
 			fmt.Fprintf(os.Stderr, "ward container reap: residual commit created for %s (%s)\n", work, slug)
@@ -667,7 +677,10 @@ func (r *Runner) repairClosingReference(ctx context.Context, work string, env re
 		}
 	}
 	subject := fmt.Sprintf("ward-container: repair closing reference for %s", closingReferenceTarget(env))
-	return r.Runner.Exec(ctx, "git", "-C", work, "commit", "--allow-empty", "-m", subject, "-m", closingReferenceLabel(env))
+	if err := validateGitCommitIdentity(ctx, r.Runner, work); err != nil {
+		return err
+	}
+	return r.Runner.Exec(ctx, "git", gitUseConfigOnlyArgv(work, "commit", "--allow-empty", "-m", subject, "-m", closingReferenceLabel(env))...)
 }
 
 func (r *Runner) repairDirtyOnlyClosingReference(ctx context.Context, work string, env reapEnv) (bool, error) {
@@ -685,6 +698,9 @@ func (r *Runner) repairDirtyOnlyClosingReference(ctx context.Context, work strin
 }
 
 func (r *Runner) amendClosingReference(ctx context.Context, work, msg string, env reapEnv) error {
+	if err := validateGitCommitIdentity(ctx, r.Runner, work); err != nil {
+		return err
+	}
 	repaired := appendClosingReferenceToMessage(msg, env)
 	tmp, err := os.CreateTemp("", "ward-closing-reference-*.txt")
 	if err != nil {
@@ -698,7 +714,7 @@ func (r *Runner) amendClosingReference(ctx context.Context, work, msg string, en
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return r.Runner.Exec(ctx, "git", "-C", work, "commit", "--amend", "-F", tmp.Name())
+	return r.Runner.Exec(ctx, "git", gitUseConfigOnlyArgv(work, "commit", "--amend", "-F", tmp.Name())...)
 }
 
 func appendClosingReferenceToMessage(msg string, env reapEnv) string {

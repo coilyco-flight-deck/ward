@@ -6,13 +6,11 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/urfave/cli/v3"
@@ -471,8 +469,8 @@ type upPlan struct {
 	// ReviewClass pins the pre-landing review panel's autonomy class into the
 	// container (WARD_REVIEW_CLASS, ward#134). See docs/agent-workflow.md.
 	ReviewClass string
-	// ConfigEnv are resolved config-derived WARD_* env keys: selected fleet attribution
-	// plus `--config` overrides (ward#616), applied over the baked default in wardEnv.
+	// ConfigEnv contains explicit WARD_* launch inputs plus Git-resolved author and
+	// committer identity for engineer containers, applied last in wardEnv.
 	ConfigEnv map[string]string
 	// ContextBundle is the resolved host path for the optional read-only mount.
 	// The container env gets the fixed target path instead (ward#1511).
@@ -615,7 +613,7 @@ func parseConfigOverrides(entries []string) (map[string]string, error) {
 	return out, nil
 }
 
-func resolveLaunchConfigEnv(configEntries []string, cwd string, mode containerMode) (map[string]string, error) {
+func resolveLaunchConfigEnv(configEntries []string, _ string, mode containerMode) (map[string]string, error) {
 	configEnv, err := parseConfigOverrides(configEntries)
 	if err != nil {
 		return nil, err
@@ -626,7 +624,8 @@ func resolveLaunchConfigEnv(configEntries []string, cwd string, mode containerMo
 	}
 	configEnv = addHarnessConfigEnv(configEnv, launch)
 	configEnv = addAgentIdentityConfigEnv(configEnv, mode)
-	configEnv = addLaunchAttributionConfigEnv(configEnv, launch, cwd)
+	addConfigEnvDefault(configEnv, "WARD_GIT_NAME")
+	addConfigEnvDefault(configEnv, "WARD_GIT_EMAIL")
 	return configEnv, nil
 }
 
@@ -687,81 +686,6 @@ func validateLocalHarnessConfig(mode containerMode, model, endpoint string) erro
 		return fmt.Errorf("missing agent.opencode.endpoint for opencode: set it in baked policy, WARD_OLLAMA_URL, or --config agent.opencode.endpoint=<url>")
 	}
 	return nil
-}
-
-// addLaunchAttributionConfigEnv projects the typed fallback commit identity into
-// the explicit bootstrap env vars, falling back to git config before the placeholder.
-func addLaunchAttributionConfigEnv(env map[string]string, launch launchConfig, cwd string) map[string]string {
-	if env == nil {
-		env = map[string]string{}
-	}
-	attribution := launch.Attribution
-	if strings.TrimSpace(env["WARD_GIT_NAME"]) == "" {
-		env["WARD_GIT_NAME"] = resolveLaunchGitIdentity(cwd, attribution.Name, "user.name")
-	}
-	if strings.TrimSpace(env["WARD_GIT_EMAIL"]) == "" {
-		env["WARD_GIT_EMAIL"] = resolveLaunchGitIdentity(cwd, attribution.Email, "user.email")
-	}
-	if containsExamplePlaceholder(env["WARD_GIT_NAME"]) || containsExamplePlaceholder(env["WARD_GIT_EMAIL"]) {
-		warnLaunchGitIdentityPlaceholder(env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"])
-	}
-	return env
-}
-
-var launchGitIdentityPlaceholderWarnOnce sync.Once
-
-func warnLaunchGitIdentityPlaceholder(name, email string) {
-	launchGitIdentityPlaceholderWarnOnce.Do(func() {
-		writef(os.Stderr, "ward container: launch git identity still uses the baked placeholder %q <%s>; set git user.name/user.email or WARD_GIT_* to replace it\n",
-			strings.TrimSpace(name), strings.TrimSpace(email))
-	})
-}
-
-func validateLandingLaunchGitIdentity(env map[string]string) error {
-	name := strings.TrimSpace(env["WARD_GIT_NAME"])
-	email := strings.TrimSpace(env["WARD_GIT_EMAIL"])
-	if name == "" || email == "" {
-		return fmt.Errorf("launch git identity is incomplete (%q <%s>); set git user.name/user.email or WARD_GIT_NAME/WARD_GIT_EMAIL before launching a landing-capable engineer run; %s",
-			name, email, setupNextStep)
-	}
-	if containsExamplePlaceholder(name) || containsExamplePlaceholder(email) {
-		return fmt.Errorf("launch git identity still uses the baked placeholder %q <%s>; set git user.name/user.email or WARD_GIT_NAME/WARD_GIT_EMAIL before launching a landing-capable engineer run; %s",
-			name, email, setupNextStep)
-	}
-	return nil
-}
-
-// resolveLaunchGitIdentity prefers a real fleet attribution, then repo-local git
-// config, then global git config, and finally keeps the baked placeholder.
-func resolveLaunchGitIdentity(cwd, fallback, key string) string {
-	if v := strings.TrimSpace(fallback); v != "" && !containsExamplePlaceholder(v) {
-		return v
-	}
-	if v := strings.TrimSpace(gitConfigValue(cwd, false, key)); v != "" {
-		return v
-	}
-	if v := strings.TrimSpace(gitConfigValue("", true, key)); v != "" {
-		return v
-	}
-	return strings.TrimSpace(fallback)
-}
-
-// gitConfigValue reads one git config key from the requested scope.
-func gitConfigValue(cwd string, global bool, key string) string {
-	var argv []string
-	switch {
-	case global:
-		argv = []string{"config", "--global", "--get", key}
-	case strings.TrimSpace(cwd) != "":
-		argv = []string{"-C", cwd, "config", "--local", "--get", key}
-	default:
-		return ""
-	}
-	out, err := exec.Command("git", argv...).CombinedOutput()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // launchEnvAllowlist copies locale/time context while keeping the raw host env denied.

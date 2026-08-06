@@ -2130,11 +2130,6 @@ func buildAgentPlan(c *cli.Command, mode containerMode, ref agentIssueRef, branc
 	plan.Interactive = false
 	plan.TTY = false
 	plan.DispatchRequestID = strings.TrimSpace(os.Getenv(envDispatchRequestID))
-	if !c.Bool("print") {
-		if err := validateLandingLaunchGitIdentity(plan.ConfigEnv); err != nil {
-			return upPlan{}, err
-		}
-	}
 	return plan, nil
 }
 
@@ -2294,6 +2289,11 @@ func (r *Runner) launchAgentContainer(ctx context.Context, c *cli.Command, mode 
 	if decisionLog {
 		logDispatchDecision(os.Stderr, "host", "plan", "container=%s image=%s branch=%s workflow=%s ward=%s",
 			plan.Name, plan.Image, plan.Branch, plan.Workflow.orDefault(), wardVersionLaunchLabel(plan.WardVersion, plan.WardVersionSource))
+	}
+	if !preview {
+		if ierr := projectEngineerGitIdentity(ctx, r.Runner, &plan, resolveInvokeCWD()); ierr != nil {
+			return fmt.Errorf("%s: %w", label, ierr)
+		}
 	}
 	if preview {
 		return printAgentPlan(c, plan, ref, title, seed, surface)

@@ -23,6 +23,14 @@ harness configuration.
 uses a short-lived secured env file for credential handoff and does not render
 credentials into Compose YAML, argv, printable environment, or audit rows.
 
+Engineer launches ask Git to resolve author and committer identity before
+admission, then project those exact resolved values into the private container.
+`WARD_GIT_NAME` and `WARD_GIT_EMAIL` are optional explicit fallback inputs.
+Container system policy sets `user.useConfigOnly=true`, never writes
+`user.name` or `user.email`, and lets Git reject a missing identity before a
+commit is created. Harness display identity and authenticated forge actors do
+not supply Git commit identity.
+
 Engineer and QA receive `WARD_FORGEJO_GIT_TOKEN` as their in-container Git
 credential and use a role-bound broker capability for tracker operations.
 Director receives its harness credential, `WARD_DISPATCH_BROKER_ADDR`, and a

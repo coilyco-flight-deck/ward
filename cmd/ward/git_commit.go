@@ -63,6 +63,9 @@ func (r *Runner) runGitCommit(ctx context.Context, argv []string) error {
 		return fmt.Errorf("ward git commit: -e/--edit is refused under a shared working tree; " +
 			"supply the message with -m/-F")
 	}
+	if err := validateGitCommitIdentity(ctx, r.Runner, dir); err != nil {
+		return fmt.Errorf("ward git commit: %w", err)
+	}
 
 	idxPath, cleanup, err := newPrivateIndex()
 	if err != nil {
@@ -84,7 +87,12 @@ func (r *Runner) runGitCommit(ctx context.Context, argv []string) error {
 		return err
 	}
 
-	commitArgv := gitArgv(dir, "commit", flags, paths)
+	if err := validateGitCommitIdentity(ctx, idxRunner, dir); err != nil {
+		return fmt.Errorf("ward git commit: %w", err)
+	}
+	commitArgs := append(append([]string(nil), flags...), "--")
+	commitArgs = append(commitArgs, paths...)
+	commitArgv := gitUseConfigOnlyArgv(dir, "commit", commitArgs...)
 	if err := idxRunner.Exec(ctx, "git", commitArgv...); err != nil {
 		return fmt.Errorf("ward git commit: %w", err)
 	}

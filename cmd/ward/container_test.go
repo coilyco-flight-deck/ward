@@ -304,7 +304,7 @@ func TestBuildUpPlanDirectorUsesDictatableSuffix(t *testing.T) {
 	}
 }
 
-func TestBuildUpPlanUsesTypedAttribution(t *testing.T) {
+func TestBuildUpPlanDoesNotSynthesizeGitAttribution(t *testing.T) {
 	var got upPlan
 	probe := &cli.Command{
 		Name:  "probe",
@@ -322,14 +322,9 @@ func TestBuildUpPlanUsesTypedAttribution(t *testing.T) {
 		t.Fatalf("probe run: %v", err)
 	}
 
-	want, err := loadLaunchConfig()
-	if err != nil {
-		t.Fatalf("load typed launch config: %v", err)
-	}
 	env := got.wardEnv()
-	if env["WARD_GIT_NAME"] != want.Attribution.Name || env["WARD_GIT_EMAIL"] != want.Attribution.Email {
-		t.Fatalf("wardEnv git attribution = <%s %s>, want baked <%s %s>",
-			env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"], want.Attribution.Name, want.Attribution.Email)
+	if env["WARD_GIT_NAME"] != "" || env["WARD_GIT_EMAIL"] != "" {
+		t.Fatalf("wardEnv synthesized Git attribution = <%s %s>", env["WARD_GIT_NAME"], env["WARD_GIT_EMAIL"])
 	}
 }
 

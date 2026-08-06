@@ -36,10 +36,6 @@ var frontierAgentOrder = []string{"claude", "codex", "opencode", "goose"}
 func builtInLaunchConfig() launchConfig {
 	return launchConfig{
 		DefaultAgent: string(modeClaude),
-		Attribution: launchAttribution{
-			Name:  "example-bot",
-			Email: "bot@example.com",
-		},
 		Agents: []launchAgent{
 			{
 				Name: string(modeClaude), Binary: "claude", ContextLevel: 2,

@@ -43,8 +43,10 @@ invocation, and optional display capabilities. It does not alter Ward authority.
 ## Input ownership
 
 Ward owns adapter mechanics. Deployment or explicit harness inputs own model,
-endpoint, reasoning, and display identity. Operator `default-harness` selects
-only the default adapter. Roles never participate in this merge.
+endpoint, reasoning, and display identity. Git independently resolves author
+and committer identity from its normal explicit sources. Operator
+`default-harness` selects only the default adapter. Roles, harness display
+names, and forge credentials never participate in Git commit attribution.
 
 ## See also
 
