@@ -115,6 +115,9 @@ func TestRunExecGateIntegration(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
+	// Each subtest owns its CI fixture. Do not let the enclosing runner's
+	// pull-request metadata reclassify ordinary local repositories.
+	clearForgejoCIEnv(t)
 
 	t.Run("clean synced tree passes", func(t *testing.T) {
 		repo := newSyncedRepo(t)
@@ -367,6 +370,9 @@ func newDetachedForgejoPRRepo(t *testing.T) (string, string) {
 	repo := newSyncedRepo(t)
 	baseRef := gitText(t, repo, "branch", "--show-current")
 	baseSHA := gitText(t, repo, "rev-parse", "HEAD")
+	// Keep this fixture independent of whether push -u materialized the
+	// remote-tracking ref when it seeded the initially empty bare remote.
+	git(t, repo, "update-ref", "refs/remotes/origin/main", baseSHA)
 	git(t, repo, "checkout", "-b", "feature/ci")
 	writeFile(t, filepath.Join(repo, "feature.txt"), "feature\n")
 	git(t, repo, "add", "feature.txt")
