@@ -1,4 +1,4 @@
-.PHONY: help build test test-windows-compile vet lint lint-refs lint-workflows tidy cover install workspace agent-roster agent-flags demo-image
+.PHONY: help build test test-windows-compile vet lint lint-refs lint-workflows tidy cover install workspace agent-roster agent-flags
 
 # Go directive for a generated go.work, kept in lockstep with go.mod's `go` line.
 GO_VERSION := $(shell awk '/^go [0-9]/ {print $$2; exit}' go.mod)
@@ -34,9 +34,6 @@ agent-flags: ## Regenerate docs/agent-flags.md from the code flag tree - the bin
 	# walks the agent subtree and prints the committed doc body.
 	# agent_flags_test.go fails the build on drift, so re-run after touching the tree.
 	go run ./cmd/ward agent flags --markdown > docs/agent-flags.md
-
-demo-image: ## Build the public demo image that runs simple workspace + substrate demos against neutral OSS defaults.
-	docker build --tag ward-demo:dev --file docker/demo/Dockerfile .
 
 test: ## Run the unit test suite.
 	go test ./...

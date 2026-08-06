@@ -1,13 +1,12 @@
 ---
-doc_goal: Keep the boundary-demo anchor stable after the old page was collapsed.
+doc_goal: Explain the boundary between governed repository verbs and the external operator surface.
 ---
 # enforcement boundary
 
-This page is the durable anchor for the demo's boundary story.
+Ward's executable boundary is the product contract.
 
 - It explains the difference between the verb gate and the operator surface.
 - It keeps the "refusal is the product" framing in one short place.
-- It is the replacement for the older demo-side mechanism note.
 
 ## See also
 

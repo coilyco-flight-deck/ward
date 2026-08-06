@@ -59,16 +59,10 @@ Start here for Ward's operating surface.
 - [container-contract.md](container-contract.md) - mounts, env, permissions.
 - [container-lifecycle.md](container-lifecycle.md) - launch, debug, teardown.
 - [container-substrate.md](container-substrate.md) - `/substrate` and multi-repo.
-- [demo-image.md](demo-image.md) - public demo image build.
 
 ## AOSguard boundary
 
 - [aosguard-boundary.md](aosguard-boundary.md) - Ward to AOSguard ownership boundary.
-
-## Examples
-
-- [example-repo.md](example-repo.md) - minimal managed repo.
-- [demo.md](demo.md) - runnable demo.
 
 ## See also
 

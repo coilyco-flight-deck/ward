@@ -58,9 +58,6 @@ commands:
   cover:
     run: make cover
     description: Unit tests with a coverage profile.
-  demo-image:
-    run: make demo-image
-    description: Build the public demo image that mounts a workspace plus substrate combo for a neutral OSS repo.
   lint-refs:
     run: make lint-refs
     description: "Lint issue refs in public docs (ward#446): every ref must resolve for a GitHub reader. `make lint-refs ARGS=--fix` rewrites."
@@ -72,8 +69,6 @@ security:
   protected_binaries:
     - name: docker
       mode: deny-direct
-      allowed_wrappers:
-        - ward exec demo-image
     - name: kubectl
       mode: deny-direct
       allowed_wrappers:
@@ -83,5 +78,4 @@ security:
       - docker
       - kubectl
     route_hints:
-      docker: "route the repository demo image through `ward exec demo-image`, not the bare binary"
       kubectl: "route operator work through `aosguard ops kubectl`, not the bare binary"

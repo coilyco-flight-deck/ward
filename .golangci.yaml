@@ -115,16 +115,6 @@ linters:
           - goconst
           - errcheck
           - gosec
-      - path: "^examples/"
-        linters:
-          - funlen
-          - gocognit
-          - gocyclo
-          - cyclop
-          - errcheck
-          - gosec
-          - revive
-
 formatters:
   enable:
     - gofmt

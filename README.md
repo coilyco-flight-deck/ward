@@ -117,7 +117,6 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 - **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-qa.md](docs/agent-qa.md), [agent-lifecycle.md](docs/agent-lifecycle.md), [agent-ops.md](docs/agent-ops.md).
 - **The container** - [container.md](docs/container.md), [container-lifecycle.md](docs/container-lifecycle.md) (land-or-salvage on teardown), [container-substrate.md](docs/container-substrate.md).
 - **Terminology** - [terminology.md](docs/terminology.md) defines Ward's preferred operational terms, known non-equivalences, and analogy bank.
-- **The demo image** - [docs/demo-image.md](docs/demo-image.md).
 - **Container operator surface (AOSguard)** - use `aosguard ops ...` from AOS. [aosguard-boundary.md](docs/aosguard-boundary.md) records the ownership boundary.
 - **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [golangci.md](docs/golangci.md).
 
