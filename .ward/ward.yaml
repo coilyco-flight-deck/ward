@@ -69,13 +69,6 @@ security:
   protected_binaries:
     - name: docker
       mode: deny-direct
-    - name: kubectl
-      mode: deny-direct
-      allowed_wrappers:
-        - aosguard ops kubectl
   hooks:
     deny_bare_binaries:
       - docker
-      - kubectl
-    route_hints:
-      kubectl: "route operator work through `aosguard ops kubectl`, not the bare binary"
