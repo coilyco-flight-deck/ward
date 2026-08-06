@@ -45,8 +45,9 @@ doc_goal: Inventory Ward's major shipped capabilities without implementation his
 * Validated context bundles carry selected instructions and tools without
   permissions. Brokered peers add authenticated messaging and durable
   identities without making role names authoritative. A typed release handoff
-  carries an immutable candidate and evidence-only result between Director and
-  one Ops peer without embedding provider semantics or granting deployment
+  carries an immutable candidate between Director and one Ops peer. Ward then
+  serializes deploy-state mutation, typed verification, Git CAS publication,
+  and recovery without embedding provider semantics or granting operation
   authority. See [context bundles](context-bundle.md),
   [collaboration](agent-peer-collaboration.md), and
   [release contract](agent-release.md).

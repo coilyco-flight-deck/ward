@@ -189,6 +189,7 @@ const (
 	dispatchActionReleaseRetry     = "release-retry"
 	dispatchActionReleaseResult    = "release-result"
 	dispatchActionReleaseReceive   = "release-receive"
+	dispatchActionReleaseProgress  = "release-progress"
 )
 
 const staleLaunchCleanupResultPrefix = "stale-launch-cleared:"
@@ -496,7 +497,8 @@ func dispatchBrokerChildActionAllowed(req dispatchBrokerRequest) bool {
 	switch dispatchAction(req.Action) {
 	case dispatchActionMessageSend, dispatchActionMessageReceive,
 		dispatchActionReleaseCandidate, dispatchActionReleaseRetry,
-		dispatchActionReleaseResult, dispatchActionReleaseReceive:
+		dispatchActionReleaseResult, dispatchActionReleaseReceive,
+		dispatchActionReleaseProgress:
 		return true
 	case dispatchActionForgejo:
 		return req.Forgejo != nil && (req.Forgejo.Method == http.MethodGet || req.Forgejo.Method == http.MethodHead)
@@ -1608,7 +1610,8 @@ func validateDispatchBrokerRequest(req dispatchBrokerRequest) error { //nolint:c
 	case dispatchActionMessageReceive:
 		return validateDispatchBrokerMessageReceive(req)
 	case dispatchActionReleaseCandidate, dispatchActionReleaseRetry,
-		dispatchActionReleaseResult, dispatchActionReleaseReceive:
+		dispatchActionReleaseResult, dispatchActionReleaseReceive,
+		dispatchActionReleaseProgress:
 		return validateDispatchBrokerRelease(req)
 	case dispatchActionPlan, dispatchActionLaunch:
 		return validateDispatchBrokerLaunchAction(req)
@@ -1620,7 +1623,8 @@ func validateDispatchBrokerRequest(req dispatchBrokerRequest) error { //nolint:c
 func releaseDispatchAction(action string) bool {
 	switch dispatchAction(action) {
 	case dispatchActionReleaseCandidate, dispatchActionReleaseRetry,
-		dispatchActionReleaseResult, dispatchActionReleaseReceive:
+		dispatchActionReleaseResult, dispatchActionReleaseReceive,
+		dispatchActionReleaseProgress:
 		return true
 	default:
 		return false

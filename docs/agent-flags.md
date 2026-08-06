@@ -56,6 +56,9 @@ doc_goal: Give a reader the canonical code-generated flags for Ward's selected o
 ## `ward agent release`
 
 - No direct flags.
+## `ward agent release execute`
+
+- --candidate, --attempt, --worktree, --prepared-commit
 ## `ward agent release candidate`
 
 - --to, --file

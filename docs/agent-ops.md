@@ -48,4 +48,5 @@ surfaces forward supported operations through the supervised broker.
 * [agent-reservation.md](agent-reservation.md) - stale launch recovery.
 * [agent-observability.md](agent-observability.md) - artifact schemas.
 * [agent-release.md](agent-release.md) - Director-to-Ops release contract.
+* [agent-release-transaction.md](agent-release-transaction.md) - deploy-state transaction and recovery.
 * [troubleshooting.md](troubleshooting.md) - symptom-to-remedy map.

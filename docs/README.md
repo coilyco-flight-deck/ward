@@ -39,6 +39,7 @@ when a command or run does not behave as expected.
 * [agent-pr-workflow.md](agent-pr-workflow.md) - pull-request status, recovery, and mutation verbs.
 * [agent-observability.md](agent-observability.md) - secret-safe artifacts and schemas.
 * [agent-clusters.md](agent-clusters.md) and [agent-peer-collaboration.md](agent-peer-collaboration.md) - repository-free collaboration.
+* [agent-release.md](agent-release.md) and [agent-release-transaction.md](agent-release-transaction.md) - typed release handoff and deploy-state transaction.
 * [context-bundle.md](context-bundle.md) - authority-free context projection.
 
 ## Container execution

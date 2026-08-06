@@ -21,6 +21,7 @@ func TestReleaseCandidateValidationRequiresImmutableSafeInputs(t *testing.T) {
 		{name: "uppercase deploy commit", mutate: func(v *releaseCandidateInput) { v.StartingDeployCommit = strings.ToUpper(releaseCommit("a")) }},
 		{name: "mutable artifact", mutate: func(v *releaseCandidateInput) { v.ArtifactDigest = "latest" }},
 		{name: "repository URL", mutate: func(v *releaseCandidateInput) { v.ApplicationRepository = "https://example.test/acme/app.git" }},
+		{name: "unsafe deploy branch", mutate: func(v *releaseCandidateInput) { v.DeployBranch = "../production" }},
 		{name: "noncanonical ticket", mutate: func(v *releaseCandidateInput) { v.OriginatingTicket = "https://forgejo.example/acme/app/issues/42" }},
 		{name: "operation argv", mutate: func(v *releaseCandidateInput) { v.DeployOperation = "deploy --force" }},
 		{name: "operation path", mutate: func(v *releaseCandidateInput) { v.VerifyOperation = "./verify" }},
@@ -130,11 +131,9 @@ func TestReleaseResultValidationCoversEveryTerminalClassification(t *testing.T) 
 	}
 }
 
-func TestReleaseBrokerFlowPersistsCandidateAndEveryTerminalResult(t *testing.T) {
+func TestReleaseBrokerFlowPersistsCandidateAndDirectTerminalResults(t *testing.T) {
 	for _, classification := range []string{
-		releaseOutcomeVerified,
 		releaseOutcomeRejected,
-		releaseOutcomeRestored,
 		releaseOutcomeBlocked,
 		releaseOutcomeIndeterminate,
 	} {
@@ -163,12 +162,6 @@ func TestReleaseBrokerFlowPersistsCandidateAndEveryTerminalResult(t *testing.T) 
 				ReasonCode:      "synthetic-evidence",
 				EvidenceDigests: []string{releaseDigest("8")},
 			}
-			switch classification {
-			case releaseOutcomeVerified:
-				resultInput.DeployCommit = releaseCommit("9")
-			case releaseOutcomeRestored:
-				resultInput.RestoredCommit = candidate.StartingDeployCommit
-			}
 			resultRecords, err := recordReleaseResult(dispatchBrokerRequest{
 				AuthenticatedRole: releaseOpsRole,
 				Requester:         admission.PeerID,
@@ -192,6 +185,38 @@ func TestReleaseBrokerFlowPersistsCandidateAndEveryTerminalResult(t *testing.T) 
 			}
 			if len(persisted) != 2 || persisted[0].Candidate == nil || persisted[1].Result == nil {
 				t.Fatalf("persisted records = %#v", persisted)
+			}
+		})
+	}
+}
+
+func TestReleaseBrokerRequiresTransactionForMutationOutcomes(t *testing.T) {
+	for _, classification := range []string{releaseOutcomeVerified, releaseOutcomeRestored} {
+		t.Run(classification, func(t *testing.T) {
+			admission := setupReleaseArtifactFixture(t)
+			records, err := createReleaseCandidate(dispatchBrokerRequest{
+				AuthenticatedRole: roleDirector, Requester: "director-one", BrokerID: admission.ClusterID,
+				To: admission.PeerID, Release: &releaseBrokerPayload{Candidate: ptrReleaseCandidateFixture()},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidate, attempt := records[0].Candidate, records[0].Attempt
+			input := releaseResultInput{
+				CandidateID: candidate.CandidateID, AttemptID: attempt.AttemptID,
+				Classification: classification, ReasonCode: "synthetic-outcome",
+				EvidenceDigests: []string{releaseDigest("8")},
+			}
+			if classification == releaseOutcomeVerified {
+				input.DeployCommit = releaseCommit("9")
+			} else {
+				input.RestoredCommit = candidate.StartingDeployCommit
+			}
+			if _, err := recordReleaseResult(dispatchBrokerRequest{
+				AuthenticatedRole: releaseOpsRole, Requester: admission.PeerID, BrokerID: admission.ClusterID,
+				Release: &releaseBrokerPayload{Result: &input},
+			}); err == nil || !strings.Contains(err.Error(), "requires its matching transaction outcome") {
+				t.Fatalf("unbacked %s result error = %v", classification, err)
 			}
 		})
 	}
@@ -336,6 +361,7 @@ func releaseCandidateFixture() releaseCandidateInput {
 		ArtifactDigest:        releaseDigest("2"),
 		Environment:           "production",
 		DeployRepository:      "acme/deploy",
+		DeployBranch:          "main",
 		StartingDeployCommit:  releaseCommit("3"),
 		OriginatingTicket:     "acme/app#42",
 		DeployOperation:       "release.deploy",
@@ -378,6 +404,7 @@ func releaseCandidateFromFixture(t *testing.T) releaseCandidate {
 		ArtifactDigest:        input.ArtifactDigest,
 		Environment:           input.Environment,
 		DeployRepository:      input.DeployRepository,
+		DeployBranch:          input.DeployBranch,
 		StartingDeployCommit:  input.StartingDeployCommit,
 		OriginatingTicket:     input.OriginatingTicket,
 		DeployOperation:       input.DeployOperation,

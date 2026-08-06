@@ -56,8 +56,8 @@ records. Approval requires the director's master capability and a trusted
 human's exact intent snapshot.
 
 The provider-neutral [release contract](agent-release.md) stamps Director and
-Ops identities and records immutable candidates, outcomes, and evidence
-digests. It grants no operation authority.
+Ops identities and records immutable candidates, transaction phases, typed
+attestations, outcomes, and evidence digests. It grants no operation authority.
 
 ## Supervision and teardown
 

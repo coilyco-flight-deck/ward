@@ -41,6 +41,7 @@ const (
 var (
 	releaseCommitPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 	releaseSymbolPattern = regexp.MustCompile(`^[a-z][a-z0-9.-]{0,127}$`)
+	releaseBranchPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
 	releaseArtifactMu    sync.Mutex
 	releaseContractMu    sync.Mutex
 )
@@ -51,6 +52,7 @@ type releaseCandidateInput struct {
 	ArtifactDigest        string `json:"artifact_digest"`
 	Environment           string `json:"environment"`
 	DeployRepository      string `json:"deploy_repository"`
+	DeployBranch          string `json:"deploy_branch"`
 	StartingDeployCommit  string `json:"starting_deploy_commit"`
 	OriginatingTicket     string `json:"originating_ticket"`
 	DeployOperation       string `json:"deploy_operation"`
@@ -75,6 +77,7 @@ type releaseCandidate struct {
 	ArtifactDigest        string             `json:"artifact_digest"`
 	Environment           string             `json:"environment"`
 	DeployRepository      string             `json:"deploy_repository"`
+	DeployBranch          string             `json:"deploy_branch"`
 	StartingDeployCommit  string             `json:"starting_deploy_commit"`
 	OriginatingTicket     string             `json:"originating_ticket"`
 	DeployOperation       string             `json:"deploy_operation"`
@@ -119,19 +122,21 @@ type releaseResult struct {
 }
 
 type releaseArtifactRecord struct {
-	ID        string            `json:"id"`
-	Kind      string            `json:"kind"`
-	CreatedAt time.Time         `json:"created_at"`
-	Candidate *releaseCandidate `json:"candidate,omitempty"`
-	Attempt   *releaseAttempt   `json:"attempt,omitempty"`
-	Result    *releaseResult    `json:"result,omitempty"`
+	ID          string                   `json:"id"`
+	Kind        string                   `json:"kind"`
+	CreatedAt   time.Time                `json:"created_at"`
+	Candidate   *releaseCandidate        `json:"candidate,omitempty"`
+	Attempt     *releaseAttempt          `json:"attempt,omitempty"`
+	Result      *releaseResult           `json:"result,omitempty"`
+	Transaction *releaseTransactionEvent `json:"transaction,omitempty"`
 }
 
 type releaseBrokerPayload struct {
-	Candidate            *releaseCandidateInput `json:"candidate,omitempty"`
-	Result               *releaseResultInput    `json:"result,omitempty"`
-	CandidateID          string                 `json:"candidate_id,omitempty"`
-	StartingDeployCommit string                 `json:"starting_deploy_commit,omitempty"`
+	Candidate            *releaseCandidateInput        `json:"candidate,omitempty"`
+	Result               *releaseResultInput           `json:"result,omitempty"`
+	CandidateID          string                        `json:"candidate_id,omitempty"`
+	StartingDeployCommit string                        `json:"starting_deploy_commit,omitempty"`
+	Transaction          *releaseTransactionEventInput `json:"transaction,omitempty"`
 }
 
 func agentReleaseCommand() *cli.Command {
@@ -139,6 +144,7 @@ func agentReleaseCommand() *cli.Command {
 		Name:  "release",
 		Usage: "Exchange a typed, provider-neutral release contract between Director and one Ops peer.",
 		Commands: []*cli.Command{
+			agentReleaseExecuteCommand(),
 			{
 				Name:  "candidate",
 				Usage: "Send one immutable release candidate to an exact broker-minted Ops peer.",
@@ -281,13 +287,15 @@ func validateDispatchBrokerRelease(req dispatchBrokerRequest) error {
 		return validateReleaseResultRequest(req)
 	case dispatchActionReleaseReceive:
 		return validateReleaseReceiveRequest(req)
+	case dispatchActionReleaseProgress:
+		return validateReleaseProgressRequest(req)
 	default:
 		return fmt.Errorf("dispatch broker: unsupported release action %q", req.Action)
 	}
 }
 
 func validateReleaseCandidateRequest(req dispatchBrokerRequest) error {
-	if req.Release.Candidate == nil || req.Release.Result != nil || req.Release.CandidateID != "" || req.Release.StartingDeployCommit != "" || req.After != "" {
+	if req.Release.Candidate == nil || req.Release.Result != nil || req.Release.Transaction != nil || req.Release.CandidateID != "" || req.Release.StartingDeployCommit != "" || req.After != "" {
 		return fmt.Errorf("dispatch broker: release-candidate payload shape is invalid")
 	}
 	if !validDispatchAgentID(req.To) || req.To == "*" {
@@ -297,7 +305,7 @@ func validateReleaseCandidateRequest(req dispatchBrokerRequest) error {
 }
 
 func validateReleaseRetryRequest(req dispatchBrokerRequest) error {
-	if req.To != "" || req.After != "" || req.Release.Candidate != nil || req.Release.Result != nil ||
+	if req.To != "" || req.After != "" || req.Release.Candidate != nil || req.Release.Result != nil || req.Release.Transaction != nil ||
 		!dispatchRequestIDPattern.MatchString(req.Release.CandidateID) || !validReleaseCommit(req.Release.StartingDeployCommit) {
 		return fmt.Errorf("dispatch broker: release-retry requires a candidate id and full starting deploy commit")
 	}
@@ -305,14 +313,14 @@ func validateReleaseRetryRequest(req dispatchBrokerRequest) error {
 }
 
 func validateReleaseResultRequest(req dispatchBrokerRequest) error {
-	if req.To != "" || req.After != "" || req.Release.Candidate != nil || req.Release.Result == nil || req.Release.CandidateID != "" || req.Release.StartingDeployCommit != "" {
+	if req.To != "" || req.After != "" || req.Release.Candidate != nil || req.Release.Result == nil || req.Release.Transaction != nil || req.Release.CandidateID != "" || req.Release.StartingDeployCommit != "" {
 		return fmt.Errorf("dispatch broker: release-result payload shape is invalid")
 	}
 	return validateReleaseResultInput(*req.Release.Result)
 }
 
 func validateReleaseReceiveRequest(req dispatchBrokerRequest) error {
-	if req.To != "" || req.Release.Candidate != nil || req.Release.Result != nil || req.Release.CandidateID != "" || req.Release.StartingDeployCommit != "" {
+	if req.To != "" || req.Release.Candidate != nil || req.Release.Result != nil || req.Release.Transaction != nil || req.Release.CandidateID != "" || req.Release.StartingDeployCommit != "" {
 		return fmt.Errorf("dispatch broker: release-receive carries only an after filter")
 	}
 	if req.After != "" && !dispatchRequestIDPattern.MatchString(req.After) {
@@ -340,6 +348,9 @@ func validateReleaseCandidateRepositories(input releaseCandidateInput) error {
 	}
 	if err := validateReleaseRepository("deploy_repository", input.DeployRepository); err != nil {
 		return err
+	}
+	if !validReleaseBranch(input.DeployBranch) {
+		return fmt.Errorf("dispatch broker: release candidate deploy_branch is invalid")
 	}
 	ref, err := parseAgentIssueRef(input.OriginatingTicket)
 	if err != nil || ref.String() != input.OriginatingTicket || ref.Owner == "" || ref.Repo == "" {
@@ -383,8 +394,8 @@ func validateReleaseRepository(label, repo string) error {
 }
 
 func validateReleaseOperation(label, operation string) error {
-	if !releaseSymbolPattern.MatchString(operation) {
-		return fmt.Errorf("dispatch broker: release candidate %s must be a safe symbolic id", label)
+	if _, _, err := releaseOperationParts(operation); err != nil {
+		return fmt.Errorf("dispatch broker: release candidate %s must be a safe area.verb symbolic id", label)
 	}
 	return nil
 }
@@ -399,6 +410,7 @@ func validateReleaseCandidate(candidate releaseCandidate) error {
 		ArtifactDigest:        candidate.ArtifactDigest,
 		Environment:           candidate.Environment,
 		DeployRepository:      candidate.DeployRepository,
+		DeployBranch:          candidate.DeployBranch,
 		StartingDeployCommit:  candidate.StartingDeployCommit,
 		OriginatingTicket:     candidate.OriginatingTicket,
 		DeployOperation:       candidate.DeployOperation,
@@ -476,6 +488,13 @@ func validReleaseCommit(value string) bool {
 	return releaseCommitPattern.MatchString(value)
 }
 
+func validReleaseBranch(value string) bool {
+	return releaseBranchPattern.MatchString(value) && !strings.Contains(value, "..") &&
+		!strings.Contains(value, "//") && !strings.HasSuffix(value, ".") &&
+		!strings.HasSuffix(value, "/") && !strings.HasSuffix(value, ".lock") &&
+		!strings.Contains(value, "@{")
+}
+
 func validReleaseOutcome(value string) bool {
 	switch value {
 	case releaseOutcomeVerified, releaseOutcomeRejected, releaseOutcomeRestored, releaseOutcomeBlocked, releaseOutcomeIndeterminate:
@@ -530,6 +549,8 @@ func (r *Runner) runDispatchBrokerRelease(conn net.Conn, req dispatchBrokerReque
 		records, err = recordReleaseResult(req)
 	case dispatchActionReleaseReceive:
 		records, err = receiveReleaseRecords(req)
+	case dispatchActionReleaseProgress:
+		records, err = recordReleaseTransactionEvent(req)
 	}
 	writeDispatchBrokerReleaseResponse(conn, records, err)
 }
@@ -565,6 +586,7 @@ func createReleaseCandidate(req dispatchBrokerRequest) ([]releaseArtifactRecord,
 		ArtifactDigest:        input.ArtifactDigest,
 		Environment:           input.Environment,
 		DeployRepository:      input.DeployRepository,
+		DeployBranch:          input.DeployBranch,
 		StartingDeployCommit:  input.StartingDeployCommit,
 		OriginatingTicket:     input.OriginatingTicket,
 		DeployOperation:       input.DeployOperation,
@@ -655,11 +677,11 @@ func recordReleaseResult(req dispatchBrokerRequest) ([]releaseArtifactRecord, er
 	if !ok {
 		return nil, fmt.Errorf("dispatch broker: release attempt %s does not belong to candidate %s", input.AttemptID, input.CandidateID)
 	}
-	if _, exists := results[input.AttemptID]; exists {
-		return nil, fmt.Errorf("dispatch broker: release attempt %s already has a terminal result", input.AttemptID)
+	if existing, exists := results[input.AttemptID]; exists {
+		return repeatedReleaseResult(records, existing, input, candidate, req.Requester)
 	}
-	if input.Classification == releaseOutcomeRestored && input.RestoredCommit != candidate.StartingDeployCommit {
-		return nil, fmt.Errorf("dispatch broker: restored result must identify the unchanged starting deploy commit")
+	if err := validateNewReleaseResult(records, input, candidate); err != nil {
+		return nil, err
 	}
 	now := time.Now().UTC()
 	result := releaseResult{
@@ -691,6 +713,45 @@ func recordReleaseResult(req dispatchBrokerRequest) ([]releaseArtifactRecord, er
 	return []releaseArtifactRecord{record}, nil
 }
 
+func validateNewReleaseResult(records []releaseArtifactRecord, input releaseResultInput, candidate releaseCandidate) error {
+	if input.Classification == releaseOutcomeRestored && input.RestoredCommit != candidate.StartingDeployCommit {
+		return fmt.Errorf("dispatch broker: restored result must identify the unchanged starting deploy commit")
+	}
+	return validateReleaseResultTransaction(records, input)
+}
+
+func repeatedReleaseResult(records []releaseArtifactRecord, existing releaseResult, input releaseResultInput, candidate releaseCandidate, requester string) ([]releaseArtifactRecord, error) {
+	if !releaseResultMatchesInput(existing, input, candidate, requester) {
+		return nil, fmt.Errorf("dispatch broker: release attempt %s already has a different terminal result", input.AttemptID)
+	}
+	for _, record := range records {
+		if record.Result != nil && record.Result.AttemptID == input.AttemptID {
+			return []releaseArtifactRecord{record}, nil
+		}
+	}
+	return nil, fmt.Errorf("dispatch broker: persisted release result %s is missing", input.AttemptID)
+}
+
+func releaseResultMatchesInput(existing releaseResult, input releaseResultInput, candidate releaseCandidate, requester string) bool {
+	return existing.CandidateID == input.CandidateID && existing.AttemptID == input.AttemptID &&
+		existing.CandidateHash == candidate.ContentHash && existing.From == requester && existing.To == candidate.From &&
+		existing.Classification == input.Classification && existing.ReasonCode == input.ReasonCode &&
+		existing.DeployCommit == input.DeployCommit && existing.RestoredCommit == input.RestoredCommit &&
+		stringSlicesEqual(existing.EvidenceDigests, input.EvidenceDigests)
+}
+
+func stringSlicesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func receiveReleaseRecords(req dispatchBrokerRequest) ([]releaseArtifactRecord, error) {
 	records, err := readAllReleaseArtifactRecords(req.BrokerID)
 	if err != nil {
@@ -717,7 +778,10 @@ func releaseRecordAddressedTo(record releaseArtifactRecord, requester string) bo
 	if record.Attempt != nil && record.Attempt.To == requester {
 		return true
 	}
-	return record.Result != nil && record.Result.To == requester
+	if record.Result != nil && (record.Result.To == requester || record.Result.From == requester) {
+		return true
+	}
+	return record.Transaction != nil && (record.Transaction.Actor == requester || record.Transaction.Director == requester)
 }
 
 func newReleaseAttempt(candidate releaseCandidate, requester string, now time.Time) releaseAttempt {
@@ -813,7 +877,7 @@ func releaseCandidateState(records []releaseArtifactRecord, candidateID string) 
 	if err != nil {
 		return releaseCandidate{}, nil, nil, err
 	}
-	if err := validateReleaseCandidateState(candidate, attempts, results); err != nil {
+	if err := validateReleaseCandidateState(candidate, attempts, results, records); err != nil {
 		return releaseCandidate{}, nil, nil, err
 	}
 	return candidate, attempts, results, nil
@@ -843,7 +907,7 @@ func collectReleaseCandidateState(records []releaseArtifactRecord, candidateID s
 	return candidate, attempts, results, nil
 }
 
-func validateReleaseCandidateState(candidate releaseCandidate, attempts map[string]releaseAttempt, results map[string]releaseResult) error {
+func validateReleaseCandidateState(candidate releaseCandidate, attempts map[string]releaseAttempt, results map[string]releaseResult, records []releaseArtifactRecord) error {
 	if err := validateReleaseCandidate(candidate); err != nil {
 		return err
 	}
@@ -864,7 +928,7 @@ func validateReleaseCandidateState(candidate releaseCandidate, attempts map[stri
 			return err
 		}
 	}
-	return nil
+	return validateReleaseTransactionHistory(candidate, attempts, records)
 }
 
 func validateReleaseAttempt(attempt releaseAttempt, candidate releaseCandidate) error {

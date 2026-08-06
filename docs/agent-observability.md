@@ -16,10 +16,11 @@ same redaction path. Ward has no raw-artifact fallback.
 
 An Ops peer that receives a typed release candidate gains a `release.jsonl`
 sidecar in its dispatch artifact directory. The sidecar retains candidate,
-attempt, terminal result, reason code, Ward correlation, and evidence digest
-records. It excludes input files, commands, paths, URLs, environment values,
-credentials, and raw operational output. See
-[agent-release.md](agent-release.md).
+attempt, transaction phase, typed attestation, terminal result, Ward
+correlation, and evidence digest records. It excludes input files, commands,
+paths, URLs, credentials, and raw operational output. See
+[agent-release.md](agent-release.md) and the
+[deploy transaction](agent-release-transaction.md).
 
 ## Redaction and envelopes
 
