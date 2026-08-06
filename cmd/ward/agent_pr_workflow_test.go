@@ -767,10 +767,8 @@ func TestPRWorkflowMergeExecUsesRepoDefaultStyle(t *testing.T) {
 	}
 }
 
-// TestPRWorkflowMergeExecIgnoresOperatorBundleStyle keeps native merge policy baked.
-func TestPRWorkflowMergeExecIgnoresOperatorBundleStyle(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
-
+// TestPRWorkflowMergeExecUsesForgeDefaultStyle keeps native merge policy typed.
+func TestPRWorkflowMergeExecUsesForgeDefaultStyle(t *testing.T) {
 	fake := &prWorkflowFakeForge{
 		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
 		combinedState:             "success",
@@ -1294,8 +1292,8 @@ func TestExecDispatchBrokerPRWorkflowRerunIsRoleIndependent(t *testing.T) {
 	}
 }
 
-// TestExecDispatchBrokerPRWorkflowMergeRoundTrip drives the brokered merge on
-// the fake forge - the read-only surface path with the specgen bundle absent.
+// TestExecDispatchBrokerPRWorkflowMergeRoundTrip drives the native brokered
+// merge on the fake forge from a read-only surface.
 func TestExecDispatchBrokerPRWorkflowMergeRoundTrip(t *testing.T) {
 	fake := &prWorkflowFakeForge{
 		prBody:                    "closes #6\n\nward.workflow: pull-request-and-merge\n",
@@ -1372,7 +1370,7 @@ func TestExecDispatchBrokerPRWorkflowRecoverRoundTrip(t *testing.T) {
 	}
 }
 
-// TestForgeRerunGapSurfacesLoudly pins the agentic-os#434 degradation: a forge
+// TestForgeRerunGapSurfacesLoudly pins the unsupported-rerun degradation: a forge
 // without the rerun API yields the distinct unsupported error, never silence.
 func TestForgeRerunGapSurfacesLoudly(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

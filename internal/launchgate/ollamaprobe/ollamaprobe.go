@@ -86,7 +86,7 @@ func preLaunch(rc agentsapi.RunCtx, harness, endpoint, model string, modelProbe 
 	}
 	if model = strings.TrimSpace(model); model != "" && modelProbe != nil {
 		if merr := modelProbe(rc.Ctx, endpoint, model); merr != nil {
-			return agentsapi.NewGateError(modelconfig.GateName, fmt.Errorf("ollama smoke test: %s configured model %q is stale for %s (ward#670): %s. update the fleet model string or pin WARD_CONFIG_REF to a compatible ref", harness, model, endpoint, oneLineModelErr(merr)))
+			return agentsapi.NewGateError(modelconfig.GateName, fmt.Errorf("ollama smoke test: %s configured model %q is stale for %s (ward#670): %s. update the configured model or endpoint", harness, model, endpoint, oneLineModelErr(merr)))
 		}
 	}
 	rc.Log("ollama smoke test: %s ollama endpoint reachable, proceeding", harness)

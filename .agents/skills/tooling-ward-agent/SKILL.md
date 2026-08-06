@@ -19,27 +19,33 @@ Any user phrase containing "dispatch", "agent", or "spawn" plus a numeric tail. 
 
 Do NOT fire when the user already typed a clean `owner/repo#N` or an issue URL - pass straight through to `ward agent`. A bare `#N` from inside a repo checkout also passes straight through: `ward agent` infers `owner/repo` from the cwd's git origin (ward#282).
 
-## Step 1: refresh the registry
+## Step 1: resolve the repository identity
 
-`data/repo-registry.md` in `coilyco-flight-deck/agentic-os` carries each active repo's canonical `owner/repo`, regenerated daily (`sync-repo-registry.yml`), so the local checkout lags. Read the live copy before resolving:
-
-```bash
-gh api repos/coilyco-flight-deck/agentic-os/contents/data/repo-registry.md --jq '.content' | base64 -d
-```
-
-If `gh` is unreachable, fall back to local with a one-line caveat to Kai.
+Use an explicit `owner/repo`, an issue URL, or the current checkout's origin. A
+bare `#N` inside the target checkout needs no rewriting because `ward agent`
+resolves the origin itself. For dictated aliases, use only the collision table
+in [`references/normalization.md`](references/normalization.md). If that table
+does not produce one exact repository, ask for `owner/repo` instead of querying
+an external inventory or guessing.
 
 ## Step 2: resolve the ref
 
-Lowercase the repo tokens, strip hyphens/spaces, fuzzy-match the registry's repo column, and take the **owner from the matched row** - repos span three orgs, so the owner is per-repo, not a fixed default. The full filler list and the baked-in voice-collision table live in [`references/normalization.md`](references/normalization.md). Use it, do not guess.
+Lowercase the repo tokens and strip filler, hyphens, and spaces before applying
+the exact collision table. The owner comes from the matched entry, never from a
+fixed default. The full filler list and voice-collision table live in
+[`references/normalization.md`](references/normalization.md).
 
 ## Step 3: confirm, or refuse and explain
 
-Confirm one line with the issue title from the relevant tracker API (`aosguard ops forgejo issue view <owner> <repo> <N>`, or `gh issue view <ref>` for a GitHub ref):
+Confirm one line with the issue title from Ward's read-only director queue
+(`ward agent director queue --repo <owner/repo> --json`) or the current
+harness's tracker read surface for a non-Forgejo ref:
 
 > Resolved: `coilyco-flight-deck/ward#125` - "<title>". Send an agent?
 
-Skip confirmation only on a unique, unambiguous match; ALWAYS confirm when two repos fuzzy-match. Refuse (naming the failing condition) if the issue is closed, the owner is outside the three-fleet-org trust set (see `references/normalization.md`), the repo did not resolve, or the lookup errors.
+Skip confirmation only on a unique, unambiguous match. Refuse, naming the
+failing condition, if the issue is closed, the owner is outside the configured
+trust set, the repository did not resolve, or the lookup errors.
 
 ## Step 4: dispatch the engineer
 

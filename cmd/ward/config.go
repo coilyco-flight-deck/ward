@@ -9,10 +9,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// wardConfigRefEnv names the retired input so compatibility tests can prove
-// that inherited values are inert.
-const wardConfigRefEnv = "WARD_CONFIG_REF"
-
 func documentMapping(doc *yaml.Node, source string) (*yaml.Node, bool, error) {
 	if doc.Kind == 0 {
 		return nil, false, nil

@@ -236,8 +236,8 @@ type forgejoClient struct {
 	token   string
 }
 
-// hostForgejoClient builds ward's core Forgejo adapter. It intentionally does
-// not consult WARD_CONFIG_REF or shell through generated ops leaves (ward#929).
+// hostForgejoClient builds Ward's core Forgejo adapter. It uses the compiled
+// client directly instead of shelling through generated leaves (ward#929).
 func (r *Runner) hostForgejoClient(ctx context.Context) *forgejoClient {
 	cl := &forgejoClient{r: r, mode: currentAgentMode(), baseURL: forgejoBaseURL}
 	if nativeForgejoBrokerEnabled() {

@@ -195,7 +195,6 @@ func issueThreadAuthorityServer(t *testing.T, rows []issueThreadAuthorityRow) *h
 }
 
 func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "")
 	t.Setenv("WARD_TARGET_REPO", "")
 	t.Setenv("WARD_READONLY", "")
@@ -236,7 +235,6 @@ func TestEngineerContainerLimitBelowAndAtLimit(t *testing.T) {
 // TestEngineerContainerLimitOverrideCapacity covers ward#1045: --override-capacity
 // grants one loud launch past the OOM ceiling and never stacks past limit+1.
 func TestEngineerContainerLimitOverrideCapacity(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "")
 	t.Setenv("WARD_TARGET_REPO", "")
 	t.Setenv("WARD_READONLY", "")
@@ -297,7 +295,6 @@ func TestEngineerContainerLimitOverrideCapacity(t *testing.T) {
 
 func TestEngineerCapacityLockWaitsForVisibleContainerBeforeRelease(t *testing.T) {
 	setTestHome(t, t.TempDir())
-	t.Setenv(wardConfigRefEnv, "")
 	t.Setenv("WARD_TARGET_OWNER", "")
 	t.Setenv("WARD_TARGET_REPO", "")
 	t.Setenv("WARD_READONLY", "")

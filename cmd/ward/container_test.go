@@ -271,9 +271,7 @@ func TestBuildUpPlanDirectorUsesDictatableSuffix(t *testing.T) {
 	}
 }
 
-func TestBuildUpPlanIgnoresOperatorBundleAttribution(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
-
+func TestBuildUpPlanUsesTypedAttribution(t *testing.T) {
 	var got upPlan
 	probe := &cli.Command{
 		Name:  "probe",
@@ -669,24 +667,6 @@ func TestWardEnvCorrelationEnvelope(t *testing.T) {
 	}
 	if got := env["WARD_WORKFLOW"]; got != "" {
 		t.Errorf("WARD_WORKFLOW = %q, want it absent for the merge-remote-main default", got)
-	}
-}
-
-// TestWardEnvDoesNotExportOperatorConfigRef keeps AOSguard's edge config out of
-// native Ward containers, even for a coilyco checkout.
-func TestWardEnvDoesNotExportOperatorConfigRef(t *testing.T) {
-	home := t.TempDir()
-	setTestHome(t, home)
-	work := t.TempDir()
-	gitFixture(t, work, "init", "-b", "main", ".")
-	gitFixture(t, work, "commit", "--allow-empty", "-m", "seed")
-	probe := &cli.Command{Name: "probe"}
-	p, err := buildUpPlan(probe, targetRepo{Owner: "coilyco-flight-deck", Name: "ward"}, modeClaude, roleEngineer, work, t.TempDir(), nil, false)
-	if err != nil {
-		t.Fatalf("buildUpPlan: %v", err)
-	}
-	if got := p.wardEnv()[wardConfigRefEnv]; got != "" {
-		t.Fatalf("WARD_CONFIG_REF = %q, want absent", got)
 	}
 }
 
@@ -1501,9 +1481,6 @@ func TestContainerNamespaceHiddenPlumbingOnly(t *testing.T) {
 	c := containerCommand()
 	if !c.Hidden {
 		t.Error("container umbrella must be Hidden so `ward --help` drops it (ward#263)")
-	}
-	if c.Before != nil {
-		t.Fatal("container bootstrap must not run the edge WARD_CONFIG_REF guard")
 	}
 	got := map[string]bool{}
 	for _, sub := range c.Commands {

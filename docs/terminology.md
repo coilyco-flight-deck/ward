@@ -18,7 +18,6 @@ behavior.
 - `ward`: the CLI binary.
 - `warded`: the public symlinked face for `ward agent`.
 - `cli-guard`: the policy and routing engine Ward consumes.
-- `aosguard`: the separate AOS operator CLI, not Ward runtime policy.
 - `work`: the requested change or inspection, usually an issue/ref.
 - `role`: `engineer`, `director`, or `qa`.
 - `harness`: the CLI/runtime family: `claude`, `codex`, `goose`, or `opencode`.

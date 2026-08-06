@@ -25,11 +25,6 @@ type subsystemPointer struct {
 // render order; keep keywords specific enough not to fire on a passing mention.
 var agentSubsystemPointers = []subsystemPointer{
 	{
-		label:    "AOSguard ownership boundary",
-		keywords: []string{"aosguard", "specgen", "guardfile", "ops forgejo", "operator verb"},
-		paths:    []string{"docs/aosguard-boundary.md"},
-	},
-	{
 		label:    "ward exec dev-verb surface + .ward/ward.yaml",
 		keywords: []string{"ward exec", "exec verb", "ward.yaml", "dev verb", "dev-verb"},
 		paths:    []string{"docs/exec-verb.md"},

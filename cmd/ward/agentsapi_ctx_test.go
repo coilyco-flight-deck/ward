@@ -97,7 +97,7 @@ func TestAgentRunCtxCarve(t *testing.T) {
 // /workspace, granted extra repos, and every warmed /substrate repo (dirs only).
 func TestAgentTrustDirs(t *testing.T) {
 	substrate := t.TempDir()
-	for _, name := range []string{"agentic-os", "cli-guard"} {
+	for _, name := range []string{"reference-project", "cli-guard"} {
 		if err := os.Mkdir(filepath.Join(substrate, name), 0o755); err != nil {
 			t.Fatalf("mkdir substrate %s: %v", name, err)
 		}
@@ -117,7 +117,7 @@ func TestAgentTrustDirs(t *testing.T) {
 		"/workspace",
 		"/workspace/coilyco-flight-deck/cli-guard",
 		substrate,
-		filepath.Join(substrate, "agentic-os"),
+		filepath.Join(substrate, "reference-project"),
 		filepath.Join(substrate, "cli-guard"),
 	} {
 		if !slices.Contains(got, want) {

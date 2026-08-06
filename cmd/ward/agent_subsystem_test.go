@@ -12,29 +12,29 @@ func wardRef(n int) agentIssueRef {
 // TestMatchSubsystemPointers covers ward#236: a known subsystem keyword resolves
 // to that subsystem's in-clone paths, firing once per pointer.
 func TestPolicyBoundaryMatchSubsystemPointers(t *testing.T) {
-	// The ward#226 case: an issue whose whole point is a generated guardfile.
-	hits := matchSubsystemPointers(wardRef(226), "wire an aosguard guardfile", "add an ops forgejo verb")
+	// A dev-verb issue resolves to the owning in-repository contract.
+	hits := matchSubsystemPointers(wardRef(226), "wire a ward exec verb", "update ward.yaml")
 	if len(hits) == 0 {
-		t.Fatalf("an AOSguard issue should match the ownership pointer; got none")
+		t.Fatalf("a ward exec issue should match the dev-verb pointer; got none")
 	}
 	if hits[0].label == "" || len(hits[0].paths) == 0 {
 		t.Errorf("matched pointer must carry a label and paths; got %+v", hits[0])
 	}
 	found := false
 	for _, p := range hits[0].paths {
-		if p == "docs/aosguard-boundary.md" {
+		if p == "docs/exec-verb.md" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("AOSguard pointer should include docs/aosguard-boundary.md; got %v", hits[0].paths)
+		t.Errorf("dev-verb pointer should include docs/exec-verb.md; got %v", hits[0].paths)
 	}
 
 	// A pointer fires once even when several of its keywords hit.
-	dup := matchSubsystemPointers(wardRef(1), "aosguard guardfile ops forgejo", "")
+	dup := matchSubsystemPointers(wardRef(1), "ward exec dev verb ward.yaml", "")
 	count := 0
 	for _, p := range dup {
-		if strings.HasPrefix(p.label, "AOSguard") {
+		if strings.HasPrefix(p.label, "ward exec") {
 			count++
 		}
 	}
@@ -43,7 +43,7 @@ func TestPolicyBoundaryMatchSubsystemPointers(t *testing.T) {
 	}
 
 	// Case-insensitive: keywords match regardless of issue casing.
-	if got := matchSubsystemPointers(wardRef(2), "AOSGUARD Guardfile", ""); len(got) == 0 {
+	if got := matchSubsystemPointers(wardRef(2), "WARD EXEC", ""); len(got) == 0 {
 		t.Error("keyword match should be case-insensitive")
 	}
 
@@ -82,7 +82,7 @@ func TestPolicyBoundaryMatchSubsystemPointers(t *testing.T) {
 // holds ward-specific paths, so a non-ward clone must get nothing.
 func TestPolicyBoundaryMatchSubsystemPointersScopedToWard(t *testing.T) {
 	other := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "cli-guard", Number: 9}
-	if got := matchSubsystemPointers(other, "aosguard guardfile changes", ""); got != nil {
+	if got := matchSubsystemPointers(other, "ward exec changes", ""); got != nil {
 		t.Errorf("subsystem pointers must stay scoped to %s; a cli-guard issue got %v", subsystemPointerRepo, got)
 	}
 }
@@ -90,10 +90,10 @@ func TestPolicyBoundaryMatchSubsystemPointersScopedToWard(t *testing.T) {
 // TestSubsystemSeedBlock covers ward#236 item 1: a headless seed for an issue
 // naming a subsystem must carry the front-load instruction and the paths.
 func TestPolicyBoundarySubsystemSeedBlock(t *testing.T) {
-	block := subsystemSeedBlock(wardRef(226), "aosguard guardfile", "ops forgejo verb")
+	block := subsystemSeedBlock(wardRef(226), "ward exec", "update the dev verb")
 	for _, want := range []string{
 		"Front-load before you plan",
-		"docs/aosguard-boundary.md",
+		"docs/exec-verb.md",
 		"BEFORE your first edit",
 		"is not", // the "located is not read" nudge
 		"\"read\"",
@@ -127,8 +127,8 @@ func TestPolicyBoundarySubsystemSeedBlock(t *testing.T) {
 func TestPolicyBoundaryAgentSeedPromptFrontLoads(t *testing.T) {
 	ref := wardRef(236)
 	got := agentSeedPrompt(ref, "feat(agent-dispatch): front-load subsystem context",
-		"Scan the issue body for aosguard, guardfile, ward exec, headless keywords.", "", true, nil)
-	for _, want := range []string{"Front-load before you plan", "docs/aosguard-boundary.md", "docs/agent.md"} {
+		"Scan the issue body for ward exec and headless keywords.", "", true, nil)
+	for _, want := range []string{"Front-load before you plan", "docs/exec-verb.md", "docs/agent.md"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("headless seed should front-load subsystem context; missing %q\n got: %s", want, got)
 		}
@@ -144,12 +144,12 @@ func TestPolicyBoundaryAgentSeedPromptFrontLoads(t *testing.T) {
 // front-load list and surfaces the matched subsystem pointers.
 func TestPolicyBoundaryPreflightPromptContextGate(t *testing.T) {
 	got := preflightPrompt(wardRef(236), "front-load subsystem context",
-		"scan for aosguard and guardfile keywords in headless dispatch", "", nil, nil)
+		"scan for ward exec keywords in headless dispatch", "", nil, nil)
 	for _, want := range []string{
 		"Context to front-load:", // the required checklist line
 		"before your first edit", // the read-it-before-editing commitment
 		"Naming a gap is not closing it",
-		"docs/aosguard-boundary.md", // the matched pointer reaches the read
+		"docs/exec-verb.md", // the matched pointer reaches the read
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("preflight context gate missing %q\n got: %s", want, got)

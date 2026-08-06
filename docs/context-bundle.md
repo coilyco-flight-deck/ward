@@ -30,7 +30,7 @@ The strict manifest binds the context to the selected Ward role and agent:
   "format": "ward.context-bundle.v1",
   "role": "engineer",
   "agent": "codex",
-  "repositories": ["coilyco-flight-deck/agentic-os", "coilysiren/lore"]
+  "repositories": ["example/reference-one", "example/reference-two"]
 }
 ```
 

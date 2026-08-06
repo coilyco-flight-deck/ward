@@ -42,7 +42,7 @@ func setupCommand() *cli.Command {
 			"It also creates a minimal first-run ~/.ward/config.yaml with placeholder",
 			"values when the file is missing.",
 			"",
-			"AOSguard owns operator configuration and generated API surfaces.",
+			"External operator tooling is outside Ward's configuration boundary.",
 			"",
 			"Phases: YAML/default validation -> launch checks -> host integration checks.",
 		}, "\n"),

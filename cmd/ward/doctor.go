@@ -49,7 +49,7 @@ func doctorCommand() *cli.Command {
 		Name:  "doctor",
 		Usage: "Validate typed defaults and supported YAML configuration.",
 		Description: `doctor validates Ward's typed product defaults, fixed harness
-adapters, and supported operator or repository YAML. AOSguard owns operator specs.`,
+adapters, and supported operator-local or repository YAML.`,
 		Action: func(ctx context.Context, _ *cli.Command) error {
 			report, err := runDoctor(ctx)
 			printDoctorReport(report)

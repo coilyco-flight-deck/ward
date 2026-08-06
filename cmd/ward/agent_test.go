@@ -126,9 +126,7 @@ func TestParseAgentIssueRef(t *testing.T) {
 }
 
 func TestParseAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
-
-	gh, err := parseAgentIssueRef("coilysiren/agentic-os#461")
+	gh, err := parseAgentIssueRef("coilysiren/sample-project#461")
 	if err != nil {
 		t.Fatalf("parseAgentIssueRef(github-authoritative): %v", err)
 	}
@@ -193,7 +191,6 @@ func TestAgentIssueRefShortcutURL(t *testing.T) {
 // TestUntrustedOwnerErr covers ward#484: the refusal names the owner, the
 // accepted set, and points at docs/agent-trust-gate.md so it is a signpost.
 func TestUntrustedOwnerErr(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
 	r := &Runner{}
 	msg := r.untrustedOwnerErr("warded", "evilcorp").Error()
 	for _, want := range []string{
@@ -356,7 +353,7 @@ func TestAgentSeedPromptKeepsAdjacentIssuesDistinct(t *testing.T) {
 func TestAgentSeedPromptEmptyBody(t *testing.T) {
 	ref := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 151}
 	for _, mode := range agentModes {
-		got := agentSeedPrompt(ref, "setup aosguard", "   \n  ", "", false, nil)
+		got := agentSeedPrompt(ref, "setup operator tooling", "   \n  ", "", false, nil)
 		if !strings.Contains(got, "This issue has no body") {
 			t.Errorf("%s: empty body should be called out explicitly\n got: %s", mode, got)
 		}
@@ -551,7 +548,6 @@ func TestAgentSeedPromptPullRequestFailureCommenting(t *testing.T) {
 }
 
 func TestOwnerAllowed(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
 	r := &Runner{}
 	for _, ok := range []string{"coilysiren", "coilyco-gaming", "coilyco-flight-deck"} {
 		if !r.ownerAllowed(ok) {
@@ -566,10 +562,8 @@ func TestOwnerAllowed(t *testing.T) {
 }
 
 func TestResolveAgentIssueRefUsesRepoAuthorityPolicy(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
-
 	r := &Runner{}
-	ghRef, err := r.resolveAgentIssueRef(t.Context(), "coilysiren/agentic-os#461")
+	ghRef, err := r.resolveAgentIssueRef(t.Context(), "coilysiren/sample-project#461")
 	if err != nil {
 		t.Fatalf("resolveAgentIssueRef(github-authoritative): %v", err)
 	}
@@ -1073,15 +1067,14 @@ func TestAgentHarnessAliasResolution(t *testing.T) {
 	}
 }
 
-func TestAgentHarnessIgnoresOperatorBundleDefault(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
+func TestAgentHarnessUsesTypedDefault(t *testing.T) {
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "#1"})
 	got, err := agentHarness(cmd)
 	if err != nil {
 		t.Fatalf("agentHarness with baked policy: %v", err)
 	}
 	if got != modeClaude {
-		t.Fatalf("agentHarness with operator bundle = %q, want baked %q", got, modeClaude)
+		t.Fatalf("agentHarness default = %q, want typed %q", got, modeClaude)
 	}
 }
 
@@ -1177,9 +1170,8 @@ func TestAgentImageFlagsCarryEnvSources(t *testing.T) {
 	}
 }
 
-// TestAgentImageFlagsIgnoreOperatorBundleDefaults keeps launch images baked.
-func TestAgentImageFlagsIgnoreOperatorBundleDefaults(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
+// TestAgentImageFlagsUseTypedDefaults keeps launch images in product code.
+func TestAgentImageFlagsUseTypedDefaults(t *testing.T) {
 	cmd := parseCommandForTest(t, agentEngineerFlags(), []string{"engineer", "coilyco-flight-deck/ward#42", "--harness", "claude"})
 	if got := cmd.String("image"); got != "forgejo.coilysiren.me/coilyco-flight-deck/ward" {
 		t.Fatalf("image default = %q, want baked Ward image", got)

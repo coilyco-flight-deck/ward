@@ -15,4 +15,4 @@ Deployment-specific authority belongs below Ward in the deployment layer. Ward
 does not fetch it from a reference repository at launch time.
 
 See [agent-lifecycle.md](agent-lifecycle.md) and
-[aosguard-boundary.md](aosguard-boundary.md).
+[enforcement-boundary.md](enforcement-boundary.md).

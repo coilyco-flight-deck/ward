@@ -61,7 +61,7 @@ Install from the release channel you prefer:
 - **From source.**
   `make workspace` is the local path for ward itself. It resolves a sibling `cli-guard` checkout through `go.work`; see [docs/workspace.md](docs/workspace.md).
 
-The explicit-URL form is required because the release buckets are hosted outside GitHub. The Homebrew formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The Scoop bucket installs `ward` on Windows. AOSguard is supplied by AOS for container operator work, not by Ward.
+The explicit-URL form is required because the release buckets are hosted outside GitHub. The Homebrew formula installs `ward` (stamped with the release tag) plus the `warded` symlink, and nothing else. The Scoop bucket installs `ward` on Windows.
 
 **Building from source.** ward's `go.mod` pins [cli-guard][cli-guard] by its canonical module path, so a plain `go build` needs that module host reachable.
 
@@ -99,12 +99,11 @@ Engineer runs are **detached**: the attach-and-watch `--watch` retired, so inter
 
 A `warded` run that failed or seemed to do nothing has a single symptom-indexed entry point: [`docs/troubleshooting.md`](docs/troubleshooting.md). It is indexed by **what you saw**, not by which subsystem failed - "launched then nothing happened", "never launched", "`ward exec` refused", "nothing landed on `main`" - and each row routes to the one diagnostic surface (the secret-safe `~/.ward/agent-logs-redacted/<container>/` drain, a NO-GO comment on the issue, or a host auth refresh) and the fix. Start there before opening any per-subsystem doc.
 
-## Three layers, told apart by when they run
+## Two product layers
 
-The boundary is easiest to keep straight by **when** each layer runs:
+Ward's product boundary has two layers:
 
 - **[cli-guard][cli-guard]** - the **engine**. The policy-and-routing framework ward consumes (pinned via go.mod). Thin consumer, not a fork.
-- **`aosguard`** - the AOS **operator CLI**. Specgen builds its `aosguard ops <api>` REST and exec surfaces. It is standalone at runtime and does not invoke or configure Ward.
 - **`ward`** - the native **run-time control plane**. It provides `agent`, `container`, `exec`, reservations, reaping, and PR workflow. Its three workflow labels do not grant permissions.
 
 See [`docs/architecture.md`](docs/architecture.md).
@@ -117,7 +116,6 @@ Over 60 pages under [`docs/`](docs/) cover each surface. The anchors:
 - **The agent driver** - [first-run.md](docs/first-run.md) (zero to a first `--print` dry run), [agent.md](docs/agent.md) (the reference), the roster [agent-engineer.md](docs/agent-engineer.md) / [agent-director.md](docs/agent-director.md) / [agent-qa.md](docs/agent-qa.md), [agent-lifecycle.md](docs/agent-lifecycle.md), [agent-ops.md](docs/agent-ops.md).
 - **The container** - [container.md](docs/container.md), [container-lifecycle.md](docs/container-lifecycle.md) (land-or-salvage on teardown), [container-substrate.md](docs/container-substrate.md).
 - **Terminology** - [terminology.md](docs/terminology.md) defines Ward's preferred operational terms, known non-equivalences, and analogy bank.
-- **Container operator surface (AOSguard)** - use `aosguard ops ...` from AOS. [aosguard-boundary.md](docs/aosguard-boundary.md) records the ownership boundary.
 - **Build & release** - [homebrew-build.md](docs/homebrew-build.md), [release.md](docs/release.md), [golangci.md](docs/golangci.md).
 
 ## Status
@@ -140,7 +138,7 @@ Start on GitHub: file bugs and feature requests with a [new issue][new-issue], a
 ## See also
 
 - [docs/README.md](docs/README.md) - the docs index: every doc grouped by subsystem.
-- [docs/architecture.md](docs/architecture.md) - Ward's native boundary beside cli-guard and AOSguard.
+- [docs/architecture.md](docs/architecture.md) - Ward's native boundary beside cli-guard.
 - [docs/terminology.md](docs/terminology.md) - Ward vocabulary, conceptual model, and analogy bank.
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
@@ -149,5 +147,3 @@ Start on GitHub: file bugs and feature requests with a [new issue][new-issue], a
 - [docs/doctor.md](docs/doctor.md) - runtime config validation.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
 - [docs/ward-yaml.md](docs/ward-yaml.md) - field-by-field `.ward/ward.yaml` schema reference.
-
-Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).

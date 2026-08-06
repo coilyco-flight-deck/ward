@@ -20,7 +20,7 @@ func TestRunPreflightGooseNeverRunsHostOneShot(t *testing.T) {
 	w := resolvedWork{
 		Ref:   agentIssueRef{Owner: "coilyco-flight-deck", Repo: "ward", Number: 131},
 		Title: "some ward feature",
-		Body:  "implement AOSguard boundary wiring",
+		Body:  "implement an external operator boundary",
 	}
 
 	var proceed bool

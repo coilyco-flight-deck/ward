@@ -12,7 +12,6 @@ const agentFlagsDocPath = "../../" + agentFlagsDoc
 // TestAgentFlagsDocMatches fails when the committed docs/agent-flags.md drifts from
 // the code flag tree's regenerated markdown.
 func TestAgentFlagsDocMatches(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
 	want, err := agentFlagsMarkdown()
 	if err != nil {
 		t.Fatalf("agentFlagsMarkdown: %v", err)
@@ -37,7 +36,6 @@ func TestAgentFlagsCommandRegistered(t *testing.T) {
 // TestAgentFlagsMarkdownShape sanity-checks the generated body: the doc_goal
 // front-matter, the generated-by header, and a few command sections.
 func TestAgentFlagsMarkdownShape(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
 	md, err := agentFlagsMarkdown()
 	if err != nil {
 		t.Fatalf("agentFlagsMarkdown: %v", err)

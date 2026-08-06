@@ -332,10 +332,9 @@ func TestTailnetTowerEnvOverride(t *testing.T) {
 	}
 }
 
-// TestTailnetTowerBadConfigRefIgnored pins the staged middle tier: a bad
-// WARD_CONFIG_REF does not disturb baked topology, and env still wins.
-func TestTailnetTowerBadConfigRefIgnored(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
+// TestTailnetTowerBakedDefaults pins the typed fallback before explicit
+// environment overrides are applied.
+func TestTailnetTowerBakedDefaults(t *testing.T) {
 	t.Setenv(envTailnetNetwork, "")
 	t.Setenv(envTailnetProxy, "")
 	t.Setenv(envTowerHost, "")
@@ -347,7 +346,7 @@ func TestTailnetTowerBadConfigRefIgnored(t *testing.T) {
 
 	topo := currentContainerTopology()
 	if topo.TailnetNetwork != defaultTailnetNetwork || topo.TailnetProxy != defaultTailnetProxy || topo.TowerHost != defaultTowerHost || topo.TowerOllamaPort != defaultTowerOllamaPort {
-		t.Fatalf("bad config ref disturbed the baked topology: %+v", topo)
+		t.Fatalf("typed topology defaults changed: %+v", topo)
 	}
 	if got := tailnetNetwork(); got != defaultTailnetNetwork {
 		t.Errorf("tailnetNetwork() = %q, want baked default", got)

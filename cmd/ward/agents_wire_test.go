@@ -138,7 +138,7 @@ func TestComposeAgentContainerCodexSurfaceTrust(t *testing.T) {
 	e := bootstrapEnv{
 		Mode:       string(modeCodex),
 		AgentHome:  home,
-		TargetName: "agentic-os",
+		TargetName: "sample-project",
 		ReadOnly:   true, // the director surface container (WARD_READONLY=1)
 	}
 	rc := r.agentRunCtx(context.Background(), e, nil)
@@ -151,7 +151,7 @@ func TestComposeAgentContainerCodexSurfaceTrust(t *testing.T) {
 	if want := "notice.hide_rate_limit_model_nudge = true"; !strings.Contains(string(data), want) {
 		t.Errorf("read-only Codex surface config.toml missing %q\n---\n%s", want, data)
 	}
-	for _, dir := range []string{"/workspace/agentic-os", "/workspace"} {
+	for _, dir := range []string{"/workspace/sample-project", "/workspace"} {
 		want := "[projects.\"" + dir + "\"]\ntrust_level = \"trusted\"\n"
 		if !strings.Contains(string(data), want) {
 			t.Errorf("surface config.toml missing trust table for %s\n---\n%s", dir, data)

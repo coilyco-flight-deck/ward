@@ -3,7 +3,6 @@ package main
 import "testing"
 
 func TestSplitStackCompactRefUsesTypedAuthority(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
 	defs, err := currentSmartDefaultsWithError()
 	if err != nil {
 		t.Fatal(err)

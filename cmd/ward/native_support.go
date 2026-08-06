@@ -10,7 +10,7 @@ import (
 )
 
 // forgejoTokenResolver is native credential plumbing shared by issue, PR, and
-// git control-plane calls. It deliberately has no dependency on AOSguard specs.
+// git control-plane calls.
 func (r *Runner) forgejoTokenResolver(ctx context.Context) (string, error) {
 	if os.Getenv("WARD_READONLY") == "1" {
 		if token, ok := r.brokerDispatchSeed(ctx, broker.Target{Owner: brokerOwnerPrefix, Repo: "credential", Number: 1}); ok {

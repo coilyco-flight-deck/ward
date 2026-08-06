@@ -7,7 +7,6 @@ import (
 )
 
 func TestAgentRunBudgetNote(t *testing.T) {
-	t.Setenv("WARD_CONFIG_REF", "ignored")
 	note := agentRunBudgetNote(roleEngineer)
 	wantTTL := conciseDuration(agentReservationTTL())
 	for _, want := range []string{"Run budget", "execution limit: 90m", "reservation TTL: " + wantTTL} {

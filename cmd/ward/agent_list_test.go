@@ -16,8 +16,6 @@ import (
 
 func TestAgentRunningEngineerFromInspectIncludesReservation(t *testing.T) {
 	setTestHome(t, t.TempDir())
-	t.Setenv(wardConfigRefEnv, "")
-
 	now := time.Date(2026, 7, 9, 22, 45, 0, 0, time.UTC)
 	ref := agentIssueRef{Owner: "coilyco-gaming", Repo: "sample-sim", Number: 18}
 	path, err := agentReservationPath(ref)

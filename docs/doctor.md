@@ -24,4 +24,4 @@ leans on them.
 ## See also
 
 - [config-source.md](config-source.md) - runtime setting ownership.
-- [aosguard-boundary.md](aosguard-boundary.md) - the AOSguard boundary.
+- [enforcement-boundary.md](enforcement-boundary.md) - the executable boundary.

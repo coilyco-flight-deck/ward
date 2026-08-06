@@ -231,7 +231,7 @@ func TestSyncGitRefPermissionDeniedFetchHeadFallsBack(t *testing.T) {
 }
 
 // TestSyncGitRefImmutableShaSkipsRefresh pins the pinned-sha fast path: a full sha
-// in the mirror never refetches - the pin cannot resolve differently (aos#452 class).
+// in the mirror never refetches, so the pin cannot resolve differently.
 func TestSyncGitRefImmutableShaSkipsRefresh(t *testing.T) {
 	origin := newTestOrigin(t)
 	sha := gitFixture(t, origin, "rev-parse", "main")

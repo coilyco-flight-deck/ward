@@ -16,7 +16,7 @@ load a role profile or external policy bundle.
 - `ward agent pr recover <owner/repo#N>` - diagnose a closed-unmerged PR and report the head SHA, linked issue, and next safe action.
 - `ward agent pr merge <owner/repo#N> [--style STYLE]` - merge one PR with permission gate, live required-status gate, head pinning, style resolution, repo-default delete-branch propagation, and merged-state check.
 - `ward agent pr runs [owner/repo] [--limit N]` - Actions runs with per-run conclusions.
-- `ward agent pr rerun <owner/repo> <run-id>` - rerun one Actions run. The pinned Forgejo API has no rerun operation yet ([agentic-os#434](https://github.com/coilysiren/agentic-os/issues/434)), so this degrades loudly with the manual retrigger fallback.
+- `ward agent pr rerun <owner/repo> <run-id>` - rerun one Actions run. The pinned Forgejo API has no rerun operation yet, so this degrades loudly with the manual retrigger fallback.
 
 ## The workflow gate
 

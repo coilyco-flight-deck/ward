@@ -380,8 +380,7 @@ func TestUpdatePullRequestBranchRequestShape(t *testing.T) {
 	}
 }
 
-func TestFetchIssueIgnoresBadConfigRef(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "file:///definitely/not/a/ward-bundle")
+func TestFetchIssueUsesNativeClient(t *testing.T) {
 	orig := forgejoBaseURL
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/repos/coilyco-flight-deck/ward/issues/929" {
@@ -395,7 +394,7 @@ func TestFetchIssueIgnoresBadConfigRef(t *testing.T) {
 
 	issue, err := (&Runner{}).fetchIssueByForge(context.Background(), "test", forgeForgejo, modeCodex, "coilyco-flight-deck", "ward", 929)
 	if err != nil {
-		t.Fatalf("fetchIssueByForge with bad %s: %v", wardConfigRefEnv, err)
+		t.Fatalf("fetchIssueByForge: %v", err)
 	}
 	if issue.Number != 929 || strings.Join(issue.Labels, ",") != "P0" {
 		t.Fatalf("issue = %+v, want direct HTTP result", issue)

@@ -38,14 +38,10 @@ States mean:
 - Aider - not a Ward harness.
 - Ollama - partial backend, not a harness. `docs/agent-harnesses.md`, `docs/agent-goose.md`, `docs/agent-opencode.md`.
 
-## AOS operator providers
-
-- Generated operator leaves belong to `aosguard ops` in AOS. They are not Ward commands.
-
 ## Config and auth sources
 
-- Ward launch mechanics are typed product code. AOSguard owns its own
-  operator-spec configuration.
+- Ward launch mechanics are typed product code. Provider-specific operator
+  configuration is outside Ward.
 - Compose directors use Ward's native sibling broker for authenticated Forgejo
   operations. The broker snapshots the host-resolved token and exposes only
   Ward's allowlisted request shapes, never the credential.

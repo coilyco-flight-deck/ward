@@ -376,9 +376,7 @@ func TestWorkflowEnvAndLabels(t *testing.T) {
 	}
 }
 
-func TestAgentWorkflowIgnoresOperatorBundleDefaults(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "ignored")
-
+func TestAgentWorkflowPrecedence(t *testing.T) {
 	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/sample-tooling#1"})
 	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/sample-tooling")
 	if err != nil {
@@ -403,19 +401,6 @@ func TestAgentWorkflowIgnoresOperatorBundleDefaults(t *testing.T) {
 	}
 	if wf != workflowRemoteBranchOnly {
 		t.Errorf("CLI workflow = %q, want remote-branch-only", wf)
-	}
-}
-
-func TestAgentWorkflowIgnoresBadOperatorConfigRef(t *testing.T) {
-	t.Setenv(wardConfigRefEnv, "not-a-resolvable-ref")
-
-	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/sample-tooling#1"})
-	got, err := agentWorkflow(cmd, "coilyco-flight-deck/sample-tooling")
-	if err != nil {
-		t.Fatalf("agentWorkflow with bad operator ref: %v", err)
-	}
-	if got != workflowDirectToMain {
-		t.Fatalf("agentWorkflow with bad operator ref = %q, want baked merge-remote-main", got)
 	}
 }
 

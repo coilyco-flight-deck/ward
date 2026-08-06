@@ -27,7 +27,7 @@ func TestParseGitHubIssueRef(t *testing.T) {
 		{"http://github.com/owner/repo/issues/3", "owner", "repo", 3, true},
 		{"github.com/owner/repo/issues/7", "owner", "repo", 7, true},
 		{"github.com/owner/repo#42", "owner", "repo", 42, true},
-		{"https://github.com/coilysiren/agentic-os/issues/461?foo=bar", "coilysiren", "agentic-os", 461, true},
+		{"https://github.com/coilysiren/sample-project/issues/461?foo=bar", "coilysiren", "sample-project", 461, true},
 		{"https://github.com/owner/repo.git/issues/9", "owner", "repo", 9, true},
 		{"https://www.github.com/owner/repo/issues/5", "owner", "repo", 5, true},
 		// Not GitHub / not an issue ref: fall through to the Forgejo parser.

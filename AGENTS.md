@@ -2,7 +2,8 @@
 
 Read-only surface instructions override the base doctrine below whenever a container or director session says it is read-only. In those sessions, `/workspace` is read-only by default and `/scratch` is the only writable place for throwaway scripts or scratch files.
 
-This file is the self-contained agent base for `ward`. Work from it alone - it points at nothing outside this repo. Ward does not depend on any broader workspace conventions, and needs no `~/.claude` chain, no `agentic-os-kai`, and no host-fleet context to follow.
+This file is the self-contained agent base for `ward`. Work from it alone. Ward
+does not depend on a private harness chain or host-fleet context.
 
 ## Audience: which agent are you?
 
@@ -15,7 +16,7 @@ Unsure? You are almost certainly the **adopter**. The delegated "set this up for
 
 ## Setting up ward for a repo
 
-**This section is for the adopter agent.** Adopting ward means wiring the audited verb gate into a target repo. This path is **forge-agnostic**: it works against any git repo (GitHub included) with nothing but Homebrew and a `.ward/ward.yaml`. You need **no** `~/.claude`, no `agentic-os-kai`, and no Forgejo account. Anything below that mentions those is internal-fleet context for ward's own maintainers, not an adoption prerequisite - skip it.
+**This section is for the adopter agent.** Adopting ward means wiring the audited verb gate into a target repo. This path is **forge-agnostic**: it works against any git repo (GitHub included) with nothing but Homebrew and a `.ward/ward.yaml`. You need no private harness configuration and no Forgejo account. Maintainer-only context below is not an adoption prerequisite.
 
 The ordered path, start to finish:
 
@@ -38,14 +39,13 @@ branch vs published release. Add or update terminology there before spreading a
 new synonym through the repo.
 
 Ward uses cli-guard as its policy engine and keeps its agent, container,
-repository-development, and tracker control plane native. AOS owns specgen and
-the separate [`aosguard`](docs/aosguard-boundary.md) operator CLI.
+repository-development, and tracker control plane native. External operator
+products are outside Ward's runtime and repository contract.
 
 - **Contributor dev verbs** - `build`, `test`, `vet`, `lint`, `tidy`, `cover`, declared per-repo in `.ward/ward.yaml`.
 - **Native control-plane verbs** - hand-written commands under `agent`,
   `container`, `git`, and related Ward-owned groups.
-- **Operator verbs** - `aosguard ops ...`, authored and shipped by AOS. They
-  are not Ward commands.
+- **External operator verbs** - provider-specific commands outside Ward.
 
 ## Project shape
 
@@ -54,8 +54,7 @@ Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/
 ## Repo boundaries
 
 - Upstream: `coilyco-flight-deck/cli-guard` is the policy/routing engine. Thin consumer, not a fork.
-- Operator owner: `coilyco-flight-deck/agentic-os` - specgen inputs and
-  AOSguard work land there, not in Ward.
+- External operator products remain outside this repository.
 - Downstream: consumers upgrade to the `ward` binary and `.ward` config on their own schedule.
 
 ## Commands
@@ -73,7 +72,8 @@ Install via the flight-deck brew tap - see [README.md](README.md).
 
 ## Validation
 
-The `.ward/ward.yaml` <-> `Makefile` contract is checked by `ward doctor` (no `ward lint` verb). The cross-repo pre-commit suite from `coilyco-flight-deck/agentic-os` runs every commit.
+The `.ward/ward.yaml` <-> `Makefile` contract is checked by `ward doctor` (no
+`ward lint` verb). The pinned pre-commit suite runs every commit.
 
 ## Safety
 
@@ -82,7 +82,7 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 ## Cross-repo contracts
 
 - Engine: `coilyco-flight-deck/cli-guard` (pinned via go.mod).
-- Pre-commit suite: `coilyco-flight-deck/agentic-os` (pinned via `rev:` in `.pre-commit-config.yaml`).
+- Pre-commit suite: pinned via `rev:` in `.pre-commit-config.yaml`.
 - Downstream config schema: `.ward/ward.yaml` - cli-guard `repocfg` format, fields in [docs/ward-yaml.md](docs/ward-yaml.md).
 
 ## Release
@@ -91,7 +91,9 @@ Forgejo-canonical, on Forgejo Actions not GitHub. Push to `main` runs `.forgejo/
 
 Never write the literal skip-CI token in a commit body or it silently disables the workflow on that push. Describe it as "skip-CI marker".
 
-Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mirror): `aosguard ops forgejo tasks list coilyco-flight-deck ward --limit 1`. Once green, refresh the installed ward binary.
+Post-push, verify the release run on Forgejo Actions through
+`ward agent pr runs coilyco-flight-deck/ward --limit 1`. Once green, refresh
+the installed Ward binary.
 
 ## Agent rules
 
@@ -108,5 +110,3 @@ Post-push at +120s, verify the release run on Forgejo Actions (not the GitHub mi
 - [docs/FEATURES.md](docs/FEATURES.md) - what ships today.
 - [docs/features-release-tooling.md](docs/features-release-tooling.md) - cross-repo tooling and release convention.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
-
-Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).

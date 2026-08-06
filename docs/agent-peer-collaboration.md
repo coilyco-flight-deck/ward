@@ -8,7 +8,7 @@ roster. The broker treats role slugs as opaque context selectors.
 
 `--repo owner/name` selects the repository-backed plan. An existing `--cluster`
 without `--repo` selects repository-free collaboration. Both take role context
-from the peer's AOS-generated bundle.
+from the peer's validated context bundle.
 
 ## Launch a peer
 
@@ -77,4 +77,4 @@ Host-launched composed peers retain their own validated context bundle when
 they join a broker. Sealed repository metadata is retained but ignored by the
 repository-free peer plan, so the bundle cannot grant repository or Forgejo
 authority. Nested agents cannot forward a container-only bundle path
-as a new host bind. Launch a separately composed role through AOS on the host.
+as a new host bind. Launch a separately composed role from the host.

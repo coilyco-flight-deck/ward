@@ -2124,8 +2124,6 @@ func TestRunAgentTaskDirectRoutesThroughBrokerOnReadonlySurface(t *testing.T) {
 	t.Setenv(envDispatchBrokerToken, "nonce-freeform")
 	t.Setenv("WARD_CONTAINER_NAME", "director-codex-host")
 
-	t.Setenv(wardConfigRefEnv, "ignored")
-
 	defs, err := currentSmartDefaultsWithError()
 	if err != nil {
 		t.Fatalf("load typed defaults: %v", err)

@@ -1,15 +1,13 @@
 ---
-doc_goal: Preserve the legacy targeted cleanup note while naming the supported whole-folder cache clear path.
+doc_goal: Explain Ward's supported stale-launch and disposable-cache cleanup paths.
 ---
-# manual stale reservation cleanup
+# stale reservation cleanup
 
-The supported emergency path is `ward agent reservations clear` or deleting
-`~/.ward/agent-reservations` wholesale. This older targeted comment cleanup note
-remains only for rare one-comment recovery cases.
+Ward keeps issue-thread reservation authority behind typed broker operations.
+It does not expose a generic raw comment-deletion command.
 
 Use this when `ward agent list` shows a `container starting` record that still
-counts toward capacity but does not have a visible running engineer yet, and
-the issue thread still needs a surgical comment fix instead of a cache clear.
+counts toward capacity but does not have a visible running engineer yet.
 
 ## Identify it
 
@@ -21,24 +19,26 @@ the issue thread still needs a surgical comment fix instead of a cache clear.
   `WARD-WORKFLOW: blocked`, or `WARD-WORKFLOW: failed`. Older
   `WARD-OUTCOME:` comments remain readable as compatibility input.
 
-## Find the comment
+## Clear the stale launch
 
 ```bash
-aosguard ops forgejo issue-comment list <owner> <repo> <issue> --query '[?contains(body, `"ward-agent-reservation"`)].{id:id,created_at:created_at}' --output json
+ward agent stop <owner/repo#N> --print
+ward agent stop <owner/repo#N>
 ```
 
-## Clear it
+The preview names the run or stale issue-ref launch Ward will target. The real
+command routes through the supervised broker and clears only the confirmed
+Ward-owned state.
+
+If the issue thread is already correct and only the disposable host cache is
+stale, clear that cache wholesale:
 
 ```bash
-aosguard ops forgejo issue-comment delete <owner> <repo> <comment-id>
+ward agent reservations clear
 ```
 
-- Delete only the targeted reservation comment.
-- Never bulk-delete comments.
-- Never delete a reservation for a visible or running engineer.
-- If an edit verb exists on another surface, editing out the marker is less
-  destructive than deleting the whole comment.
-- This is issue-comment cleanup, not host-side file deletion.
+- Never clear a reservation for a visible or running engineer.
+- The cache command does not delete canonical issue-thread evidence.
 - After cleanup, run `ward agent list` again and retry dispatch.
 
 ## Caveat

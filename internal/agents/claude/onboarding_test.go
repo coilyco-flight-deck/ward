@@ -74,7 +74,7 @@ func TestSeedOnboardingTrustDirs(t *testing.T) {
 		"/workspace",
 		"/workspace/cli-guard",
 		"/substrate",
-		"/substrate/agentic-os",
+		"/substrate/reference-project",
 	}
 	got := readSeed(t, agentsapi.RunCtx{AgentHome: home, TargetName: "ward", TrustDirs: dirs, Log: noopLog})
 	for _, dir := range dirs {

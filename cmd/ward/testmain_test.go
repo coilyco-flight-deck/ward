@@ -14,7 +14,6 @@ func TestMain(m *testing.M) {
 	os.Setenv(envAutomationActor, forgeForgejo.gitPushUser())
 	os.Setenv(envForgejoGitToken, "synthetic-git-only-token")
 	for _, k := range []string{
-		"WARD_CONFIG_REF", "WARD_CONFIG_TTL",
 		envAgentImage, envAgentTag,
 		envStagingDir, envLaunchStagingDir, envInternalLaunchStagingDir,
 		"WARD_TARGET_OWNER", "WARD_TARGET_REPO",

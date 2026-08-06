@@ -21,7 +21,7 @@ preferred.
 
 ## Product And Authority
 
-- product: `Ward`, `ward`, `warded`, `cli-guard`, `aosguard`, `specgen`.
+- product: `Ward`, `ward`, `warded`, `cli-guard`.
 - authority: tracker thread, forge, git remote, broker, harness credential,
   container env, repo config, workflow label.
 - evidence: audit row, audit trail, logs, transcript, status line, issue

@@ -33,8 +33,9 @@ Think of `ward agent` as a small pipeline:
 The role determines what the run is trying to do. The harness determines how
 the run is authenticated and what model or CLI it talks to. The workflow
 determines where the work is allowed to land.
-Ward resolves its harness and launch defaults from baked AOS-authored policy.
-An AOSguard operator config reference cannot alter a native agent launch. Use [terminology.md](terminology.md) when changing these words.
+Ward owns typed harness and launch defaults. Supported user configuration may
+override only the documented inputs. Use [terminology.md](terminology.md) when
+changing these words.
 
 ## What changed here
 
@@ -68,11 +69,6 @@ Freeform engineer text files an issue first, then carries that issue through
 the detached run.
 
 The director has no separate interactive subcommand. Start `warded director --repo owner/name` from a terminal to read one live snapshot and open the attached read-only session. Ward stores no director queue ledger and runs no autonomous loop. A harness-native goal owns repetition and dispatch judgment.
-
-## Why the docs are smaller
-
-The old doc tree had one page per issue slice. The new tree keeps only the
-release-era path and collapses the details into a small set of durable guides.
 
 ## See also
 

@@ -60,10 +60,6 @@ Start here for Ward's operating surface.
 - [container-lifecycle.md](container-lifecycle.md) - launch, debug, teardown.
 - [container-substrate.md](container-substrate.md) - `/substrate` and multi-repo.
 
-## AOSguard boundary
-
-- [aosguard-boundary.md](aosguard-boundary.md) - Ward to AOSguard ownership boundary.
-
 ## See also
 
 - [../README.md](../README.md) - the front page.

@@ -11,4 +11,4 @@ Ward's executable boundary is the product contract.
 ## See also
 
 - [exec-verb.md](exec-verb.md) - the gated dev-verb path.
-- [aosguard-boundary.md](aosguard-boundary.md) - the external operator boundary.
+- [architecture.md](architecture.md) - the shipped product split.

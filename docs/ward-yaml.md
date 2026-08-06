@@ -39,7 +39,7 @@ plus optional security and agent launch preferences.
 - Agent values override operator YAML and are overridden by explicit command
   inputs.
 - Role profiles and authority settings are not valid repository configuration.
-- It does not replace the agent container or AOSguard operator surface.
+- It does not configure provider-specific operator tooling.
 
 ## See also
 
