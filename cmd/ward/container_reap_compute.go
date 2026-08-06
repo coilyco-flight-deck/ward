@@ -293,6 +293,9 @@ type salvageReport struct {
 	PullRequestURL string
 	// PullRequestUnavailable names why ward fell back to branch-only salvage.
 	PullRequestUnavailable string
+	// RecoveryArtifactVerified proves the advertised remote branch exists at the
+	// salvaged HEAD. Tracker mutation is forbidden until this evidence exists.
+	RecoveryArtifactVerified bool
 }
 
 // salvageIssueTitle is stable per repo+branch so duplicate detection works.
@@ -345,6 +348,13 @@ func salvageDetailBody(r salvageReport) string {
 }
 
 func appendSalvageIdentity(b *strings.Builder, r salvageReport) {
+	fmt.Fprintln(b, "- **Code landed:** no")
+	if r.Issue != 0 {
+		fmt.Fprintln(b, "- **Tracker bookkeeping:** issue reopen requested for genuine residual work")
+	} else {
+		fmt.Fprintln(b, "- **Tracker bookkeeping:** not applicable")
+	}
+	fmt.Fprintln(b, "- **Recovery artifact:** verified remote branch")
 	fmt.Fprintf(b, "- **Repo:** `%s`\n", r.Repo.slug())
 	fmt.Fprintf(b, "- **Salvage branch:** `%s`\n", r.Branch)
 	if r.PullRequestURL != "" {

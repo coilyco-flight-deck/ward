@@ -32,7 +32,9 @@ does not replace CI or the exact-revision QA gate.
 
 Harness exit, a local commit, or a stale no-diff salvage branch is not delivery.
 Teardown rechecks current landing evidence before reporting failure or
-reopening an issue.
+reopening an issue. Git proves whether code landed. Closing references and
+workflow comments only reconcile tracker bookkeeping after that proof. Ward
+advertises recovery only after the remote salvage branch is verified.
 
 ## See also
 

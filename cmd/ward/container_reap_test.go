@@ -84,7 +84,7 @@ func TestRunContainerReapAnnouncesLogArchive(t *testing.T) {
 	if !strings.Contains(stderr, "ward container reap: logs flushed to ~/.ward/agent-logs-redacted/engineer-codex-ward-693") {
 		t.Fatalf("stderr missing archive destination:\n%s", stderr)
 	}
-	if !strings.Contains(stderr, "WARD-REAP: nothing to reap") {
+	if !strings.Contains(stderr, "WARD-REAP: code-landed=true tracker-bookkeeping=not-applicable recovery-artifact=false proof=head-equals-origin-main") {
 		t.Fatalf("stderr missing the clean reap outcome:\n%s", stderr)
 	}
 }
@@ -889,9 +889,7 @@ func TestReapTargetTreeLandedAndClosedDoesNotSalvage(t *testing.T) {
 	}
 }
 
-// TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages covers ward#674.
-// A merge-remote-main run already on origin/main still verifies its closes ref.
-func TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages(t *testing.T) {
+func TestReapTargetTreeLandedDirectToMainWithoutCloseRefOnlyReconcilesTracker(t *testing.T) {
 	origin := t.TempDir()
 	runGit(t, origin, "init", "--bare", "-b", "main")
 	work := t.TempDir()
@@ -925,16 +923,23 @@ func TestReapTargetTreeLandedDirectToMainWithoutCloseRefSalvages(t *testing.T) {
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 674, Launched: true, Workflow: workflowDirectToMain}
-	if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
-		t.Fatalf("reapTargetTree on a landed merge-remote-main run without closes #674: %v", err)
-	}
+	stderr := captureTestStderr(t, func() {
+		if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+			t.Fatalf("reapTargetTree on a landed merge-remote-main run without closes #674: %v", err)
+		}
+	})
 
 	if got, want := mustGitRev(t, origin, "main"), mustGitRev(t, work, "HEAD"); got != want {
 		t.Fatalf("a landed merge-remote-main run without closes #674 must not advance main again: origin main=%s work HEAD=%s", got, want)
 	}
 	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
-	if strings.TrimSpace(string(out)) == "" {
-		t.Fatal("a landed merge-remote-main run without closes #674 must be preserved on a salvage branch")
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("landed code without closes #674 must not create a salvage branch, got %q", string(out))
+	}
+	for _, want := range []string{"code-landed=true", "tracker-bookkeeping=reconciliation-required", "recovery-artifact=false", "proof=head-equals-origin-main"} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr missing %q:\n%s", want, stderr)
+		}
 	}
 }
 
@@ -979,7 +984,7 @@ func TestReapTargetTreeLandedDirectToMainRechecksOriginMainCloseRefBeforeSalvage
 			t.Fatalf("reapTargetTree on an already-pushed closing ref: %v", err)
 		}
 	})
-	if !strings.Contains(stderr, "trusting remote main before salvage") {
+	if !strings.Contains(stderr, "code-landed=true tracker-bookkeeping=agrees recovery-artifact=false proof=head-equals-origin-main") {
 		t.Fatalf("stderr missing origin/main recheck proof:\n%s", stderr)
 	}
 	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
@@ -988,7 +993,7 @@ func TestReapTargetTreeLandedDirectToMainRechecksOriginMainCloseRefBeforeSalvage
 	}
 }
 
-func TestReapTargetTreeDoneOutcomeSuppressesEmptySalvageWhenMainHasCloseRef(t *testing.T) {
+func TestReapTargetTreeWard1605LandedCodeIgnoresBrokenBookkeeping(t *testing.T) {
 	origin := t.TempDir()
 	runGit(t, origin, "init", "--bare", "-b", "main")
 	work := t.TempDir()
@@ -1000,7 +1005,7 @@ func TestReapTargetTreeDoneOutcomeSuppressesEmptySalvageWhenMainHasCloseRef(t *t
 	runGit(t, work, "push", "origin", "main")
 	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
 
-	runGitCommitAt(t, work, "2026-07-28T10:15:00Z", "feat.txt", "feat\n", "land issue 1605\n\ncloses #1605")
+	runGitCommitAt(t, work, "2026-07-28T10:15:00Z", "feat.txt", "feat\n", "land issue 1605")
 	runGit(t, work, "push", "origin", "main")
 	runGit(t, work, "update-ref", "refs/remotes/origin/main", "HEAD")
 	landed := mustGitRev(t, work, "HEAD")
@@ -1022,25 +1027,14 @@ func TestReapTargetTreeDoneOutcomeSuppressesEmptySalvageWhenMainHasCloseRef(t *t
 		t.Fatal(err)
 	}
 
-	upAt := time.Date(2026, 7, 28, 10, 5, 0, 0, time.UTC)
-	prev := listReapIssueComments
-	listReapIssueComments = func(context.Context, *Runner, reapEnv) ([]issueComment, error) {
-		return []issueComment{
-			machineComment("WARD-WORKFLOW: done ✅\n\n<details><summary>details</summary>\n\nPushed main with closes #1605.\n\n</details>", upAt.Add(20*time.Minute)),
-		}, nil
-	}
-	t.Cleanup(func() { listReapIssueComments = prev })
-
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	env := reapEnv{
 		Owner:     "coilyco-flight-deck",
 		Name:      "ward",
 		Base:      "https://forgejo.coilysiren.me",
 		Mode:      "codex",
-		Token:     "test-token",
 		Issue:     1605,
 		Launched:  true,
-		UpAt:      upAt.Format(time.RFC3339),
 		Workflow:  workflowDirectToMain,
 		Container: "engineer-codex-ward-1605",
 	}
@@ -1049,12 +1043,72 @@ func TestReapTargetTreeDoneOutcomeSuppressesEmptySalvageWhenMainHasCloseRef(t *t
 			t.Fatalf("reapTargetTree with done outcome and no diff: %v", err)
 		}
 	})
-	if !strings.Contains(stderr, "already carries closes coilyco-flight-deck/ward#1605 after a done outcome") {
-		t.Fatalf("stderr missing done-outcome empty-salvage proof:\n%s", stderr)
+	if !strings.Contains(stderr, "code-landed=true tracker-bookkeeping=reconciliation-required recovery-artifact=false proof=head-equals-origin-main") {
+		t.Fatalf("stderr missing Git landing and tracker reconciliation proof:\n%s", stderr)
 	}
 	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
 	if strings.TrimSpace(string(out)) != "" {
-		t.Fatalf("done + no-diff closing ref must not create a salvage branch, got: %q", string(out))
+		t.Fatalf("landed #1605 work must not create a salvage branch, got: %q", string(out))
+	}
+}
+
+func TestReapTargetTreeHeadContainedInOriginMainIsLanded(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-28T10:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGitCommitAt(t, work, "2026-07-28T10:05:00Z", "feat.txt", "feat\n", "land feature")
+	runGit(t, work, "push", "origin", "main")
+	landedHead := mustGitRev(t, work, "HEAD")
+	runGitCommitAt(t, work, "2026-07-28T10:10:00Z", "later.txt", "later\n", "advance main")
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "checkout", "--detach", landedHead)
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 1605, Launched: true, Workflow: workflowDirectToMain}
+	stderr := captureTestStderr(t, func() {
+		if err := r.reapTargetTree(t.Context(), work, env, false); err != nil {
+			t.Fatalf("reapTargetTree on an ancestor of main: %v", err)
+		}
+	})
+	if !strings.Contains(stderr, "proof=head-contained-in-origin-main") {
+		t.Fatalf("stderr missing ancestor landing proof:\n%s", stderr)
+	}
+	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("ancestor already on main must not create a salvage branch, got %q", string(out))
+	}
+}
+
+func TestReapTargetTreeFetchFailureLeavesLandingUnknownAndDoesNotSalvage(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare", "-b", "main")
+	work := t.TempDir()
+	runGit(t, work, "init", "-b", "main")
+	runGit(t, work, "config", "user.email", "test@example.com")
+	runGit(t, work, "config", "user.name", "Test User")
+	runGitCommitAt(t, work, "2026-07-28T10:00:00Z", "base.txt", "base\n", "base")
+	runGit(t, work, "remote", "add", "origin", origin)
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "fetch", "origin")
+	runGitCommitAt(t, work, "2026-07-28T10:05:00Z", "feat.txt", "feat\n", "unlanded feature")
+	missingOrigin := filepath.Join(t.TempDir(), "missing-origin.git")
+	runGit(t, work, "remote", "set-url", "origin", missingOrigin)
+
+	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 1598, Launched: true, Workflow: workflowDirectToMain}
+	err := r.reapTargetTree(t.Context(), work, env, false)
+	if err == nil || !strings.Contains(err.Error(), "landing state is unknown") {
+		t.Fatalf("fetch failure error = %v, want explicit unknown landing state", err)
+	}
+	out, _ := exec.Command("git", "-C", origin, "branch", "--list", salvageBranchPrefix+"*").CombinedOutput()
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("unknown landing state must not create a salvage branch, got %q", string(out))
 	}
 }
 
@@ -2031,12 +2085,13 @@ func TestNotifySalvageCarriedIssueRepoensAndComments(t *testing.T) {
 	f := &fakeSalvageNotifier{prEnabled: true, prURL: "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/716"}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 518}
 	report := salvageReport{
-		Repo:   env.repo(),
-		Mode:   "claude",
-		Branch: "ward-salvage/ward-abc123",
-		Reason: reasonConflict,
-		Base:   env.Base,
-		Issue:  518,
+		Repo:                     env.repo(),
+		Mode:                     "claude",
+		Branch:                   "ward-salvage/ward-abc123",
+		Reason:                   reasonConflict,
+		Base:                     env.Base,
+		Issue:                    518,
+		RecoveryArtifactVerified: true,
 	}
 	if err := notifySalvage(t.Context(), f, env, report); err != nil {
 		t.Fatalf("notifySalvage: %v", err)
@@ -2067,25 +2122,42 @@ func TestNotifySalvageSkipsPrecomputedEmptyPullRequest(t *testing.T) {
 	f := &fakeSalvageNotifier{prEnabled: true, prURL: "https://forgejo.coilysiren.me/coilyco-flight-deck/ward/pulls/1560"}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 1561}
 	report := salvageReport{
-		Repo:                   env.repo(),
-		Mode:                   "codex",
-		Branch:                 "ward-salvage/ward-empty",
-		Reason:                 reasonConflict,
-		Base:                   env.Base,
-		Issue:                  1561,
-		PullRequestUnavailable: salvagePullRequestEmptyReason,
+		Repo:                     env.repo(),
+		Mode:                     "codex",
+		Branch:                   "ward-salvage/ward-empty",
+		Reason:                   reasonConflict,
+		Base:                     env.Base,
+		Issue:                    1561,
+		PullRequestUnavailable:   salvagePullRequestEmptyReason,
+		RecoveryArtifactVerified: true,
 	}
-	if err := notifySalvage(t.Context(), f, env, report); err != nil {
-		t.Fatalf("notifySalvage: %v", err)
+	if err := notifySalvage(t.Context(), f, env, report); err == nil {
+		t.Fatal("notifySalvage must reject an empty recovery diff")
 	}
 	if f.prCreated != 0 {
 		t.Fatalf("empty salvage branch must not create a pull request, got %d create call(s)", f.prCreated)
 	}
-	if visible := visibleLinesBeforeDetails(f.commentBody); visible != "WARD-WORKFLOW: blocked 🛑" {
-		t.Fatalf("salvage visible line = %q\n%s", visible, f.commentBody)
+	if len(f.reopened) != 0 || len(f.commented) != 0 || f.created != 0 {
+		t.Fatalf("empty salvage must not mutate tracker, got reopened=%v commented=%v created=%d", f.reopened, f.commented, f.created)
 	}
-	if !strings.Contains(f.commentBody, salvagePullRequestEmptyReason) {
-		t.Fatalf("empty-PR fallback comment missing reason %q\n---\n%s", salvagePullRequestEmptyReason, f.commentBody)
+}
+
+func TestNotifySalvageRejectsUnverifiedRecoveryArtifactBeforeTrackerMutation(t *testing.T) {
+	f := &fakeSalvageNotifier{prEnabled: true}
+	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 1598}
+	report := salvageReport{
+		Repo:   env.repo(),
+		Mode:   "codex",
+		Branch: "ward-salvage/ward-unverified",
+		Reason: reasonConflict,
+		Base:   env.Base,
+		Issue:  1598,
+	}
+	if err := notifySalvage(t.Context(), f, env, report); err == nil {
+		t.Fatal("notifySalvage must reject an unverified recovery artifact")
+	}
+	if len(f.reopened) != 0 || len(f.commented) != 0 || f.created != 0 || f.prCreated != 0 {
+		t.Fatalf("unverified recovery must not mutate tracker, got reopened=%v commented=%v created=%d prs=%d", f.reopened, f.commented, f.created, f.prCreated)
 	}
 }
 
@@ -2095,13 +2167,14 @@ func TestNotifySalvageCarriedIssueWithoutPullRequestBlocks(t *testing.T) {
 	f := &fakeSalvageNotifier{prEnabled: false}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "codex", Issue: 1039}
 	report := salvageReport{
-		Repo:                   env.repo(),
-		Mode:                   "codex",
-		Branch:                 "ward-salvage/ward-abc123",
-		Reason:                 reasonConflict,
-		Base:                   env.Base,
-		Issue:                  1039,
-		PullRequestUnavailable: "pull requests are disabled for this repo",
+		Repo:                     env.repo(),
+		Mode:                     "codex",
+		Branch:                   "ward-salvage/ward-abc123",
+		Reason:                   reasonConflict,
+		Base:                     env.Base,
+		Issue:                    1039,
+		PullRequestUnavailable:   "pull requests are disabled for this repo",
+		RecoveryArtifactVerified: true,
 	}
 	if err := notifySalvage(t.Context(), f, env, report); err != nil {
 		t.Fatalf("notifySalvage: %v", err)
@@ -2122,11 +2195,12 @@ func TestNotifySalvageNoIssueFilesOneStandalone(t *testing.T) {
 	f := &fakeSalvageNotifier{prEnabled: false}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 0}
 	report := salvageReport{
-		Repo:   env.repo(),
-		Mode:   "claude",
-		Branch: "ward-salvage/ward-def456",
-		Reason: reasonConflict,
-		Base:   env.Base,
+		Repo:                     env.repo(),
+		Mode:                     "claude",
+		Branch:                   "ward-salvage/ward-def456",
+		Reason:                   reasonConflict,
+		Base:                     env.Base,
+		RecoveryArtifactVerified: true,
 	}
 	if err := notifySalvage(t.Context(), f, env, report); err != nil {
 		t.Fatalf("notifySalvage: %v", err)

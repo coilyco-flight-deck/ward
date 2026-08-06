@@ -31,10 +31,13 @@ retains failed drains and ambiguous recovery state rather than claiming
 success. Ordinary sweeps reclaim stopped Ward containers after the configured
 retention TTL, 48 hours by default.
 
-Teardown never treats process exit as landing. It checks current remote main,
-pull-request, or remote-branch evidence for the selected workflow. A closing
-reference already present on main prevents stale salvage logic from reopening
-completed work.
+Teardown never treats process exit as landing. It refreshes the workflow
+destination and checks Git equality, ancestry, or patch equivalence before any
+salvage or tracker mutation. If Git proves the code is already on main, Ward
+does not create a recovery branch or reopen the issue. A missing closing
+reference is reported separately as tracker reconciliation, not as unlanded
+code. If the destination cannot be refreshed, landing remains unknown and Ward
+does not invent a salvage claim.
 
 ## Debug order
 

@@ -187,10 +187,11 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 	statusSnapshot := r.captureAndCommitResidual(ctx, work, env)
 	fmt.Fprintf(os.Stderr, "ward container reap: residual status snapshot for %s: %q\n", work, strings.TrimSpace(statusSnapshot))
 
-	// Refresh remote-tracking refs so we integrate against the latest main; a
-	// fetch failure leaves the clone-time origin/main as a usable base.
+	// Refresh remote-tracking refs before deciding whether work landed.
 	fmt.Fprintln(os.Stderr, "ward container reap: fetch origin start")
-	_ = r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin")
+	if err := r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin"); err != nil {
+		return fmt.Errorf("ward container reap: cannot refresh the workflow destination, landing state is unknown: %w", err)
+	}
 	fmt.Fprintln(os.Stderr, "ward container reap: fetch origin done")
 	if !refExists(ctx, r, work) {
 		// Empty repo (no base branch): establish main from a clean run rather than
@@ -212,45 +213,23 @@ func (r *Runner) reapTargetTree(ctx context.Context, work string, env reapEnv, r
 		return nil
 	}
 
-	// Nothing to reap comes first: clean HEAD on origin/main is done, not salvage.
-	// See docs/container-lifecycle.md.
-	residual := revCount(ctx, r, work, "origin/main..HEAD")
-	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
-	cleanTree := strings.TrimSpace(statusSnapshot) == ""
-	if residual == 0 && cleanTree { //nolint:nestif // clean-tree fast path carries the merge-remote-main proof branch
-		if env.Launched && env.Workflow.landsOnMain() && env.Issue != 0 {
-			prov, perr := r.readRunProvenance(work)
-			if perr != nil {
-				if r.completedMainProofBeforeBlocking(ctx, work, env, nil) {
-					fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
-					if releaseReservation {
-						r.releaseReservationIfUnstarted(ctx, env)
-					}
-					return nil
-				}
-				fmt.Fprintf(os.Stderr, "ward container reap: provenance missing or unreadable on already-landed merge-remote-main run: %v\n", perr)
-				return r.salvage(ctx, work, env, reasonConflict, false, nil, statusSnapshot,
-					reapDecision{Gate: "provenance missing or unreadable on already-landed merge-remote-main run", ProvState: "missing or unreadable", CommitState: commitState})
-			}
-			if !r.runProvenanceLanded(ctx, work, prov, env.Issue) {
-				if r.completedMainProofBeforeBlocking(ctx, work, env, &prov) {
-					fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
-					if releaseReservation {
-						r.releaseReservationIfUnstarted(ctx, env)
-					}
-					return nil
-				}
-				fmt.Fprintf(os.Stderr, "ward container reap: already-landed merge-remote-main run is missing %s; salvaging instead of returning success\n", closingReferenceLabel(env))
-				return r.salvage(ctx, work, env, reasonCloseRef, false, nil, statusSnapshot,
-					reapDecision{Gate: "missing same-repo closing reference on already-landed merge-remote-main run", ProvState: "present", CommitState: commitState, Landed: false})
-			}
-		}
-		fmt.Fprintf(os.Stderr, "WARD-REAP: nothing to reap (%s)\n", reapBoundaryReason(env.Workflow))
+	codeLanded, residualDiff, landingProof, err := r.targetGitLandingEvidence(ctx, work)
+	if err != nil {
+		return fmt.Errorf("ward container reap: cannot determine whether code landed: %w", err)
+	}
+	if codeLanded {
+		r.reportLandedTarget(ctx, work, env, landingProof, false)
 		if releaseReservation {
 			r.releaseReservationIfUnstarted(ctx, env)
 		}
 		return nil
 	}
+	if !residualDiff {
+		return fmt.Errorf("ward container reap: contradictory Git evidence: HEAD is not contained in origin/main, but no recoverable residual diff exists")
+	}
+
+	residual := revCount(ctx, r, work, "origin/main..HEAD")
+	fmt.Fprintf(os.Stderr, "ward container reap: residual commit count against origin/main = %d\n", residual)
 
 	prov, perr := r.readRunProvenance(work)
 	if perr != nil {
@@ -612,70 +591,58 @@ func (r *Runner) runProvenanceLanded(ctx context.Context, work string, prov runP
 	return false
 }
 
-func (r *Runner) completedMainProofBeforeBlocking(ctx context.Context, work string, env reapEnv, prov *runProvenance) bool {
-	if env.Issue == 0 {
-		return false
+func (r *Runner) targetGitLandingEvidence(ctx context.Context, work string) (landed, residual bool, proof string, err error) {
+	status, err := r.Runner.Capture(ctx, "git", "-C", work, "status", "--porcelain")
+	if err != nil {
+		return false, false, "", fmt.Errorf("read working tree status: %w", err)
 	}
-	if prov != nil && strings.TrimSpace(prov.BaselineMain) != "" {
-		if r.issueClosingReferenceInRange(ctx, work, env.Issue, prov.BaselineMain+"..origin/main") {
-			fmt.Fprintf(os.Stderr, "ward container reap: origin/main carries %s in the run baseline range; trusting remote main before salvage\n", closingReferenceLabel(env))
-			return true
+	if strings.TrimSpace(filterReapResidualStatus(string(status))) != "" {
+		return false, false, "", fmt.Errorf("working tree remains dirty after residual capture")
+	}
+	head := r.captureRev(ctx, work, "HEAD")
+	main := r.captureRev(ctx, work, "origin/main")
+	if head == "" || main == "" {
+		return false, false, "", fmt.Errorf("resolve HEAD and origin/main")
+	}
+	if head == main {
+		return true, false, "head-equals-origin-main", nil
+	}
+	if headOnOriginMain(ctx, r, work) {
+		return true, false, "head-contained-in-origin-main", nil
+	}
+	cherry, err := r.Runner.Capture(ctx, "git", "-C", work, "cherry", "origin/main", "HEAD")
+	if err != nil {
+		return false, false, "", fmt.Errorf("compare patch landing against origin/main: %w", err)
+	}
+	missing := false
+	for _, line := range strings.Split(strings.TrimSpace(string(cherry)), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "+") {
+			missing = true
+			break
 		}
 	}
-	if !r.doneOutcomeAfterRunStart(ctx, env) {
-		return false
+	if !missing {
+		return true, false, "patch-equivalent-content-on-origin-main", nil
 	}
-	if !r.issueClosingReferenceInRange(ctx, work, env.Issue, "origin/main") {
-		return false
+	diff, err := r.Runner.Capture(ctx, "git", "-C", work, "diff", "--name-only", "origin/main...HEAD")
+	if err != nil {
+		return false, false, "", fmt.Errorf("inspect residual diff against origin/main: %w", err)
 	}
-	if !r.salvagePullRequestWouldBeEmpty(ctx, work) {
-		return false
-	}
-	fmt.Fprintf(os.Stderr, "ward container reap: origin/main already carries %s after a done outcome; treating empty salvage as non-blocking\n", closingReferenceLabel(env))
-	return true
+	return false, strings.TrimSpace(string(diff)) != "", "unlanded-residual-diff", nil
 }
 
-var listReapIssueComments = func(ctx context.Context, r *Runner, env reapEnv) ([]issueComment, error) {
-	if env.Token == "" {
-		return nil, fmt.Errorf("no FORGEJO_TOKEN to read issue comments")
+func (r *Runner) reportLandedTarget(ctx context.Context, work string, env reapEnv, proof string, recoveryArtifact bool) {
+	tracker := "not-applicable"
+	if env.Issue != 0 {
+		tracker = "reconciliation-required"
+		if r.issueClosingReferenceInRange(ctx, work, env.Issue, "origin/main") {
+			tracker = "agrees"
+		}
 	}
-	switch env.Forge {
-	case forgeGitLab:
-		cl := r.hostGitLabClient(ctx, containerMode(env.Mode))
-		cl.token = env.Token
-		return cl.ListIssueComments(ctx, env.Owner, env.Name, env.Issue)
-	case forgeForgejo, forgeGitHub:
-		cl := r.hostForgejoClient(ctx)
-		return cl.withMode(containerMode(env.Mode)).withToken(env.Token).ListIssueComments(ctx, env.Owner, env.Name, env.Issue)
-	default:
-		cl := r.hostForgejoClient(ctx)
-		return cl.withMode(containerMode(env.Mode)).withToken(env.Token).ListIssueComments(ctx, env.Owner, env.Name, env.Issue)
+	fmt.Fprintf(os.Stderr, "WARD-REAP: code-landed=true tracker-bookkeeping=%s recovery-artifact=%t proof=%s\n", tracker, recoveryArtifact, proof)
+	if tracker == "reconciliation-required" {
+		fmt.Fprintf(os.Stderr, "ward container reap: code is already on origin/main, but %s is absent; report tracker reconciliation without salvage or reopen\n", closingReferenceLabel(env))
 	}
-}
-
-func (r *Runner) doneOutcomeAfterRunStart(ctx context.Context, env reapEnv) bool {
-	if !env.Launched || env.Issue == 0 {
-		return false
-	}
-	if strings.TrimSpace(env.UpAt) == "" {
-		return false
-	}
-	upAt, err := time.Parse(time.RFC3339, strings.TrimSpace(env.UpAt))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: cannot parse WARD_CONTAINER_UP for done-outcome recheck: %v\n", err)
-		return false
-	}
-	comments, err := listReapIssueComments(ctx, r, env)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ward container reap: could not read issue comments for done-outcome recheck on %s: %v\n", reapIssueLabel(env), err)
-		return false
-	}
-	outcome, ok := latestBacklogOutcomeCommentAfter(comments, upAt)
-	if !ok {
-		return false
-	}
-	o, ok := backlogOutcomeOfComment(outcome.Body)
-	return ok && strings.EqualFold(strings.TrimSpace(o.Status), "done")
 }
 
 func closingReferenceRepairSafe(prov runProvenance, env reapEnv) bool {
@@ -744,6 +711,11 @@ func appendClosingReferenceToMessage(msg string, env reapEnv) string {
 // salvage preserves residual work on a ward-salvage/<id> branch (durable) then
 // best-effort files/appends a forgejo issue (notification); the branch goes first.
 func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason reapReason, authCause bool, findings []scan.Finding, status string, dec reapDecision) error {
+	required, err := r.salvageRequired(ctx, work, env)
+	if err != nil || !required {
+		return err
+	}
+
 	id := env.Name + "-" + randHex()
 	branch := salvageBranchName(id)
 	fmt.Fprintf(os.Stderr, "ward container reap: salvage start container=%s branch=%s reason=%s\n", env.Container, branch, reason)
@@ -754,8 +726,7 @@ func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason r
 	diag := r.gatherReapDiagnostics(ctx, work, reason, dec, status, age)
 	fmt.Fprintf(os.Stderr, "%s\n", renderReapDiagnostics(diag))
 
-	_ = r.Runner.Exec(ctx, "git", "-C", work, "branch", "-f", branch, "HEAD")
-	if out, perr := r.pushCapture(ctx, work, branch+":"+branch); perr != nil {
+	if out, perr := r.pushCapture(ctx, work, "HEAD:refs/heads/"+branch); perr != nil {
 		// The branch push reuses the same baked PAT, so a dead token fails here too;
 		// classify it so the log names the cause - no issue can be filed either (ward#103).
 		if isAuthFailure(out) {
@@ -771,24 +742,32 @@ func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason r
 		r.dumpPatch(ctx, work)
 		return fmt.Errorf("ward container reap: could not preserve work to the remote: %w", perr)
 	}
+	if err := r.verifyRemoteSalvageBranch(ctx, work, branch); err != nil {
+		fmt.Fprintf(os.Stderr, "WARD-REAP: code-landed=unknown tracker-bookkeeping=not-mutated recovery-artifact=unknown proof=salvage-branch-verification-failed\n")
+		r.dumpPatch(ctx, work)
+		return fmt.Errorf("ward container reap: salvage push returned success but the recovery artifact could not be verified: %w", err)
+	}
+	continueSalvage, err := r.reconcileSalvageAfterPush(ctx, work, env, branch)
+	if err != nil || !continueSalvage {
+		return err
+	}
 	fmt.Fprintf(os.Stderr, "ward container reap: preserved work on %s (%s)\n", branch, reason)
+	fmt.Fprintf(os.Stderr, "WARD-REAP: code-landed=false tracker-bookkeeping=%s recovery-artifact=true proof=verified-remote-branch\n", salvageTrackerBookkeeping(env))
 
 	report := salvageReport{
-		Repo:        env.repo(),
-		Mode:        env.Mode,
-		Branch:      branch,
-		Reason:      reason,
-		CommitState: diag.CommitState,
-		AuthCause:   authCause,
-		TokenAge:    age,
-		Findings:    findings,
-		Status:      status,
-		Base:        env.Base,
-		Issue:       env.Issue,
-		Diagnostics: diag,
-	}
-	if r.salvagePullRequestWouldBeEmpty(ctx, work) {
-		report.PullRequestUnavailable = salvagePullRequestEmptyReason
+		Repo:                     env.repo(),
+		Mode:                     env.Mode,
+		Branch:                   branch,
+		Reason:                   reason,
+		CommitState:              diag.CommitState,
+		AuthCause:                authCause,
+		TokenAge:                 age,
+		Findings:                 findings,
+		Status:                   status,
+		Base:                     env.Base,
+		Issue:                    env.Issue,
+		Diagnostics:              diag,
+		RecoveryArtifactVerified: true,
 	}
 	if ferr := r.fileSalvageIssue(ctx, env, report); ferr != nil {
 		// The branch already preserved the work; a failed issue is a missed
@@ -796,6 +775,94 @@ func (r *Runner) salvage(ctx context.Context, work string, env reapEnv, reason r
 		fmt.Fprintf(os.Stderr, "ward container reap: filed branch but could not file issue: %v\n", ferr)
 	}
 	return nil
+}
+
+func (r *Runner) salvageRequired(ctx context.Context, work string, env reapEnv) (bool, error) {
+	codeLanded, residualDiff, landingProof, err := r.refreshTargetGitLandingEvidence(ctx, work)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARD-REAP: code-landed=unknown tracker-bookkeeping=not-mutated recovery-artifact=false proof=destination-refresh-failed\n")
+		r.dumpPatch(ctx, work)
+		return false, fmt.Errorf("ward container reap: cannot salvage while destination landing state is unknown: %w", err)
+	}
+	if codeLanded {
+		r.reportLandedTarget(ctx, work, env, landingProof, false)
+		return false, nil
+	}
+	if !residualDiff {
+		return false, fmt.Errorf("ward container reap: refusing salvage because Git found no recoverable residual diff")
+	}
+	return true, nil
+}
+
+func (r *Runner) reconcileSalvageAfterPush(ctx context.Context, work string, env reapEnv, branch string) (bool, error) {
+	codeLanded, residualDiff, landingProof, err := r.refreshTargetGitLandingEvidence(ctx, work)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARD-REAP: code-landed=unknown tracker-bookkeeping=not-mutated recovery-artifact=true proof=post-push-destination-refresh-failed\n")
+		return false, fmt.Errorf("ward container reap: recovery artifact exists at %s, but destination landing state is now unknown: %w", branch, err)
+	}
+	if codeLanded {
+		if derr := r.removeRemoteSalvageBranch(ctx, work, branch); derr != nil {
+			r.reportLandedTarget(ctx, work, env, landingProof, true)
+			return false, fmt.Errorf("ward container reap: code landed while salvage was being preserved, but redundant recovery branch %s could not be removed: %w", branch, derr)
+		}
+		r.reportLandedTarget(ctx, work, env, landingProof, false)
+		return false, nil
+	}
+	if !residualDiff {
+		if derr := r.removeRemoteSalvageBranch(ctx, work, branch); derr != nil {
+			fmt.Fprintf(os.Stderr, "WARD-REAP: code-landed=unknown tracker-bookkeeping=not-mutated recovery-artifact=true proof=no-residual-diff\n")
+			return false, fmt.Errorf("ward container reap: no residual diff remains, but redundant recovery branch %s could not be removed: %w", branch, derr)
+		}
+		return false, fmt.Errorf("ward container reap: refusing salvage because refreshed Git evidence found no recoverable residual diff")
+	}
+	return true, nil
+}
+
+func (r *Runner) refreshTargetGitLandingEvidence(ctx context.Context, work string) (landed, residual bool, proof string, err error) {
+	if err := r.Runner.Exec(ctx, "git", "-C", work, "fetch", "origin"); err != nil {
+		return false, false, "", fmt.Errorf("refresh origin: %w", err)
+	}
+	if !refExists(ctx, r, work) {
+		return false, true, "origin-main-absent", nil
+	}
+	return r.targetGitLandingEvidence(ctx, work)
+}
+
+func (r *Runner) verifyRemoteSalvageBranch(ctx context.Context, work, branch string) error {
+	head := r.captureRev(ctx, work, "HEAD")
+	if head == "" {
+		return fmt.Errorf("resolve local HEAD")
+	}
+	out, err := r.Runner.Capture(ctx, "git", "-C", work, "ls-remote", "--heads", "origin", "refs/heads/"+branch)
+	if err != nil {
+		return err
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) < 2 || fields[0] != head || fields[1] != "refs/heads/"+branch {
+		return fmt.Errorf("remote branch does not resolve to local HEAD")
+	}
+	return nil
+}
+
+func (r *Runner) removeRemoteSalvageBranch(ctx context.Context, work, branch string) error {
+	if _, err := r.pushCapture(ctx, work, ":refs/heads/"+branch); err != nil {
+		return err
+	}
+	out, err := r.Runner.Capture(ctx, "git", "-C", work, "ls-remote", "--heads", "origin", "refs/heads/"+branch)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		return fmt.Errorf("remote branch still exists after deletion")
+	}
+	return nil
+}
+
+func salvageTrackerBookkeeping(env reapEnv) string {
+	if env.Issue == 0 {
+		return "not-applicable"
+	}
+	return "reopen-required"
 }
 
 func (r *Runner) salvagePullRequestWouldBeEmpty(ctx context.Context, work string) bool {
@@ -845,6 +912,12 @@ type salvageNotifier interface {
 // notifySalvage routes the salvage notice (ward#518): a carried run reopens +
 // comments on its issue, a freeform run files one standalone issue (never append).
 func notifySalvage(ctx context.Context, fc salvageNotifier, env reapEnv, report salvageReport) error {
+	if !report.RecoveryArtifactVerified || strings.TrimSpace(report.Branch) == "" {
+		return fmt.Errorf("refusing tracker mutation without a verified recovery artifact")
+	}
+	if report.PullRequestUnavailable == salvagePullRequestEmptyReason {
+		return fmt.Errorf("refusing tracker mutation for an empty salvage diff")
+	}
 	report = openSalvagePullRequest(ctx, fc, env, report)
 	if env.Issue != 0 {
 		// Reopen first (best-effort, idempotent) so the issue never reads "done"
@@ -1241,7 +1314,7 @@ func (r *Runner) grantLanded(ctx context.Context, work string) (landed, hasMain 
 		if refExists(ctx, r, work) {
 			hasMain = true
 			// Reachability: HEAD contained in origin/main (plain or merge-commit landing).
-			if isAncestor(ctx, r, work, "HEAD", "origin/main") {
+			if headOnOriginMain(ctx, r, work) {
 				return true, true
 			}
 			// Content: HEAD diverged, but zero un-landed patches means the run's changes
@@ -1460,7 +1533,7 @@ func (r *Runner) gatherReapDiagnostics(ctx context.Context, work string, reason 
 		VersionSource: source,
 		Head:          shortSha(r.captureRev(ctx, work, "HEAD")),
 		OriginMain:    main,
-		HeadOnMain:    main != "" && isAncestor(ctx, r, work, "HEAD", "origin/main"),
+		HeadOnMain:    main != "" && headOnOriginMain(ctx, r, work),
 		Gate:          dec.Gate,
 		Reason:        reason,
 		ProvState:     dec.ProvState,
@@ -1515,9 +1588,9 @@ func residualCommitState(ctx context.Context, r *Runner, work string) string {
 	return ""
 }
 
-// isAncestor reports `git merge-base --is-ancestor a b` (a is contained in b).
-func isAncestor(ctx context.Context, r *Runner, work, a, b string) bool {
-	return r.Runner.Exec(ctx, "git", "-C", work, "merge-base", "--is-ancestor", a, b) == nil
+// headOnOriginMain reports whether HEAD is contained in origin/main.
+func headOnOriginMain(ctx context.Context, r *Runner, work string) bool {
+	return r.Runner.Exec(ctx, "git", "-C", work, "merge-base", "--is-ancestor", "HEAD", "origin/main") == nil
 }
 
 // --- small git predicates ----------------------------------------------------

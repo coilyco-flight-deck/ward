@@ -162,7 +162,7 @@ func (r *Runner) createRescueRepository(ctx context.Context, gitRoot string, rep
 	if head == "" || base == "" {
 		return rescueRepository{}, false, fmt.Errorf("resolve rescue refs: head=%q base=%q", head, base)
 	}
-	if isAncestor(ctx, r, gitRoot, "HEAD", "origin/main") {
+	if headOnOriginMain(ctx, r, gitRoot) {
 		return rescueRepository{}, false, nil
 	}
 	dir := filepath.Join(rescuesDir(), runID)
