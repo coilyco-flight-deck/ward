@@ -71,3 +71,6 @@ security:
   hooks:
     deny_bare_binaries:
       - docker
+
+agent:
+  workflow: pull-request-and-merge
