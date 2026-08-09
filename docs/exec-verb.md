@@ -9,21 +9,33 @@ doc_goal: Give the dev-verb gate a compact release-era reference so contributors
 
 - argv is validated before the verb runs.
 - one audit row is written for every invocation.
-- a named branch must retain the existing clean-and-synced contract unless the
-  checkout is a validated Forgejo Actions pull-request merge checkout.
-- a Forgejo Actions pull-request merge checkout is admitted when it is clean
-  and its environment, event payload, origin, workspace, HEAD, and two merge
-  parents agree. It may be detached or temporarily named by CI.
+- the gate refuses exactly one thing: an uncommitted `.ward/ward.yaml`. That is
+  the file the verb argv is read from, so a row naming a verb whose definition
+  is not in git history cannot be followed up later.
+- `--audit-override-dirty` bypasses that refusal and tags the row
+  `audit_override=true` with the working-tree status attached.
 - a declared command typed as `ward <verb>` falls back to `ward exec <verb>`
   only when `<verb>` is not a registered top-level command.
 
-The Forgejo Actions path requires `FORGEJO_ACTIONS`, `GITHUB_ACTIONS`, and `CI` to be
-true. Ward matches the repository and server to `origin`, verifies
-`GITHUB_WORKSPACE` is the discovered repository, matches `GITHUB_SHA` to the
-immutable checkout commit, and matches the event base and head SHAs to that
-commit's two parents. Missing or inconsistent evidence fails closed. A local
-detached checkout remains refused, and `--audit-override-dirty` does not bypass
-this path.
+Nothing else blocks a verb, and the gate contacts no remote. Dirt elsewhere in
+the tree, a detached HEAD, a branch with no upstream, and a branch behind its
+upstream are all recorded on the audit row and all run. The row already stores
+the resolved `argv` verbatim, so the committed config is what lets a reader
+find the verb definition later, not what proves what ran. This replaces an
+earlier clean-and-synced contract whose `git fetch` cost a network round trip
+on every invocation and refused offline.
+
+## CI attribution
+
+Forgejo Actions attribution is evidence, not a gate. When `FORGEJO_ACTIONS`,
+`GITHUB_ACTIONS`, and `CI` are all true and the event is a pull request, ward
+matches the repository and server to `origin`, verifies `GITHUB_WORKSPACE` is
+the discovered repository, matches `GITHUB_SHA` to the checkout commit, and
+matches the event base and head SHAs to that commit's two merge parents.
+
+Missing or inconsistent evidence leaves the row **unattributed**. It does not
+refuse the verb. A row that silently claimed the wrong pull request would be
+worse than one that claims nothing.
 
 An accepted Forgejo Actions invocation records a typed `ci` object in the audit row.
 It includes the provider server and repository, event ref, pull-request number,

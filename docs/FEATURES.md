@@ -5,10 +5,12 @@ doc_goal: Inventory Ward's major shipped capabilities without implementation his
 
 ## Governed repository commands and audit
 
-* `ward exec` runs declared commands through argument and repository-state
-  validation. `ward git` governs supported version-control operations. Both
-  write reconstructable audit records. See [commands](exec-verb.md),
-  [repository configuration](ward-yaml.md), and [audit](audit.md).
+* `ward exec` runs declared commands through argument validation and a single
+  repository-state gate: the declaring `.ward/ward.yaml` must be committed. It
+  contacts no remote, so it works offline. `ward git` governs supported
+  version-control operations. Both write audit records carrying the resolved
+  argv. See [commands](exec-verb.md), [repository configuration](ward-yaml.md),
+  and [audit](audit.md).
 
 ## Isolated least-access execution
 

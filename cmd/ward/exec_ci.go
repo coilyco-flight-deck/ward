@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -12,9 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/gittree"
 	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
 )
 
 const maxForgejoEventBytes = 1 << 20
@@ -60,43 +57,6 @@ type forgejoActionsMetadata struct {
 	runID       string
 	runNumber   string
 	runAttempt  string
-}
-
-func runForgejoActionsPRMergeExecGate(state *gittree.State, repoRoot, verbName string) (*gittree.State, *audit.CIContext, bool, error) {
-	if state.Status != "" {
-		if state.Branch == "HEAD" {
-			state.Reason = "HEAD is detached with a dirty working tree"
-		} else {
-			state.Reason = "Forgejo Actions pull-request checkout has a dirty working tree"
-		}
-		return nil, nil, false, forgejoActionsPRMergeExecGateError(state, verbName)
-	}
-	ci, err := validateForgejoActionsPR(repoRoot)
-	if err != nil {
-		if state.Branch == "HEAD" {
-			state.Reason = "HEAD is detached; Forgejo Actions evidence is invalid: " + err.Error()
-		} else {
-			state.Reason = "Forgejo Actions pull-request evidence is invalid: " + err.Error()
-		}
-		return nil, nil, false, forgejoActionsPRMergeExecGateError(state, verbName)
-	}
-	state.Clean = true
-	state.Reason = ""
-	state.Recovery = ""
-	return state, ci, false, nil
-}
-
-// forgejoActionsPRMergeExecGateError renders the refusal for a CI checkout
-// that failed the gate. The read-only pre-check can hand back a clean state
-// whose CI evidence is only later found invalid, so clear Clean first -
-// FormatRefusal renders nothing for a clean State.
-func forgejoActionsPRMergeExecGateError(state *gittree.State, verbName string) error {
-	state.Clean = false
-	return exitcode.New(exitcode.PolicyDenied, "repo_verb_dirty",
-		errors.New(state.FormatRefusal(verbName)),
-		"restore a clean Forgejo Actions pull-request checkout with complete metadata, "+
-			"or checkout a named branch with an upstream").
-		WithReason("Forgejo Actions pull-request repo verbs need enough immutable CI evidence for the audit row to be reconstructed")
 }
 
 func forgejoActionsPullRequestEnvPresent() bool {

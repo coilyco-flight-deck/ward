@@ -33,8 +33,8 @@ func TestDirtIsOutsideWardConfig(t *testing.T) {
 			want:  false,
 		},
 		{
-			name:  "upstream refusal still gates even if config committed",
-			state: &gittree.State{Reason: "branch \"main\" has no upstream"},
+			name:  "non-dirty reason never qualifies",
+			state: &gittree.State{Reason: "HEAD is detached (no branch)"},
 			want:  false,
 		},
 		{
@@ -64,7 +64,8 @@ func TestDirtIsOutsideWardConfig(t *testing.T) {
 }
 
 // TestRunExecGateIntegration drives runExecGate against real git working
-// trees, exercising each gate arm through gittree.CheckClean.
+// trees. The gate has one refusal arm - a dirty .ward/ward.yaml - so most
+// of these cases pin down what no longer blocks a verb.
 func TestRunExecGateIntegration(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
@@ -135,18 +136,37 @@ func TestRunExecGateIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("read-only surface-check skips upstream fetch", func(t *testing.T) {
-		repo := t.TempDir()
-		git(t, repo, "init", "-b", "main", ".")
-		git(t, repo, "config", "user.email", "test@example.com")
-		git(t, repo, "config", "user.name", "ward test")
-		if err := os.MkdirAll(filepath.Join(repo, ".ward"), 0o755); err != nil {
-			t.Fatal(err)
+	// The gate contacts no remote, so a repo that has never had one still
+	// runs an ordinary (non-read-only) verb.
+	t.Run("repo with no remote passes", func(t *testing.T) {
+		repo := newBareRepoNoRemote(t)
+		state, _, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err != nil {
+			t.Fatalf("repo without a remote refused: %v", err)
 		}
-		writeFile(t, filepath.Join(repo, ".ward", "ward.yaml"), "commands: {}\n")
-		git(t, repo, "add", ".")
-		git(t, repo, "commit", "-m", "seed")
+		if used || !state.Clean {
+			t.Fatalf("state=%+v override=%v, want a clean non-override pass", state, used)
+		}
+	})
 
+	t.Run("branch behind its upstream passes", func(t *testing.T) {
+		repo := newSyncedRepo(t)
+		writeFile(t, filepath.Join(repo, "second.txt"), "second\n")
+		git(t, repo, "add", "second.txt")
+		git(t, repo, "commit", "-m", "second")
+		git(t, repo, "push")
+		git(t, repo, "reset", "--hard", "HEAD~1")
+		state, _, _, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err != nil {
+			t.Fatalf("behind-upstream tree refused: %v", err)
+		}
+		if !state.Clean {
+			t.Fatalf("expected clean state behind upstream, got %+v", state)
+		}
+	})
+
+	t.Run("read-only surface-check passes without a remote", func(t *testing.T) {
+		repo := newBareRepoNoRemote(t)
 		state, ci, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.surface-check", true)
 		if err != nil {
 			t.Fatalf("read-only surface-check refused: %v", err)
@@ -228,83 +248,82 @@ func TestRunExecGateIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("local detached checkout refuses even with override", func(t *testing.T) {
+	t.Run("local detached checkout passes without attribution", func(t *testing.T) {
 		repo := newSyncedRepo(t)
 		git(t, repo, "checkout", "--detach", "HEAD")
 		clearForgejoCIEnv(t)
-		_, _, _, err := runExecGate(rootCmd(true), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
-		if err == nil || !strings.Contains(err.Error(), `CI must equal "true"`) {
-			t.Fatalf("local detached checkout error = %v, want missing CI evidence", err)
-		}
-	})
-
-	t.Run("detached Forgejo checkout refuses missing metadata", func(t *testing.T) {
-		repo, _ := newDetachedForgejoPRRepo(t)
-		t.Setenv("GITHUB_RUN_ID", "")
-		_, _, _, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
-		if err == nil || !strings.Contains(err.Error(), "GITHUB_RUN_ID is missing") {
-			t.Fatalf("missing metadata error = %v", err)
-		}
-	})
-
-	t.Run("detached Forgejo checkout refuses inconsistent metadata", func(t *testing.T) {
-		repo, _ := newDetachedForgejoPRRepo(t)
-		t.Setenv("GITHUB_HEAD_REF", "different-head")
-		_, _, _, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
-		if err == nil || !strings.Contains(err.Error(), "event base/head refs") {
-			t.Fatalf("inconsistent metadata error = %v", err)
-		}
-	})
-
-	t.Run("detached Forgejo checkout refuses inconsistent merge parents", func(t *testing.T) {
-		repo, _ := newDetachedForgejoPRRepo(t)
-		eventPath := os.Getenv("GITHUB_EVENT_PATH")
-		event, err := readForgejoPREvent(eventPath)
+		state, ci, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("local detached checkout refused: %v", err)
 		}
-		event.PullRequest.Head.SHA = strings.Repeat("a", 40)
-		body, err := json.Marshal(event)
-		if err != nil {
-			t.Fatal(err)
+		if ci != nil {
+			t.Fatalf("local checkout must not claim CI attribution: %+v", ci)
 		}
-		writeFile(t, eventPath, string(body))
-		_, _, _, err = runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
-		if err == nil || !strings.Contains(err.Error(), "parents do not match") {
-			t.Fatalf("inconsistent parent error = %v", err)
+		if used || !state.Clean || state.Branch != "HEAD" {
+			t.Fatalf("state=%+v override=%v, want a clean detached pass", state, used)
 		}
 	})
 
-	t.Run("detached Forgejo checkout must stay clean", func(t *testing.T) {
+	// Invalid CI evidence must not refuse and must not attribute. A row that
+	// silently claimed the wrong pull request would be worse than one that
+	// claims nothing.
+	for _, tc := range []struct {
+		name   string
+		broken func(t *testing.T, repo string)
+	}{
+		{
+			name:   "missing metadata",
+			broken: func(t *testing.T, _ string) { t.Setenv("GITHUB_RUN_ID", "") },
+		},
+		{
+			name:   "inconsistent metadata",
+			broken: func(t *testing.T, _ string) { t.Setenv("GITHUB_HEAD_REF", "different-head") },
+		},
+		{
+			name: "inconsistent merge parents",
+			broken: func(t *testing.T, _ string) {
+				eventPath := os.Getenv("GITHUB_EVENT_PATH")
+				event, err := readForgejoPREvent(eventPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				event.PullRequest.Head.SHA = strings.Repeat("a", 40)
+				body, err := json.Marshal(event)
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeFile(t, eventPath, string(body))
+			},
+		},
+	} {
+		t.Run("detached Forgejo checkout with "+tc.name+" runs unattributed", func(t *testing.T) {
+			repo, _ := newDetachedForgejoPRRepo(t)
+			tc.broken(t, repo)
+			_, ci, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+			if err != nil {
+				t.Fatalf("invalid CI evidence refused the verb: %v", err)
+			}
+			if ci != nil {
+				t.Fatalf("invalid CI evidence produced attribution: %+v", ci)
+			}
+			if used {
+				t.Fatal("override must stay false when nothing was refused")
+			}
+		})
+	}
+
+	t.Run("dirty detached Forgejo checkout still runs and captures status", func(t *testing.T) {
 		repo, _ := newDetachedForgejoPRRepo(t)
 		writeFile(t, filepath.Join(repo, "scratch.txt"), "dirty\n")
-		_, _, _, err := runExecGate(rootCmd(true), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
-		if err == nil || !strings.Contains(err.Error(), "dirty working tree") {
-			t.Fatalf("dirty detached checkout error = %v", err)
+		state, _, used, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
+		if err != nil {
+			t.Fatalf("dirt outside ward.yaml refused in CI: %v", err)
 		}
-	})
-
-	// The read-only pre-check calls a clean named branch Clean before the CI
-	// evidence is validated, and gittree renders nothing for a clean State.
-	// The refusal must still name the cause and its recovery.
-	t.Run("named Forgejo checkout refuses with a rendered message", func(t *testing.T) {
-		repo, _ := newDetachedForgejoPRRepo(t)
-		git(t, repo, "switch", "-c", "ward-ci")
-		git(t, repo, "branch", "--set-upstream-to=origin/main")
-		t.Setenv("GITHUB_HEAD_REF", "different-head")
-		_, _, _, err := runExecGate(rootCmd(false), repo, filepath.Join(repo, ".ward", "ward.yaml"), "repo.test", false)
-		if err == nil {
-			t.Fatal("expected refusal when named-branch CI evidence is invalid")
+		if used {
+			t.Fatal("dirt outside ward.yaml must not consume the override")
 		}
-		for _, want := range []string{
-			"refusing repo verb",
-			"Forgejo Actions pull-request evidence is invalid",
-			"event base/head refs",
-			"repo.test   # retry",
-		} {
-			if !strings.Contains(err.Error(), want) {
-				t.Fatalf("refusal missing %q; got:\n%s", want, err.Error())
-			}
+		if state.Status == "" {
+			t.Fatal("expected captured working-tree status for the audit row")
 		}
 	})
 
@@ -320,8 +339,25 @@ func TestRunExecGateIntegration(t *testing.T) {
 	})
 }
 
+// newBareRepoNoRemote builds a git repo with a committed .ward/ward.yaml and
+// no remote at all, so any surviving fetch or upstream requirement fails loud.
+func newBareRepoNoRemote(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	git(t, repo, "init", "-b", "main", ".")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "ward test")
+	if err := os.MkdirAll(filepath.Join(repo, ".ward"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(repo, ".ward", "ward.yaml"), "commands: {}\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "seed")
+	return repo
+}
+
 // newSyncedRepo builds a git repo with a committed .ward/ward.yaml and a
-// local upstream so gittree's synced-branch check passes.
+// local upstream, for cases that still care about remote-tracking state.
 func newSyncedRepo(t *testing.T) string {
 	t.Helper()
 	base := t.TempDir()

@@ -46,10 +46,10 @@ doc_goal: Map common Ward symptoms to the smallest supporting evidence and a saf
 
 ## `ward exec` refuses a repository command
 
-* Symptom - unknown verb, dirty/diverged checkout, detached local HEAD, or
-  denied argv.
+* Symptom - unknown verb, uncommitted `.ward/ward.yaml`, or denied argv. A
+  detached HEAD, a missing upstream, and an out-of-sync branch no longer refuse.
 * Evidence - `.ward/ward.yaml`, `ward git status`, and `ward audit tail`.
-* Remedy - declare the verb, restore a clean synchronized named branch, or fix
+* Remedy - declare the verb, commit the outstanding `ward.yaml` change, or fix
   the denied command shape. Use the dirty override only for a deliberate emergency.
 
 ## Container exits under memory or privilege pressure
