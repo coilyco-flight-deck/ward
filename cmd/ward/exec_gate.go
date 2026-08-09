@@ -13,15 +13,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// runExecGate runs the clean-config gate for a `ward exec` repo verb,
-// returning (state, CI context, overrideUsed, err). See docs/exec-verb.md.
-//
-// The gate refuses exactly one thing: an uncommitted .ward/ward.yaml, the
-// file the verb argv is read from. Branch, upstream, sync state, and
-// detached HEAD are recorded on the audit row but never block, and nothing
-// here contacts a remote. The audit row already stores the resolved argv
-// verbatim, so the committed config is what lets a reader find the verb
-// definition later, not what proves the argv.
+// runExecGate refuses one thing, an uncommitted .ward/ward.yaml, and
+// contacts no remote. Rationale and full contract: docs/exec-verb.md.
 func runExecGate(c *cli.Command, repoRoot, cfgPath, verbName string, readOnly bool) (*gittree.State, *audit.CIContext, bool, error) {
 	override := false
 	if root := c.Root(); root != nil {
@@ -33,10 +26,8 @@ func runExecGate(c *cli.Command, repoRoot, cfgPath, verbName string, readOnly bo
 			"ward could not evaluate the repo verb gate; run `git status` "+
 				"in the repo to confirm it is in a sane state, then retry")
 	}
-	// CI attribution is evidence, not a gate. Incomplete or inconsistent
-	// Forgejo Actions metadata leaves the row unattributed rather than
-	// refusing the verb - recording a fact and enforcing one are separate
-	// jobs, and only the recording ever earned its keep here.
+	// CI attribution is evidence, not a gate. Invalid metadata leaves the
+	// row unattributed rather than refusing the verb.
 	var ci *audit.CIContext
 	if !readOnly && forgejoActionsPullRequestEnvPresent() {
 		ci, _ = validateForgejoActionsPR(repoRoot)
@@ -54,9 +45,8 @@ func runExecGate(c *cli.Command, repoRoot, cfgPath, verbName string, readOnly bo
 		WithReason("audit rows must bind to a committed ward.yaml so the verb definition can be found in git history")
 }
 
-// checkWorkingTree reports local working-tree state without contacting a
-// remote. Only a dirty tree sets a refusal reason. Branch and detached-HEAD
-// state are recorded for the audit row, not evaluated as gate properties.
+// checkWorkingTree reports local tree state without contacting a remote.
+// Only a dirty tree sets a refusal reason; branch state is recorded only.
 func checkWorkingTree(repoRoot string) (*gittree.State, error) {
 	if _, err := exec.LookPath("git"); err != nil {
 		return nil, fmt.Errorf("gittree: git binary not found on $PATH: %w", err)

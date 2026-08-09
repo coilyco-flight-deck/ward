@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -376,14 +378,20 @@ func TestWorkflowEnvAndLabels(t *testing.T) {
 	}
 }
 
+// TestAgentWorkflowPrecedence covers agentWorkflow's order: an explicit
+// --workflow beats a declared repo lane, which beats the built-in default.
 func TestAgentWorkflowPrecedence(t *testing.T) {
+	// Empty dir on purpose. applyRepoRuntimeConfig walks up for
+	// .ward/ward.yaml, and reading ward's own lane broke this (ward#1652).
+	t.Chdir(t.TempDir())
+
 	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/sample-tooling#1"})
 	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/sample-tooling")
 	if err != nil {
 		t.Fatalf("agentWorkflow default: %v", err)
 	}
 	if wf != workflowDirectToMain {
-		t.Errorf("default workflow = %q, want merge-remote-main", wf)
+		t.Errorf("default workflow = %q, want %q", wf, workflowDirectToMain)
 	}
 
 	wf, err = agentWorkflow(cmd, "coilyco-flight-deck/ward")
@@ -391,7 +399,7 @@ func TestAgentWorkflowPrecedence(t *testing.T) {
 		t.Fatalf("agentWorkflow repo override: %v", err)
 	}
 	if wf != workflowDirectToMain {
-		t.Errorf("repo workflow = %q, want baked merge-remote-main", wf)
+		t.Errorf("unmapped repo workflow = %q, want the built-in %q", wf, workflowDirectToMain)
 	}
 
 	cli := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/ward#1", "--workflow", "remote-branch-only"})
@@ -401,6 +409,39 @@ func TestAgentWorkflowPrecedence(t *testing.T) {
 	}
 	if wf != workflowRemoteBranchOnly {
 		t.Errorf("CLI workflow = %q, want remote-branch-only", wf)
+	}
+}
+
+// TestAgentWorkflowRepoConfigOverridesDefault covers the layer ward#1652
+// exposed, using its own fixture rather than ward's committed ward.yaml.
+func TestAgentWorkflowRepoConfigOverridesDefault(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".ward"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "commands: {}\nagent:\n  workflow: pull-request-and-merge\n"
+	if err := os.WriteFile(filepath.Join(repoRoot, ".ward", "ward.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repoRoot)
+
+	cmd := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/sample-tooling#1"})
+	wf, err := agentWorkflow(cmd, "coilyco-flight-deck/sample-tooling")
+	if err != nil {
+		t.Fatalf("agentWorkflow with repo config: %v", err)
+	}
+	if wf != workflowPullRequestAndMerge {
+		t.Errorf("workflow = %q, want the repository-declared %q", wf, workflowPullRequestAndMerge)
+	}
+
+	// An explicit flag still outranks the repository declaration.
+	cli := parseCommandForTest(t, agentSurfaceFlags(), []string{"engineer", "coilyco-flight-deck/sample-tooling#1", "--workflow", "remote-branch-only"})
+	wf, err = agentWorkflow(cli, "coilyco-flight-deck/sample-tooling")
+	if err != nil {
+		t.Fatalf("agentWorkflow CLI over repo config: %v", err)
+	}
+	if wf != workflowRemoteBranchOnly {
+		t.Errorf("CLI over repo config = %q, want remote-branch-only", wf)
 	}
 }
 

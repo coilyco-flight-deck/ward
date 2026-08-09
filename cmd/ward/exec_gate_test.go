@@ -63,9 +63,8 @@ func TestDirtIsOutsideWardConfig(t *testing.T) {
 	}
 }
 
-// TestRunExecGateIntegration drives runExecGate against real git working
-// trees. The gate has one refusal arm - a dirty .ward/ward.yaml - so most
-// of these cases pin down what no longer blocks a verb.
+// TestRunExecGateIntegration drives runExecGate against real git trees. One
+// refusal arm exists, so most cases pin down what no longer blocks a verb.
 func TestRunExecGateIntegration(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
@@ -264,9 +263,8 @@ func TestRunExecGateIntegration(t *testing.T) {
 		}
 	})
 
-	// Invalid CI evidence must not refuse and must not attribute. A row that
-	// silently claimed the wrong pull request would be worse than one that
-	// claims nothing.
+	// Invalid CI evidence must neither refuse nor attribute: a row claiming
+	// the wrong pull request is worse than one claiming nothing.
 	for _, tc := range []struct {
 		name   string
 		broken func(t *testing.T, repo string)
