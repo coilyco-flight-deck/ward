@@ -86,9 +86,14 @@ func runForgejoActionsPRMergeExecGate(state *gittree.State, repoRoot, verbName s
 	return state, ci, false, nil
 }
 
+// forgejoActionsPRMergeExecGateError renders the refusal for a CI checkout
+// that failed the gate. The read-only pre-check can hand back a clean state
+// whose CI evidence is only later found invalid, so clear Clean first -
+// FormatRefusal renders nothing for a clean State.
 func forgejoActionsPRMergeExecGateError(state *gittree.State, verbName string) error {
+	state.Clean = false
 	return exitcode.New(exitcode.PolicyDenied, "repo_verb_dirty",
-		errors.New(formatExecGateRefusal(state, verbName)),
+		errors.New(state.FormatRefusal(verbName)),
 		"restore a clean Forgejo Actions pull-request checkout with complete metadata, "+
 			"or checkout a named branch with an upstream").
 		WithReason("Forgejo Actions pull-request repo verbs need enough immutable CI evidence for the audit row to be reconstructed")

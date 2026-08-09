@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -55,93 +54,10 @@ func runExecGate(c *cli.Command, repoRoot, cfgPath, verbName string, readOnly bo
 		return state, nil, true, nil
 	}
 	return nil, nil, false, exitcode.New(exitcode.PolicyDenied, "repo_verb_dirty",
-		errors.New(formatExecGateRefusal(state, verbName)),
+		errors.New(state.FormatRefusal(verbName)),
 		"commit/push the outstanding ward.yaml change and retry, or pass "+
 			"--audit-override-dirty for a genuine emergency").
 		WithReason("audit rows must bind to a committed ward.yaml so the verb argv can be reconstructed from git history")
-}
-
-func formatExecGateRefusal(state *gittree.State, verbName string) string {
-	switch {
-	case state.Reason == "working tree is dirty":
-		return state.FormatRefusal(verbName)
-	case strings.HasPrefix(state.Reason, "branch ") && strings.HasSuffix(state.Reason, " has no upstream"):
-		return refusalNoUpstream(state, verbName)
-	case strings.HasPrefix(state.Reason, "HEAD is detached"):
-		return refusalDetachedHead(state, verbName)
-	case strings.HasPrefix(state.Reason, "Forgejo Actions"):
-		return refusalForgejoActionsPR(state, verbName)
-	case strings.Contains(state.Reason, " commits behind "):
-		return refusalBehindUpstream(state, verbName)
-	case strings.HasPrefix(state.Reason, "git fetch failed for "):
-		return refusalFetchFailed(state, verbName)
-	default:
-		return state.FormatRefusal(verbName)
-	}
-}
-
-func refusalNoUpstream(state *gittree.State, verbName string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "refusing repo verb %q - %s\n", verbName, state.Reason)
-	b.WriteString("\nRepo verbs require a branch with an upstream so the audit log can be reconstructed\n")
-	b.WriteString("from git history. Recover with:\n\n")
-	fmt.Fprintf(&b, "  git push -u origin %s\n", state.Branch)
-	fmt.Fprintf(&b, "  %s %s   # retry\n", filepath.Base(os.Args[0]), verbName)
-	return b.String()
-}
-
-func refusalDetachedHead(state *gittree.State, verbName string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "refusing repo verb %q - %s\n", verbName, state.Reason)
-	if state.Status != "" {
-		b.WriteString(state.Status)
-		if !strings.HasSuffix(state.Status, "\n") {
-			b.WriteString("\n")
-		}
-	}
-	b.WriteString("\nDetached repo verbs require a clean Forgejo Actions pull-request merge checkout\n")
-	b.WriteString("whose environment, event payload, origin, workspace, HEAD, and merge parents agree.\n")
-	b.WriteString("Otherwise, recover with:\n\n")
-	b.WriteString("  git checkout <branch>\n")
-	fmt.Fprintf(&b, "  %s %s   # retry\n", filepath.Base(os.Args[0]), verbName)
-	return b.String()
-}
-
-func refusalForgejoActionsPR(state *gittree.State, verbName string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "refusing repo verb %q - %s\n", verbName, state.Reason)
-	if state.Status != "" {
-		b.WriteString(state.Status)
-		if !strings.HasSuffix(state.Status, "\n") {
-			b.WriteString("\n")
-		}
-	}
-	b.WriteString("\nForgejo Actions pull-request repo verbs require a clean merge checkout\n")
-	b.WriteString("whose environment, event payload, origin, workspace, HEAD, and merge parents agree.\n")
-	b.WriteString("Otherwise, recover with:\n\n")
-	b.WriteString("  git checkout <branch>\n")
-	fmt.Fprintf(&b, "  %s %s   # retry\n", filepath.Base(os.Args[0]), verbName)
-	return b.String()
-}
-
-func refusalBehindUpstream(state *gittree.State, verbName string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "refusing repo verb %q - %s\n", verbName, state.Reason)
-	b.WriteString("\nRepo verbs require a synced branch so the audit log can be reconstructed\n")
-	b.WriteString("from git history. Recover with:\n\n")
-	b.WriteString("  git pull --ff-only\n")
-	fmt.Fprintf(&b, "  %s %s   # retry\n", filepath.Base(os.Args[0]), verbName)
-	return b.String()
-}
-
-func refusalFetchFailed(state *gittree.State, verbName string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "refusing repo verb %q - %s\n", verbName, state.Reason)
-	b.WriteString("\nRepo verbs require a reachable upstream so the audit log can be reconstructed\n")
-	b.WriteString("from git history. Recover with:\n\n")
-	fmt.Fprintf(&b, "  git fetch %s\n", strings.TrimPrefix(state.Reason, "git fetch failed for "))
-	fmt.Fprintf(&b, "  %s %s   # retry\n", filepath.Base(os.Args[0]), verbName)
-	return b.String()
 }
 
 // checkCleanReadOnly mirrors the clean-tree gate without the upstream fetch
