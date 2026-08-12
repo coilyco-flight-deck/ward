@@ -110,6 +110,15 @@ the installed Ward binary.
 - Never use `--no-verify`.
 - **Linking convention.** ward is Forgejo-canonical with a read-only GitHub mirror as the public front door, so a forge link is easy to get backwards. When authoring docs: link **same-repo files with relative paths** (they resolve on both forges), send **external-contributor navigation** (file an issue, open a PR, the front door) to **GitHub**, and point **canonical or infrastructural references** (the brew tap, the container registry, releases, a `ward#N` cross-ref, `closes #N`) at **Forgejo**. Full rule in [docs/forge-linking.md](docs/forge-linking.md).
 
+## Checkout residency
+
+This repo is not in Agent Compose's `repository-plan.yaml`, so it has no
+resident checkout under `~/projects/<owner>/`. That is intentional. Work it
+from a task-scoped temporary clone, and remove that clone once the work lands.
+
+A temporary root can be purged at any time, so commit and push before pausing,
+switching tasks, or ending a session. The remote is the only durable artifact.
+
 ## See also
 
 - [README.md](README.md) - human intro.
