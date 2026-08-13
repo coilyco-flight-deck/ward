@@ -103,7 +103,7 @@ the installed Ward binary.
 
 ## Agent rules
 
-**Git workflow** - `pull-request-and-merge`, declared as `agent.workflow` in [`.ward/ward.yaml`](.ward/ward.yaml). Agents push a branch and open a Forgejo pull request. Nothing lands straight on `main`, and the merge stays director-gated. Byte-identical across the four PR-lane repos (agentic-os, deploy, infrastructure, ward) per agentic-os#994.
+**Git workflow** - `pull-request-and-merge`, declared as `agent.workflow` in [`.ward/ward.yaml`](.ward/ward.yaml). Agents push a branch and open a Forgejo pull request. Nothing lands straight on `main`, and the merge stays director-gated. Byte-identical across the five PR-lane repos (agentic-os, deploy, infrastructure, sirens-echo, ward) per agentic-os#994.
 
 - One issue per discrete additive change. `closes #N` encouraged, not enforced.
 - v0.x. Minor API breaks ship in `main` with a note in the commit body. Consumers pin a commit until v1.0.0. Lock the API once downstream consumers settle.
