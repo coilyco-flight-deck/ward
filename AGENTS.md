@@ -1,3 +1,7 @@
+---
+ward:
+  workflow: pull-request-and-merge
+---
 # Agent instructions
 
 Read-only surface instructions override the base doctrine below whenever a container or director session says it is read-only. In those sessions, `/workspace` is read-only by default and `/scratch` is the only writable place for throwaway scripts or scratch files.
