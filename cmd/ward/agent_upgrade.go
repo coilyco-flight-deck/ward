@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/version"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/version"
 )
 
 // agent_upgrade.go re-surfaces the "host ward is behind latest" reminder at `ward

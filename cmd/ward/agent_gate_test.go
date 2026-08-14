@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 )
 
 // gateRunner builds a Runner whose stdin is a canned reader and whose stderr is a
@@ -24,7 +24,7 @@ func TestRenderScratchGateContents(t *testing.T) {
 	p := sampleUpPlan()
 	p.ReadOnly = true
 	p.WardVersionSource = wardVersionSourceExplicit
-	p.ExtraRepos = []targetRepo{{Owner: "coilyco-flight-deck", Name: "cli-guard"}}
+	p.ExtraRepos = []targetRepo{{Owner: "coilyco-flight-deck", Name: "umbra"}}
 	var b bytes.Buffer
 	renderScratchGate(&b, newScratchGateStatus(p, true, false, "v0.16.0", ""))
 	got := b.String()
@@ -37,7 +37,7 @@ func TestRenderScratchGateContents(t *testing.T) {
 		"/gitcache/surface-scratch",         // read-only scratch root
 		"go-build",                          // Go cache root under the scratch
 		diskBytes(surfaceScratchFloorBytes), // budget floor
-		"coilyco-flight-deck/cli-guard",     // --with-repo grant
+		"coilyco-flight-deck/umbra",         // --with-repo grant
 		"Press Enter to launch",             // action prompt
 	} {
 		if !strings.Contains(got, want) {

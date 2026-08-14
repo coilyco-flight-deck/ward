@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 )
 
 // TestIssueNumberFromURL covers pulling the trailing number off a gh-printed URL.

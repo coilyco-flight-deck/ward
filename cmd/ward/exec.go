@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/gittree"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/gittree"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/repocfg"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/audit"
 	"github.com/urfave/cli/v3"
 )
 
@@ -43,7 +43,7 @@ func execCommand() *cli.Command {
 		Description: fmt.Sprintf(
 			"Per-repo command declared in %s. Expands to a pre-validated argv "+
 				"and runs with cwd set to %s. Every argv token is checked against "+
-				"cli-guard's shell-metacharacter policy before execve. Repo verbs "+
+				"umbra's shell-metacharacter policy before execve. Repo verbs "+
 				"require a clean+synced named branch, or a clean Forgejo Actions "+
 				"pull-request merge checkout whose CI and Git evidence agree. The "+
 				"declaring ward.yaml stays committed so the audit row is reconstructable; "+
@@ -67,7 +67,7 @@ func buildExecLeaf(cfg *repocfg.Config, rc repocfg.Command) *cli.Command {
 		ArgsUsage: "[-- extra args]",
 		Description: fmt.Sprintf(
 			"Per-repo command declared in %s.\nExpands to: %s\nRuns in: %s\n\n"+
-				"Runs through cli-guard's verb pipeline: every argv token is "+
+				"Runs through umbra's verb pipeline: every argv token is "+
 				"validated against the shell-metacharacter policy, one audit row "+
 				"is appended, and the repo gate requires either a clean+synced "+
 				"named branch or a clean, validated Forgejo Actions pull-request "+

@@ -17,7 +17,7 @@ func TestCatalogContextRepos(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(wardDir, "ward.yaml"), []byte(`catalog:
   dependsOn:
-    - coilyco-flight-deck/cli-guard
+    - coilyco-flight-deck/umbra
     - acme/widgets
 `), 0o644); err != nil { //nolint:gosec
 		t.Fatalf("write ward.yaml: %v", err)
@@ -26,8 +26,8 @@ func TestCatalogContextRepos(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadRepoLocalCatalogDeps: %v", err)
 	}
-	if len(deps) != 2 || deps[0].slug() != "coilyco-flight-deck/cli-guard" || deps[1].slug() != "acme/widgets" {
-		t.Fatalf("ward deps = %+v, want cli-guard + widgets", deps)
+	if len(deps) != 2 || deps[0].slug() != "coilyco-flight-deck/umbra" || deps[1].slug() != "acme/widgets" {
+		t.Fatalf("ward deps = %+v, want umbra + widgets", deps)
 	}
 	if got := catalogContextRepos(root); len(got) != 2 || got[1].slug() != "acme/widgets" {
 		t.Fatalf("catalogContextRepos(ward) = %+v, want catalog deps", got)
@@ -43,7 +43,7 @@ func TestLoadRepoLocalCatalogDepsPrefersWardOverCoily(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(root, ".ward", "ward.yaml"), []byte(`catalog:
   dependsOn:
-    - coilyco-flight-deck/cli-guard
+    - coilyco-flight-deck/umbra
 `), 0o644); err != nil { //nolint:gosec
 		t.Fatalf("write ward.yaml: %v", err)
 	}
@@ -57,8 +57,8 @@ func TestLoadRepoLocalCatalogDepsPrefersWardOverCoily(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadRepoLocalCatalogDeps: %v", err)
 	}
-	if len(deps) != 1 || deps[0].slug() != "coilyco-flight-deck/cli-guard" {
-		t.Fatalf("ward deps = %+v, want cli-guard", deps)
+	if len(deps) != 1 || deps[0].slug() != "coilyco-flight-deck/umbra" {
+		t.Fatalf("ward deps = %+v, want umbra", deps)
 	}
 }
 
@@ -69,12 +69,12 @@ func TestResolveContextReposDedupes(t *testing.T) {
 	auto := []targetRepo{
 		{Owner: "coilyco-gaming", Name: "sample-gameops"},  // the target: dropped
 		{Owner: "acme", Name: "widgets"},                   // a writable grant: dropped
-		{Owner: "coilyco-flight-deck", Name: "cli-guard"},  // a substrate repo: dropped
+		{Owner: "coilyco-flight-deck", Name: "umbra"},      // a substrate repo: dropped
 		{Owner: "coilyco-flight-deck", Name: "eco-protos"}, // kept
 		{Owner: "coilyco-flight-deck", Name: "eco-protos"}, // dup of the above: dropped
 	}
 	explicit := []targetRepo{{Owner: "acme", Name: "widgets"}}
-	substrate := map[string]bool{"coilyco-flight-deck/cli-guard": true}
+	substrate := map[string]bool{"coilyco-flight-deck/umbra": true}
 
 	got, notes := resolveContextRepos(depsOf(auto), explicit, target, substrate)
 	if len(got) != 1 || got[0].slug() != "coilyco-flight-deck/eco-protos" {
@@ -105,7 +105,7 @@ func TestParseCatalogDep(t *testing.T) {
 		host     string
 		cloneURL string
 	}{
-		{"coilyco-flight-deck/cli-guard", "coilyco-flight-deck/cli-guard", false, "", ""},
+		{"coilyco-flight-deck/umbra", "coilyco-flight-deck/umbra", false, "", ""},
 		{"forgejo.coilysiren.me/coilyco-flight-deck/eco-protos", "coilyco-flight-deck/eco-protos", false, "", ""},
 		{"ssh://git@github.com/acme/widgets.git", "acme/widgets", true, "github.com", "ssh://git@github.com/acme/widgets.git"},
 		{"github.com/acme/widgets", "acme/widgets", true, "github.com", "ssh://git@github.com/acme/widgets.git"},

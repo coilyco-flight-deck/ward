@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/passthrough"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/passthrough"
 	"github.com/urfave/cli/v3"
 )
 
@@ -40,7 +40,7 @@ func gitCommand() *cli.Command {
 		Name:     "git",
 		Usage:    "Audited git verbs for contributors.",
 		Commands: subs,
-		Description: `git fronts the contributor git surface behind cli-guard's audit +
+		Description: `git fronts the contributor git surface behind umbra's audit +
 argv-validation pipeline. Read/safe verbs are thin passthroughs; commit
 is a dedicated concurrency-safe verb (see docs/git-verbs.md).`,
 	}

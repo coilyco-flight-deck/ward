@@ -22,7 +22,7 @@ Maintainers and warded agents on the canonical repo skip the mirror and follow t
 ## Before you open a PR
 
 1. **Open an issue first.** Every commit closes a same-repo (Forgejo) issue (`closes #N` in the commit body). Discussion happens in the issue, the PR is the change itself. This applies even to trivial fixes, the issue gives the change a stable URL. **External contributors:** file that issue on the GitHub mirror (see [above](#where-contributions-land-read-this-first)).
-2. **Stay close to scope.** Ward is intentionally small. It exposes a project's dev surface on top of [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard). Features that pull this package out of its lane will get pushed back. Provider-specific operator and personal-infrastructure verbs stay outside Ward. Repo-specific Makefile targets belong in the downstream repo's `.ward/ward.yaml`. Folding cli-guard into Ward was [considered and rejected](docs/architecture.md#considered-and-rejected-folding-cli-guard-into-ward), so do not reopen it.
+2. **Stay close to scope.** Ward is intentionally small. It exposes a project's dev surface on top of [umbra](https://forgejo.coilysiren.me/coilyco-flight-deck/umbra). Features that pull this package out of its lane will get pushed back. Provider-specific operator and personal-infrastructure verbs stay outside Ward. Repo-specific Makefile targets belong in the downstream repo's `.ward/ward.yaml`. Folding umbra into Ward was [considered and rejected](docs/architecture.md#considered-and-rejected-folding-umbra-into-ward), so do not reopen it.
 3. **Run the dev verbs before pushing.** Install ward from the centralized flight-deck tap with `brew install coilyco-flight-deck/tap/ward` (tap it first, see [README](README.md#install)), then:
 
    ```
@@ -43,9 +43,9 @@ Maintainers and warded agents on the canonical repo skip the mirror and follow t
 3. Add a podman runtime adapter.
 4. Add new agent adapters.
 
-## Working on cli-guard side by side
+## Working on umbra side by side
 
-ward consumes [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) as a separate Go module pinned in `go.mod`. For local dev, `make workspace` resolves it from a sibling checkout with no tag or `go get`. See [docs/workspace.md](docs/workspace.md).
+ward consumes [umbra](https://forgejo.coilysiren.me/coilyco-flight-deck/umbra) as a separate Go module pinned in `go.mod`. For local dev, `make workspace` resolves it from a sibling checkout with no tag or `go get`. See [docs/workspace.md](docs/workspace.md).
 
 ## Code of Conduct
 

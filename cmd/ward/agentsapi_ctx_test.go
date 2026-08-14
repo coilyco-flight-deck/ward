@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 )
 
 // agentsapi_ctx_test.go pins the Phase 1 carve (ward#410): every field the
@@ -97,7 +97,7 @@ func TestAgentRunCtxCarve(t *testing.T) {
 // /workspace, granted extra repos, and every warmed /substrate repo (dirs only).
 func TestAgentTrustDirs(t *testing.T) {
 	substrate := t.TempDir()
-	for _, name := range []string{"reference-project", "cli-guard"} {
+	for _, name := range []string{"reference-project", "umbra"} {
 		if err := os.Mkdir(filepath.Join(substrate, name), 0o755); err != nil {
 			t.Fatalf("mkdir substrate %s: %v", name, err)
 		}
@@ -108,17 +108,17 @@ func TestAgentTrustDirs(t *testing.T) {
 	}
 	e := bootstrapEnv{
 		TargetName:    "ward",
-		ExtraRepos:    []targetRepo{{Owner: "coilyco-flight-deck", Name: "cli-guard"}},
+		ExtraRepos:    []targetRepo{{Owner: "coilyco-flight-deck", Name: "umbra"}},
 		SubstrateDest: substrate,
 	}
 	got := agentTrustDirs(e)
 	for _, want := range []string{
 		"/workspace/ward",
 		"/workspace",
-		"/workspace/coilyco-flight-deck/cli-guard",
+		"/workspace/coilyco-flight-deck/umbra",
 		substrate,
 		filepath.Join(substrate, "reference-project"),
-		filepath.Join(substrate, "cli-guard"),
+		filepath.Join(substrate, "umbra"),
 	} {
 		if !slices.Contains(got, want) {
 			t.Errorf("trust dirs missing %q: %v", want, got)

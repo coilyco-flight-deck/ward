@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 	"github.com/urfave/cli/v3"
 )
 
@@ -799,7 +799,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		"engineer", "coilyco-flight-deck/ward#42",
 		"--harness", "claude",
 		"--image", "img", "--tag", "t1", "--ward-version", "v1",
-		"--repo", "coilyco-flight-deck/cli-guard",
+		"--repo", "coilyco-flight-deck/umbra",
 		"--config", "agent.claude.model=sonnet",
 		"--workflow", "merge-remote-main", "--details", "repair after PR #357",
 		"--skip-preflight", "--skip-smoke-test",
@@ -810,7 +810,7 @@ func TestBrokerEngineerArgvForwardsApprovedFlags(t *testing.T) {
 		{"--image", "img"},
 		{"--tag", "t1"},
 		{"--ward-version", "v1"},
-		{"--repo", "coilyco-flight-deck/cli-guard"},
+		{"--repo", "coilyco-flight-deck/umbra"},
 		{"--config", "agent.claude.model=sonnet"},
 		{"--workflow", "merge-remote-main"},
 		{"--details", "repair after PR #357"},

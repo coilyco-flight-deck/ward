@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/scan"
 	"github.com/urfave/cli/v3"
 )
 
@@ -148,7 +148,7 @@ func TestReadReapEnvParsesExtraRepos(t *testing.T) {
 	t.Setenv("WARD_FORGEJO_BASE", "https://forgejo.coilysiren.me")
 	t.Setenv("WARD_TARGET_ISSUE", "291")
 	// The target itself, a blank, and a malformed token all drop out; two grants stay.
-	t.Setenv("WARD_EXTRA_REPOS", "coilyco-gaming/eco-protos  garbage coilyco-flight-deck/ward coilyco-flight-deck/cli-guard")
+	t.Setenv("WARD_EXTRA_REPOS", "coilyco-gaming/eco-protos  garbage coilyco-flight-deck/ward coilyco-flight-deck/umbra")
 	e, err := readReapEnv()
 	if err != nil {
 		t.Fatalf("readReapEnv: %v", err)
@@ -157,7 +157,7 @@ func TestReadReapEnvParsesExtraRepos(t *testing.T) {
 	for i, r := range e.ExtraRepos {
 		got[i] = r.slug()
 	}
-	want := []string{"coilyco-gaming/eco-protos", "coilyco-flight-deck/cli-guard"}
+	want := []string{"coilyco-gaming/eco-protos", "coilyco-flight-deck/umbra"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("ExtraRepos = %v, want %v", got, want)
 	}
@@ -177,7 +177,7 @@ func TestUnlandedExtraReposComment(t *testing.T) {
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me"}
 	reports := []extraRepoUnlanded{
 		{Repo: targetRepo{Owner: "coilyco-gaming", Name: "eco-protos"}, Ahead: 2, Branch: "ward-salvage/eco-protos-abc123"},
-		{Repo: targetRepo{Owner: "coilyco-flight-deck", Name: "cli-guard"}, NoMain: true, PushErr: "remote: forbidden\nfatal: unable to access"},
+		{Repo: targetRepo{Owner: "coilyco-flight-deck", Name: "umbra"}, NoMain: true, PushErr: "remote: forbidden\nfatal: unable to access"},
 	}
 	got := unlandedExtraReposComment(env, reports)
 	if visible := visibleLinesBeforeDetails(got); visible != "WARD-WORKFLOW: reopened" {
@@ -1784,7 +1784,7 @@ func TestCheckExtraRepoLandedTreatsLandedGrantAsLanded(t *testing.T) {
 
 	r := &Runner{Runner: &shell.Runner{Resolve: shell.PathResolver}}
 	env := reapEnv{Owner: "coilyco-flight-deck", Name: "ward", Base: "https://forgejo.coilysiren.me", Mode: "claude", Issue: 583, Launched: true}
-	rep, landed := r.checkExtraRepoLanded(t.Context(), env, targetRepo{Owner: "coilyco-flight-deck", Name: "cli-guard"}, repo)
+	rep, landed := r.checkExtraRepoLanded(t.Context(), env, targetRepo{Owner: "coilyco-flight-deck", Name: "umbra"}, repo)
 	if !landed {
 		t.Fatalf("a landed grant with no closes-ref must read as landed, got unlanded: %+v", rep)
 	}
@@ -1812,7 +1812,7 @@ func TestGrantLandedTrueOnMergeCommitAncestor(t *testing.T) {
 		t.Fatal(err)
 	}
 	runGit(t, repo, "add", "feat.txt")
-	runGit(t, repo, "commit", "-m", "cli-guard work")
+	runGit(t, repo, "commit", "-m", "umbra work")
 	feat := mustGitRev(t, repo, "HEAD")
 	// Land it on main via a merge commit M, then point origin/main at M.
 	runGit(t, repo, "checkout", "main")

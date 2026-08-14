@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/ownertrust"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/exitcode"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/issueref"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/ownertrust"
 	"github.com/coilyco-flight-deck/ward/internal/reviewpanel"
 	"github.com/urfave/cli/v3"
 )
@@ -1341,7 +1341,7 @@ func modeCeilingLevel(label string) (int, bool) {
 }
 
 // issueModeCeiling returns the ceiling an issue's labels grant (rank + name) like
-// cli-guard: unlabeled fails closed to consult, several take the lowest (#246).
+// umbra: unlabeled fails closed to consult, several take the lowest (#246).
 func issueModeCeiling(labels []string) (int, string) {
 	level, name, found := 0, "consult (unlabeled default)", false
 	for _, raw := range labels {
@@ -1704,7 +1704,7 @@ func (r *Runner) capturePreflight(ctx context.Context, argv []string, stdin stri
 }
 
 // captureInDir runs Capture with the process cwd temporarily set to dir, restored
-// afterward (cli-guard's Capture has no Dir knob). A guarded chdir is safe here.
+// afterward (umbra's Capture has no Dir knob). A guarded chdir is safe here.
 func (r *Runner) captureInDir(ctx context.Context, dir, stdin, bin string, argv ...string) ([]byte, error) {
 	// The pre-flight is a sequential host one-shot, so no concurrent cwd user can
 	// race this; a failed Getwd/Chdir simply no-ops to a plain cwd capture.
@@ -2709,24 +2709,13 @@ func (r *Runner) runDockerSilenced(ctx context.Context, silenceStderr bool, argv
 	return r.dockerExec(ctx, argv...)
 }
 
-// dockerExec / dockerCapture are the choke points for every docker call: they
-// suspend cli-guard's brew jail, which breaks a snap-provided docker (ward#540).
+// dockerExec / dockerCapture are the choke points for every docker call.
 func (r *Runner) dockerExec(ctx context.Context, argv ...string) error {
-	defer r.suspendSandbox()()
 	return r.Runner.Exec(ctx, "docker", argv...)
 }
 
 func (r *Runner) dockerCapture(ctx context.Context, argv ...string) ([]byte, error) {
-	defer r.suspendSandbox()()
 	return r.Runner.Capture(ctx, "docker", argv...)
-}
-
-// suspendSandbox nils the Runner's sandbox for one docker call, restoring it via
-// the returned func (safe under runDockerSilenced's sequential-launch invariant).
-func (r *Runner) suspendSandbox() func() {
-	saved := r.Runner.Sandbox
-	r.Runner.Sandbox = nil
-	return func() { r.Runner.Sandbox = saved }
 }
 
 // taskInstructions reads the DIRECT-mode task body from --instructions-file, the only
@@ -2969,7 +2958,7 @@ func printCorrelationEnvelope(p upPlan) []string {
 }
 
 // ownerAllowed reports whether owner is in ward's trusted-owner set, via
-// cli-guard's pkg/ownertrust (ward supplies the accepted set).
+// umbra's pkg/ownertrust (ward supplies the accepted set).
 func (r *Runner) ownerAllowed(owner string) bool {
 	owners := r.trustedOwners()
 	return ownertrust.List{Primary: firstTrustedOwner(owners), Extra: trustedOwnerExtras(owners)}.Allowed(owner)

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/broker"
 )
 
 func TestAgentIssueCreateUsesBrokerAndDoesNotDispatch(t *testing.T) {

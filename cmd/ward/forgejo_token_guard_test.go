@@ -8,7 +8,7 @@ import (
 )
 
 // The two spellings of a raw Forgejo-token env read: bare literal and the
-// cli-guard credseed constant. Both bypass the resolver chokepoints.
+// umbra credseed constant. Both bypass the resolver chokepoints.
 var rawForgejoTokenReads = []string{
 	`os.Getenv("FORGEJO_TOKEN")`,
 	`os.Getenv(credseed.EnvForgejoToken)`,

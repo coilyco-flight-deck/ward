@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/broker"
 	"github.com/urfave/cli/v3"
 )
 

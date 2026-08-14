@@ -81,9 +81,9 @@ func TestPolicyBoundaryMatchSubsystemPointers(t *testing.T) {
 // TestMatchSubsystemPointersScopedToWard covers ward#236's repo scoping: the map
 // holds ward-specific paths, so a non-ward clone must get nothing.
 func TestPolicyBoundaryMatchSubsystemPointersScopedToWard(t *testing.T) {
-	other := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "cli-guard", Number: 9}
+	other := agentIssueRef{Owner: "coilyco-flight-deck", Repo: "umbra", Number: 9}
 	if got := matchSubsystemPointers(other, "ward exec changes", ""); got != nil {
-		t.Errorf("subsystem pointers must stay scoped to %s; a cli-guard issue got %v", subsystemPointerRepo, got)
+		t.Errorf("subsystem pointers must stay scoped to %s; a umbra issue got %v", subsystemPointerRepo, got)
 	}
 }
 

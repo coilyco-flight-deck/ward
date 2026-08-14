@@ -368,7 +368,7 @@ jobs:
             const fs = require("fs");
             const formula = [
               "class Ward < Formula",
-              "  desc \"A contributor-facing cli-guard consumer\"",
+              "  desc \"A contributor-facing umbra consumer\"",
               "  homepage \"https://forgejo.coilysiren.me/coilyco-flight-deck/ward\"",
               `  version \"${process.env.VERSION}\"`,
               "  license \"MIT\"",

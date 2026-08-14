@@ -5,11 +5,11 @@ import (
 	"os"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/attribution"
 )
 
 // agent_signature.go signs ward's Forgejo bodies and reaper commit with the
-// agent's identity via cli-guard's pkg/attribution. See docs/agent-roles.md.
+// agent's identity via umbra's pkg/attribution. See docs/agent-roles.md.
 
 // agentSignatureMarker is the hidden, idempotent marker on a signed body: an
 // HTML comment, so it stays invisible in rendered Forgejo markdown.
@@ -50,7 +50,7 @@ func agentIdentityFromEnv(mode, name, pronouns string) attribution.Identity {
 	return identity
 }
 
-// agentSigner builds the cli-guard signer for this mode: the mode's identity
+// agentSigner builds the umbra signer for this mode: the mode's identity
 // plus ward's idempotency marker, footer tail, and Co-Authored-By email domain.
 func (m containerMode) agentSigner() attribution.Signer {
 	identity := agentIdentityFromEnv(string(m), os.Getenv(envAgentDisplayName), os.Getenv(envAgentPronouns))

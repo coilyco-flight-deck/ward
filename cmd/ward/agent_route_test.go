@@ -90,10 +90,10 @@ func TestTaskRepoRef(t *testing.T) {
 
 func TestRenderRepoCatalog(t *testing.T) {
 	got := renderRepoCatalog([]repoCatalogEntry{
-		{Slug: "coilyco-flight-deck/ward", Description: "contributor-facing cli-guard consumer"},
+		{Slug: "coilyco-flight-deck/ward", Description: "contributor-facing umbra consumer"},
 		{Slug: "example-org/intake", Description: "  "},
 	})
-	if !strings.Contains(got, "coilyco-flight-deck/ward — contributor-facing cli-guard consumer") {
+	if !strings.Contains(got, "coilyco-flight-deck/ward — contributor-facing umbra consumer") {
 		t.Errorf("catalog missing the described repo line\n got: %s", got)
 	}
 	if !strings.Contains(got, "example-org/intake — (no description)") {
@@ -136,7 +136,7 @@ func TestParseRouteVerdict(t *testing.T) {
 		{"repo no colon", "REPO coilyco-gaming/sample-gameops move the ops verb", routeRepo, "coilyco-gaming/sample-gameops", "move the ops verb"},
 		{"repo markdown bold", "**REPO: coilysiren/site - tweak the homepage**", routeRepo, "coilysiren/site", "tweak the homepage"},
 		{"repo bulleted", "- REPO: coilyco-gaming/eco - balance pass", routeRepo, "coilyco-gaming/eco", "balance pass"},
-		{"unclear with reason", "Could be two repos.\nUNCLEAR: ward and cli-guard both fit", routeUnclear, "", "ward and cli-guard both fit"},
+		{"unclear with reason", "Could be two repos.\nUNCLEAR: ward and umbra both fit", routeUnclear, "", "ward and umbra both fit"},
 		{"unclear bare", "UNCLEAR", routeUnclear, "", ""},
 		{"last verdict wins", "UNCLEAR: hmm\nOn reflection it's clear.\nREPO: coilyco-flight-deck/ward - do it", routeRepo, "coilyco-flight-deck/ward", "do it"},
 		{"repo without a slash is not a verdict", "REPO: ward", routeUnknown, "", ""},
@@ -241,13 +241,13 @@ func TestRouteRoutedComment(t *testing.T) {
 }
 
 func TestRouteUnclearComment(t *testing.T) {
-	got := routeUnclearComment(modeClaude, "ward and cli-guard both fit", "Could be two repos.\nUNCLEAR: ward and cli-guard both fit")
+	got := routeUnclearComment(modeClaude, "ward and umbra both fit", "Could be two repos.\nUNCLEAR: ward and umbra both fit")
 	if visible := visibleLinesBeforeDetails(got); visible != "WARD-WORKFLOW: route-unclear 🛑" {
 		t.Fatalf("routeUnclearComment visible line = %q\n%s", visible, got)
 	}
 	for _, want := range []string{
 		"UNCLEAR",                     // names the verdict
-		"ward and cli-guard both fit", // carries the reason
+		"ward and umbra both fit",     // carries the reason
 		"could not confidently route", // explains the bounce
 		"stays open for a human",
 		"ward agent engineer --harness claude <owner/repo>", // how to re-dispatch DIRECT

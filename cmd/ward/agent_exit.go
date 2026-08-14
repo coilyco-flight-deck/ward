@@ -3,14 +3,14 @@ package main
 import (
 	"fmt"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/exitcode"
 )
 
 // agent_exit.go is the machine-readable dispatch contract for `ward agent` /
 // `warded` (ward#485). See docs/agent-dispatch-broker.md.
 
 // Dispatch exit codes. main.go routes any exitcode.Coded error to its Code().
-// 0/1/2 track the cli-guard contract; 3-5 are ward-agent-specific.
+// 0/1/2 track the umbra contract; 3-5 are ward-agent-specific.
 const (
 	// dispatchLaunched: a container detached (or --print / fail-open pre-flight).
 	dispatchLaunched = exitcode.Success

@@ -8,7 +8,7 @@ package claude
 import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/attribution"
 )
 
 // signature policy shared with cmd/ward's agentSigner; the contract test pins
@@ -69,7 +69,7 @@ func (a Agent) Name() string { return record.Name }
 // Record returns claude's inert data record.
 func (a Agent) Record() agentsapi.Manifest { return record }
 
-// Signer builds claude's cli-guard signer from its identity plus ward's marker,
+// Signer builds claude's umbra signer from its identity plus ward's marker,
 // footer tail, and Co-Authored-By email. Mirrors cmd/ward's agentSigner.
 func (a Agent) Signer() attribution.Signer {
 	return attribution.Signer{

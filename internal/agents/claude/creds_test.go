@@ -13,7 +13,7 @@ import (
 
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 )
 
 // TestWriteCredsScrubsEnv: WriteCreds writes ~/.claude/.credentials.json then

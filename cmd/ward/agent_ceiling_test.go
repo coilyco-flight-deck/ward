@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/exitcode"
 )
 
 // TestIssueModeCeiling pins the label -> ceiling map ward re-implements from
-// cli-guard: unlabeled fails closed, several labels take the lowest (#246).
+// umbra: unlabeled fails closed, several labels take the lowest (#246).
 func TestIssueModeCeiling(t *testing.T) {
 	cases := []struct {
 		name   string

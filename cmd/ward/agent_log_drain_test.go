@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 )
 
 // TestSweepActionsDrainPrecedesRemove is the load-bearing ordering assertion: every
@@ -406,7 +406,7 @@ func TestCollectFrictionEvents(t *testing.T) {
 		{
 			name:      "unrelated extra repo residual preservation",
 			meta:      runMeta{Driver: string(modeClaude), Launched: true, TranscriptPresent: true},
-			console:   "ward container reap: preserved un-landed granted-repo work on ward-salvage/cli-guard-abc123 (coilyco-flight-deck/cli-guard)\n",
+			console:   "ward container reap: preserved un-landed granted-repo work on ward-salvage/umbra-abc123 (coilyco-flight-deck/umbra)\n",
 			wantCats:  []string{"extra-repo-preservation"},
 			wantStage: []string{"reap"},
 		},

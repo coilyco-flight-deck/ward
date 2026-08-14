@@ -72,15 +72,15 @@ The [first-run guide](docs/first-run.md) gives the complete safe sequence.
 
 ## Execution model
 
-Repository commands use the `cli-guard` engine for declaration, validation,
+Repository commands use the `umbra` engine for declaration, validation,
 routing, and audit. Agent execution adds typed harness adapters, fixed roles
 and workflows, reservations, a supervised broker, ephemeral containers,
 secret-safe artifacts, and verified teardown. See
 [architecture](docs/architecture.md) and [terminology](docs/terminology.md).
 
-On Linux, governed commands can run inside the sandbox jail. macOS and Windows
-enforce the declared boundary at command entry. Containerized agent runs use
-the same least-access contract on every supported host.
+Every platform enforces the declared boundary at command entry. Containerized
+agent runs use the same least-access contract on every supported host, and the
+container is what bounds a process once it is running.
 
 ## When a run breaks
 

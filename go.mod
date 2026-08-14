@@ -8,7 +8,7 @@ require (
 )
 
 require (
-	forgejo.coilysiren.me/coilyco-flight-deck/cli-guard v0.130.0
+	forgejo.coilysiren.me/coilyco-flight-deck/umbra v0.140.0
 	golang.org/x/sys v0.44.0
 )
 

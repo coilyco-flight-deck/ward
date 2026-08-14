@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 

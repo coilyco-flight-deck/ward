@@ -1,6 +1,6 @@
 package agentsapi
 
-import "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
+import "forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/attribution"
 
 // Manifest is the inert per-agent data record an Agent serves from Record();
 // Phase 2 feeds it from the agent-adapter manifest (ward#401). Fields only.

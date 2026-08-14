@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/scan"
 )
 
 // reapAction is what the reaper does with residual work after the agent exits,

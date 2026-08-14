@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/gittree"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/gittree"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/audit"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/exitcode"
 	"github.com/urfave/cli/v3"
 )
 

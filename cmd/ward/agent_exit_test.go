@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/exitcode"
 )
 
 // TestDispatchExitCodesDistinct guards the contract's core promise: an author can

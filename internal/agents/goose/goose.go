@@ -7,7 +7,7 @@ package goose
 import (
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/attribution"
 )
 
 const (
@@ -61,7 +61,7 @@ func (a Agent) Name() string { return record.Name }
 // Record returns goose's inert data record.
 func (a Agent) Record() agentsapi.Manifest { return record }
 
-// Signer builds goose's cli-guard signer; mirrors cmd/ward's agentSigner.
+// Signer builds goose's umbra signer; mirrors cmd/ward's agentSigner.
 func (a Agent) Signer() attribution.Signer {
 	return attribution.Signer{
 		Identity: record.Identity,

@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scan"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/scan"
 	"github.com/urfave/cli/v3"
 )
 

@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/credseed"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/broker"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/credseed"
 	"github.com/urfave/cli/v3"
 )
 
@@ -54,7 +54,7 @@ func containerBrokerCommand() *cli.Command {
 Started as root by the container entrypoint before the agent drops privilege, it
 holds the forgejo bot token (from FORGEJO_TOKEN) and serves the write-tier ops -
 file / edit / comment issue - through ward's core Forgejo adapter, authorizing
-each request against the write tier (cli-guard#167). The dropped explore agent
+each request against the write tier (umbra#167). The dropped explore agent
 dials the socket and asks; it never sees the credential. See docs/agent-dispatch-broker.md.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{

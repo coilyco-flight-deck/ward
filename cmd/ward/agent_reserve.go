@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/flock"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/flock"
 )
 
 // agent_reserve.go gives every `ward agent` run an issue-thread reservation plus a
@@ -26,7 +26,7 @@ type reservationConflictError struct{ msg string }
 
 func (e *reservationConflictError) Error() string { return e.msg }
 
-// Code and Kind make the conflict a cli-guard exitcode.Coded error so the CLI exits
+// Code and Kind make the conflict a umbra exitcode.Coded error so the CLI exits
 // dispatchReservationConflict; isReservationConflict still recovers it (ward#485).
 func (e *reservationConflictError) Code() int    { return dispatchReservationConflict }
 func (e *reservationConflictError) Kind() string { return "reservation_conflict" }

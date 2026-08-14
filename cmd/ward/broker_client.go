@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/broker"
 )
 
 // broker_client.go is the unprivileged root-broker client.

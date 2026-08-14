@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/audit"
 )
 
 const maxForgejoEventBytes = 1 << 20

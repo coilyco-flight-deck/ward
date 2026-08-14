@@ -34,7 +34,7 @@ func TestSubstrateInventoryBlock(t *testing.T) {
 
 	dest := t.TempDir()
 	writeRepo(t, dest, "sample-platform", "# sample-platform\n\nEverything needed to stand up and operate the cluster.\n")
-	writeRepo(t, dest, "cli-guard", "# cli-guard\n\n[![badge][x]][y]\n\nThe policy and routing engine.\n")
+	writeRepo(t, dest, "umbra", "# umbra\n\n[![badge][x]][y]\n\nThe policy and routing engine.\n")
 	// A README that opens with a code fence and has no heading yields no tagline,
 	// but the repo is still listed (bare path) so the mount is never hidden.
 	writeRepo(t, dest, "coilysiren", "```\nascii art\n```\n")
@@ -50,14 +50,14 @@ func TestSubstrateInventoryBlock(t *testing.T) {
 	for _, want := range []string{
 		"read these BEFORE asking",
 		"- **" + filepath.Join(dest, "sample-platform") + "** - Everything needed to stand up and operate the cluster.",
-		"- **" + filepath.Join(dest, "cli-guard") + "** - The policy and routing engine.",
+		"- **" + filepath.Join(dest, "umbra") + "** - The policy and routing engine.",
 		"- **" + filepath.Join(dest, "coilysiren") + "**",
 	} {
 		if !strings.Contains(block, want) {
 			t.Errorf("block missing %q\n---\n%s", want, block)
 		}
 	}
-	// The badge line must not leak into cli-guard's tagline.
+	// The badge line must not leak into umbra's tagline.
 	if strings.Contains(block, "badge") {
 		t.Errorf("badge noise leaked into a tagline:\n%s", block)
 	}

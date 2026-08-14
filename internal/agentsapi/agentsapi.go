@@ -2,7 +2,7 @@
 // ward#401): types only, no behaviour. See docs/agent-harnesses.md.
 package agentsapi
 
-import "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/attribution"
+import "forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/attribution"
 
 // Agent is the core contract every harness implements. Install is required so
 // bootstrap can prove the harness is ready before launch or fail loudly.
@@ -11,7 +11,7 @@ type Agent interface {
 	Name() string
 	// Record returns the agent's inert data record (binary, argv, identity, ...).
 	Record() Manifest
-	// Signer builds the cli-guard signer from Record().Identity plus ward's marker.
+	// Signer builds the umbra signer from Record().Identity plus ward's marker.
 	Signer() attribution.Signer
 	// Install performs the harness bootstrap step before launch. Self-contained
 	// harnesses can make this a verified no-op.

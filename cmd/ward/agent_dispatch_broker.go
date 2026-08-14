@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/version"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/version"
 	"github.com/urfave/cli/v3"
 )
 

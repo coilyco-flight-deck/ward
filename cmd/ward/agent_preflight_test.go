@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 )
 
 // TestRunPreflightGooseNeverRunsHostOneShot pins ward#153 closed: a goose dispatch,

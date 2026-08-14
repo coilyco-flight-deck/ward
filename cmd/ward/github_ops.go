@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 )
 
 // github_ops.go is ward's GitHub issue-thread client (ward#489): shells `gh` to

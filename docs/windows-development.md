@@ -39,9 +39,9 @@ This compiles every test package for `windows/amd64` and catches build-tag,
 platform-API, filename-case, and embedded-asset compile regressions. It does not
 run the Windows binaries and does not replace the native lane.
 
-## cli-guard workspace
+## umbra workspace
 
 [`make workspace`](workspace.md) can resolve Ward imports from a sibling
-cli-guard checkout, but `ward exec test` still tests Ward's package tree only.
-Run cli-guard's own repository test verb in that checkout; its test policy and
+umbra checkout, but `ward exec test` still tests Ward's package tree only.
+Run umbra's own repository test verb in that checkout; its test policy and
 platform exceptions belong there.

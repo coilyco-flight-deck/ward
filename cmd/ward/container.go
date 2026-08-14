@@ -22,7 +22,7 @@ import (
 	"github.com/coilyco-flight-deck/ward/internal/agents"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/broker"
 	"github.com/urfave/cli/v3"
 )
 

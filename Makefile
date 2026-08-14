@@ -11,16 +11,16 @@ help: ## Print this help.
 build: ## Build all packages.
 	go build ./...
 
-workspace: ## Write a gitignored go.work resolving cli-guard from a sibling ../cli-guard checkout (ward#326 - kills the cross-module release dance for local dev).
-	@test -d ../cli-guard || { \
-		echo "make workspace: sibling checkout ../cli-guard not found." >&2; \
-		echo "  Clone cli-guard beside ward first, e.g.:" >&2; \
-		echo "    git clone https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard ../cli-guard" >&2; \
+workspace: ## Write a gitignored go.work resolving umbra from a sibling ../umbra checkout (ward#326 - kills the cross-module release dance for local dev).
+	@test -d ../umbra || { \
+		echo "make workspace: sibling checkout ../umbra not found." >&2; \
+		echo "  Clone umbra beside ward first, e.g.:" >&2; \
+		echo "    git clone https://forgejo.coilysiren.me/coilyco-flight-deck/umbra ../umbra" >&2; \
 		exit 1; \
 	}
-	@printf 'go %s\n\nuse (\n\t.\n\t../cli-guard\n)\n' '$(GO_VERSION)' > go.work
-	@echo "wrote ./go.work -> use (. ../cli-guard)"
-	@echo "cli-guard now resolves from the local working tree instead of the pinned module."
+	@printf 'go %s\n\nuse (\n\t.\n\t../umbra\n)\n' '$(GO_VERSION)' > go.work
+	@echo "wrote ./go.work -> use (. ../umbra)"
+	@echo "umbra now resolves from the local working tree instead of the pinned module."
 	@echo "go.work + go.work.sum are gitignored; delete go.work to return to the module-pinned dependency."
 
 agent-roster: ## Regenerate docs/agent-roster.md from the code roster - the binary describing its own roles (ward#348).

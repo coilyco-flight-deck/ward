@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/scope"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/audit"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/scope"
 	"github.com/urfave/cli/v3"
 )
 
@@ -159,7 +159,7 @@ func parseSince(s string) (int64, error) {
 // tailAuditLog streams the on-disk JSONL file, skipping rows older than
 // since or outside scope; --follow polls for appends every 200ms.
 func tailAuditLog(ctx context.Context, path string, since int64, scopeFilter string, follow bool) error {
-	f, err := os.Open(path) //nolint:gosec // resolved via cli-guard/config; reading is the point
+	f, err := os.Open(path) //nolint:gosec // resolved via umbra/config; reading is the point
 	if err != nil {
 		if os.IsNotExist(err) {
 			if follow {

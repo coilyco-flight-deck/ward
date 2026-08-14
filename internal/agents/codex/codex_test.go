@@ -161,7 +161,7 @@ func TestResolveCredsNonMacDoesNotReadKeychain(t *testing.T) {
 // rc.TrustDirs entry lands as a [projects] table with trust_level = "trusted".
 func TestComposeConfigTrustDirs(t *testing.T) {
 	home := t.TempDir()
-	dirs := []string{"/workspace/ward", "/workspace", "/workspace/cli-guard"}
+	dirs := []string{"/workspace/ward", "/workspace", "/workspace/umbra"}
 	rc := agentsapi.RunCtx{AgentHome: home, TargetName: "ward", TrustDirs: dirs, Log: noopLog}
 	if err := (Agent{}).ComposeConfig(rc); err != nil {
 		t.Fatalf("ComposeConfig: %v", err)

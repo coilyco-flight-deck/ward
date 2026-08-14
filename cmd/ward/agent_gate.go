@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/version"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/version"
 )
 
 // agent_gate.go: the interactive pre-launch gate before the seedless TUI (ward#366).

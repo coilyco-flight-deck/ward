@@ -225,7 +225,7 @@ func TestPrecheckReservationLogs(t *testing.T) {
 // lock keeps two near-simultaneous harnesses from both deciding on the same issue.
 func TestAgentReservationLockSerializesConcurrentHarnesses(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("cli-guard flock is a documented no-op on non-Unix hosts")
+		t.Skip("umbra flock is a documented no-op on non-Unix hosts")
 	}
 	setTestHome(t, t.TempDir())
 	r := &Runner{}

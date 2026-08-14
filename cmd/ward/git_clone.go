@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/verb"
 	"github.com/urfave/cli/v3"
 )
 
@@ -17,7 +17,7 @@ import (
 // be cloned into a persistent path.
 var cloneAllowlist = map[string]bool{
 	"coilyco-flight-deck/ward":           true,
-	"coilyco-flight-deck/cli-guard":      true,
+	"coilyco-flight-deck/umbra":          true,
 	"coilyco-flight-deck/infrastructure": true,
 	"coilysiren/coilysiren":              true,
 }

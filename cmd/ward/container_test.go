@@ -20,7 +20,7 @@ import (
 
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 	"github.com/urfave/cli/v3"
 )
 
@@ -517,14 +517,14 @@ func TestParseExtraRepos(t *testing.T) {
 	// Bare owner/name and a clone URL both resolve; order preserved.
 	got, err := parseExtraRepos([]string{
 		"coilyco-gaming/eco-protos",
-		"https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard.git",
+		"https://forgejo.coilysiren.me/coilyco-flight-deck/umbra.git",
 	}, target)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := []targetRepo{
 		{Owner: "coilyco-gaming", Name: "eco-protos"},
-		{Owner: "coilyco-flight-deck", Name: "cli-guard"},
+		{Owner: "coilyco-flight-deck", Name: "umbra"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %d repos, want %d: %+v", len(got), len(want), got)
@@ -633,16 +633,16 @@ func TestWardEnvExtraRepos(t *testing.T) {
 	}
 	p.ExtraRepos = []targetRepo{
 		{Owner: "coilyco-gaming", Name: "eco-protos"},
-		{Owner: "coilyco-flight-deck", Name: "cli-guard"},
+		{Owner: "coilyco-flight-deck", Name: "umbra"},
 	}
-	if got := p.wardEnv()["WARD_EXTRA_REPOS"]; got != "coilyco-gaming/eco-protos coilyco-flight-deck/cli-guard" {
+	if got := p.wardEnv()["WARD_EXTRA_REPOS"]; got != "coilyco-gaming/eco-protos coilyco-flight-deck/umbra" {
 		t.Errorf("WARD_EXTRA_REPOS = %q, want the space-separated slug list", got)
 	}
 	// And it must reach the docker argv as a single -e element (spaces and all).
 	argv := dockerCreateArgv(p, "")
 	var found bool
 	for _, a := range argv {
-		if a == "WARD_EXTRA_REPOS=coilyco-gaming/eco-protos coilyco-flight-deck/cli-guard" {
+		if a == "WARD_EXTRA_REPOS=coilyco-gaming/eco-protos coilyco-flight-deck/umbra" {
 			found = true
 		}
 	}

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/flock"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/flock"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 	"github.com/urfave/cli/v3"
 )
@@ -391,9 +391,7 @@ func (r *Runner) runContainerBootstrap(ctx context.Context, c *cli.Command) erro
 	// container log (ward#609, the docker-log backstop surface).
 	echoRunContextGo(e, agentArgs)
 
-	// The container is the isolation boundary; opt the reaper out of ward's jail
-	// (cli-guard#153). Stamp container start for the reaper's PAT-age report (ward#103).
-	_ = os.Setenv("CLIGUARD_NO_SANDBOX", "1")
+	// Stamp container start for the reaper's PAT-age report (ward#103).
 	if os.Getenv("WARD_CONTAINER_UP") == "" {
 		_ = os.Setenv("WARD_CONTAINER_UP", time.Now().UTC().Format("2006-01-02T15:04:05Z"))
 	}

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/broker"
 )
 
 // forgejoTokenResolver is native credential plumbing shared by issue, PR, and

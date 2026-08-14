@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 )
 
 // writeCatalogConfig writes a .ward/ward.yaml declaring the given dependsOn entries
@@ -34,7 +34,7 @@ func TestExternalContextDepsFiltersToExternal(t *testing.T) {
 	cwd := writeCatalogConfig(t,
 		"ssh://git@github.com/acme/widgets.git",
 		"coilyco-flight-deck/eco-protos",
-		"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard",
+		"forgejo.coilysiren.me/coilyco-flight-deck/umbra",
 	)
 	deps := externalContextDeps(cwd)
 	if len(deps) != 1 {

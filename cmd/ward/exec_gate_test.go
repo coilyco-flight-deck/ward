@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/gittree"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/repocfg"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/gittree"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/repocfg"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/audit"
 	"github.com/urfave/cli/v3"
 )
 

@@ -2,7 +2,7 @@
   "edges": [
     {
       "from": "forgejo.coilysiren.me/coilyco-flight-deck/ward",
-      "to": "forgejo.coilysiren.me/coilyco-flight-deck/cli-guard",
+      "to": "forgejo.coilysiren.me/coilyco-flight-deck/umbra",
       "type": "dependsOn"
     },
     {

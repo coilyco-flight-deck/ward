@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/config"
 	"github.com/coilyco-flight-deck/ward/internal/agentsapi"
 	"github.com/coilyco-flight-deck/ward/internal/reviewpanel"
 	"github.com/urfave/cli/v3"

@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/credseed"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/broker"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/credseed"
 )
 
 // broker_exec.go is the privileged root-broker executor and authorizer.
@@ -159,7 +159,7 @@ func (e *wardKdlWriteExecutor) CommentIssue(ctx context.Context, target broker.T
 }
 
 // LabelIssue mutates target issue's label membership by mode through Forgejo.
-// cli-guard's labelInvariants already gated it fail-closed.
+// umbra's labelInvariants already gated it fail-closed.
 func (e *wardKdlWriteExecutor) LabelIssue(ctx context.Context, target broker.Target, mode string, labels []string) (broker.Result, error) {
 	return e.withCredentialRetry(ctx, func(cl *forgejoClient) (broker.Result, error) {
 		segments := []string{"repos", target.Owner, target.Repo, "issues", strconv.Itoa(target.Number), "labels"}

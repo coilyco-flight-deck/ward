@@ -70,7 +70,7 @@ Omitted agent values use operator settings, then compiled defaults shown above.
 
 YAML type errors, invalid command argv, duplicate protected binaries,
 unsupported modes, invalid globs, and invalid workflows fail loading. Unknown
-fields consumed by neither Ward nor cli-guard have no effect and should be
+fields consumed by neither Ward nor umbra have no effect and should be
 removed. Run `ward doctor`, then exercise a verb with `ward exec <verb>`.
 
 ## See also

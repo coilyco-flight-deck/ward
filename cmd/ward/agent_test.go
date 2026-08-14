@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 	"github.com/urfave/cli/v3"
 )
 
@@ -664,15 +664,15 @@ func TestPreflightPrompt(t *testing.T) {
 	}
 	// ward#266: a --repo grant must reach the prompt so the read knows the run
 	// gets that repo too and won't NO-GO/WRONG-REPO work whose deliverable lands there.
-	withExtra := preflightPrompt(ref, "migrate sandbox into cli-guard", "move the package", "", nil,
-		[]targetRepo{{Owner: "coilyco-flight-deck", Name: "cli-guard"}})
+	withExtra := preflightPrompt(ref, "migrate sandbox into umbra", "move the package", "", nil,
+		[]targetRepo{{Owner: "coilyco-flight-deck", Name: "umbra"}})
 	for _, want := range []string{
-		"coilyco-flight-deck/cli-guard",            // names the granted repo
-		"/workspace/coilyco-flight-deck/cli-guard", // names the granted repo path
-		"--repo",            // names how it was granted (ward#280)
-		"WRITABLE",          // tells the agent it can author there
-		"squarely in scope", // cross-repo work is not a NO-GO
-		"FRESH CLONES",      // plural clone scope when a repo is granted
+		"coilyco-flight-deck/umbra",            // names the granted repo
+		"/workspace/coilyco-flight-deck/umbra", // names the granted repo path
+		"--repo",                               // names how it was granted (ward#280)
+		"WRITABLE",                             // tells the agent it can author there
+		"squarely in scope",                    // cross-repo work is not a NO-GO
+		"FRESH CLONES",                         // plural clone scope when a repo is granted
 	} {
 		if !strings.Contains(withExtra, want) {
 			t.Errorf("preflight prompt with --repo grant missing %q\n got: %s", want, withExtra)
@@ -737,7 +737,7 @@ func TestParsePreflightVerdict(t *testing.T) {
 		{"prose only", "This needs more thought before anyone takes it on.", verdictUnknown, "", ""},
 		// WRONG-REPO (ward#159): captures the target repo + the trailing reason.
 		{"wrong-repo with reason", "This is an ops verb.\nWRONG-REPO: coilyco-gaming/sample-gameops - belongs with ops", verdictWrongRepo, "belongs with ops", "coilyco-gaming/sample-gameops"},
-		{"wrong-repo no hyphen", "WRONG REPO coilyco-flight-deck/cli-guard: engine change", verdictWrongRepo, "engine change", "coilyco-flight-deck/cli-guard"},
+		{"wrong-repo no hyphen", "WRONG REPO coilyco-flight-deck/umbra: engine change", verdictWrongRepo, "engine change", "coilyco-flight-deck/umbra"},
 		{"wrong-repo run together", "WRONGREPO coilyco-gaming/sample-gameops", verdictWrongRepo, "", "coilyco-gaming/sample-gameops"},
 		{"wrong-repo bare repo only", "WRONG-REPO: coilyco-gaming/sample-gameops", verdictWrongRepo, "", "coilyco-gaming/sample-gameops"},
 		{"wrong-repo markdown bold", "**WRONG-REPO: coilyco-gaming/sample-gameops - move it**", verdictWrongRepo, "move it", "coilyco-gaming/sample-gameops"},
@@ -803,7 +803,7 @@ func TestWrongRepoTarget(t *testing.T) {
 		wantOK    bool
 	}{
 		{"coilyco-gaming/sample-gameops", "coilyco-gaming", "sample-gameops", true},
-		{"  coilyco-flight-deck/cli-guard  ", "coilyco-flight-deck", "cli-guard", true},
+		{"  coilyco-flight-deck/umbra  ", "coilyco-flight-deck", "umbra", true},
 		{"", "", "", false},
 		{"noslash", "", "", false},
 		{"owner/", "", "", false},

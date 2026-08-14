@@ -1,9 +1,9 @@
 # Repository catalog metadata.
 # Ward dogfoods the security contract documented in docs/ward-yaml.md.
 catalog:
-  description: "ward - a contributor-facing cli-guard consumer with native agent control-plane commands."
+  description: "ward - a contributor-facing umbra consumer with native agent control-plane commands."
   dependsOn:
-    - forgejo.coilysiren.me/coilyco-flight-deck/cli-guard
+    - forgejo.coilysiren.me/coilyco-flight-deck/umbra
 
 commands:
   build:

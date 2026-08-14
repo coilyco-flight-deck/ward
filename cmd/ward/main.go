@@ -1,4 +1,4 @@
-// Command ward is a contributor-facing cli-guard consumer entry point.
+// Command ward is a contributor-facing umbra consumer entry point.
 // See README.md for audience and scope.
 package main
 
@@ -11,8 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/sandbox"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/exitcode"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/exitcode"
 	"github.com/urfave/cli/v3"
 )
 
@@ -30,16 +29,6 @@ func main() {
 }
 
 func run() int {
-	// Internal jail-helper re-exec, before normal CLI parsing; never returns on
-	// success (it execs the real tool).
-	if sandbox.IsJailInvocation(os.Args) {
-		if err := sandbox.RunJail(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "ward:", err)
-			return 1
-		}
-		return 0
-	}
-
 	// Public-face shim: invoked as `warded` (a symlink), rewrite argv to the
 	// canonical `ward agent <args>` machinery (ward#247, ward#282). See docs/agent.md.
 	os.Args = maybeRewriteWardedShim(os.Args)
@@ -71,7 +60,7 @@ func run() int {
 func rootCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "ward",
-		Usage:   "a contributor-facing cli-guard consumer",
+		Usage:   "a contributor-facing umbra consumer",
 		Version: Version,
 		Flags: []cli.Flag{
 			&cli.StringFlag{

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
 )
 
 // genTestKeyPEM makes a fresh RSA key, PKCS1 PEM-encoded. Generating it keeps the suite

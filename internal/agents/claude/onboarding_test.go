@@ -72,7 +72,7 @@ func TestSeedOnboardingTrustDirs(t *testing.T) {
 	dirs := []string{
 		"/workspace/ward",
 		"/workspace",
-		"/workspace/cli-guard",
+		"/workspace/umbra",
 		"/substrate",
 		"/substrate/reference-project",
 	}

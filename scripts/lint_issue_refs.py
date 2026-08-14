@@ -44,11 +44,11 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FORGEJO = "https://forgejo.coilysiren.me"
 GITHUB = "https://github.com"
 
-# prefix (terse repo shorthand) -> canonical issue web base. ward/cli-guard are
+# prefix (terse repo shorthand) -> canonical issue web base. ward/umbra are
 # Forgejo; the taps are GitHub.
 PREFIX_BASE = {
     "ward": f"{FORGEJO}/coilyco-flight-deck/ward",
-    "cli-guard": f"{FORGEJO}/coilyco-flight-deck/cli-guard",
+    "umbra": f"{FORGEJO}/coilyco-flight-deck/umbra",
     "homebrew-tap": f"{GITHUB}/coilysiren/homebrew-tap",
     "infrastructure": f"{GITHUB}/coilysiren/infrastructure",
     "infra": f"{GITHUB}/coilysiren/infrastructure",

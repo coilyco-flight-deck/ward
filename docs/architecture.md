@@ -8,7 +8,7 @@ Ward is one CLI with two execution paths and one shared audit posture.
 ## Repository command path
 
 `ward exec`, `ward git`, and `ward audit` are native command surfaces built on
-the `cli-guard` policy and routing engine. Ward discovers `.ward/ward.yaml`,
+the `umbra` policy and routing engine. Ward discovers `.ward/ward.yaml`,
 validates declared argv and repository state, executes the admitted command,
 and records the result. On Linux, admitted commands can run in the sandbox
 jail. macOS and Windows enforce the declared boundary at command entry.

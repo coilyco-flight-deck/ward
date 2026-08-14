@@ -17,16 +17,17 @@ Please disclose any vulnerabilities by emailing [coilysiren@gmail.com](mailto:co
 
 ## What counts as a vulnerability
 
-ward has two security-relevant surfaces, and a report is welcome against either: the **dev-verb gate** (`ward exec`, wrapping cli-guard) and the **agent/container surface** (`ward agent`, the README's headline - an agent harness in a credential-holding container). Each is scoped below.
+ward has two security-relevant surfaces, and a report is welcome against either: the **dev-verb gate** (`ward exec`, wrapping umbra) and the **agent/container surface** (`ward agent`, the README's headline - an agent harness in a credential-holding container). Each is scoped below.
 
 ### The dev-verb gate (`ward exec`)
 
-ward wraps [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard). Most boundary-level issues belong upstream, not here. Specifically interested in reports of:
+ward wraps [umbra](https://forgejo.coilysiren.me/coilyco-flight-deck/umbra). Most boundary-level issues belong upstream, not here. Specifically interested in reports of:
 
-- ward verbs that bypass the cli-guard policy gate they claim to install
+- ward verbs that bypass the umbra policy gate they claim to install
 - audit log entries written by ward that are unparseable, truncatable, or omittable
 - `.ward/ward.yaml` parse paths that execute shell or import host state in ways the README does not describe
-- on Linux, a descendant of a sandboxed ward verb (e.g. `ward docker exec`) invoking a wrapped tool — by name or absolute path — without re-entering the gate. ward runs sandboxed verbs inside cli-guard's `sandbox` jail so the wrapper holds at arbitrary process depth, not just depth 0; an escape is a vulnerability. The jail is Linux-only — on macOS/Windows enforcement is depth-0 (the harness allowlist) and descendant bypass is a known limitation, not a vulnerability
+
+Enforcement is **depth-0 on every platform**: the gate bounds the call ward itself makes, not what a descendant process does. A descendant invoking a wrapped tool without re-entering the gate is a **known limitation, not a vulnerability** - the container is the boundary that bounds an escaped process. (umbra's Linux namespace jail, which previously held the wrapper at arbitrary depth, was removed in umbra#288: it was disabled nearly everywhere it ran and broken where it was not.)
 
 The gate is **verb-level** - it bounds what call is expressible, not what a process can touch once running. [docs/exec-verb.md](docs/exec-verb.md) is the short reference for what it does and does not defend, and why an escaped process is the container's job, not the gate's.
 
@@ -41,5 +42,5 @@ The gate is **verb-level** - it bounds what call is expressible, not what a proc
 
 Out of scope (file as regular issues, not vulnerabilities):
 
-- bare cli-guard framework bugs, report those at [coilyco-flight-deck/cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/issues)
+- bare umbra framework bugs, report those at [coilyco-flight-deck/umbra](https://forgejo.coilysiren.me/coilyco-flight-deck/umbra/issues)
 - bare urfave/cli framework bugs, report those at [urfave/cli](https://github.com/urfave/cli/issues)

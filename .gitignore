@@ -8,9 +8,9 @@
 *.so
 *.dylib
 
-# Local-dev Go workspace, generated on demand by `make workspace` when cli-guard
-# is checked out side by side at ../cli-guard (ward#326). Never committed: a
-# tracked `use (. ../cli-guard)` would break single-repo builds in CI and the
+# Local-dev Go workspace, generated on demand by `make workspace` when umbra
+# is checked out side by side at ../umbra (ward#326). Never committed: a
+# tracked `use (. ../umbra)` would break single-repo builds in CI and the
 # warded engineer clone, where the sibling is absent and `go build` would fail.
 /go.work
 /go.work.sum

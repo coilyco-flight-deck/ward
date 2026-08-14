@@ -102,7 +102,7 @@ func TestCloneGate(t *testing.T) {
 		{"ephemeral dest, off-allowlist repo", "https://evil.example/x/y.git", filepath.Join("/tmp", "y"), true},
 		{"platform-temp dest, off-allowlist repo", "https://evil.example/x/y.git", filepath.Join(tmp, "y"), true},
 		{"persistent dest, allowlisted repo", "https://forgejo.coilysiren.me/coilyco-flight-deck/ward.git", filepath.Join(persistent, "ward"), true},
-		{"persistent dest, cli-guard repo under correct owner", "git@github.com:coilyco-flight-deck/cli-guard.git", filepath.Join(persistent, "cli-guard"), true},
+		{"persistent dest, umbra repo under correct owner", "git@github.com:coilyco-flight-deck/umbra.git", filepath.Join(persistent, "umbra"), true},
 		{"persistent dest, ward repo under wrong owner", "git@github.com:coilyco-gaming/ward.git", filepath.Join(persistent, "ward"), false},
 		{"persistent dest, off-allowlist repo", "https://evil.example/x/y.git", filepath.Join(persistent, "y"), false},
 		{"persistent dest, local-path url", "/some/local/repo", filepath.Join(persistent, "repo"), false},

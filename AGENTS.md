@@ -33,7 +33,7 @@ Once that is done, contributors route dev work through the verbs your `.ward/war
 
 ## Scope
 
-`ward` is a contributor-facing [cli-guard](https://forgejo.coilysiren.me/coilyco-flight-deck/cli-guard) consumer: the gate a contributor (human or agent) routes through to build, test, and lint code.
+`ward` is a contributor-facing [umbra](https://forgejo.coilysiren.me/coilyco-flight-deck/umbra) consumer: the gate a contributor (human or agent) routes through to build, test, and lint code.
 
 Ward's canonical vocabulary lives in [docs/terminology.md](docs/terminology.md).
 When changing docs, prompts, command output, or agent instructions, use that
@@ -42,7 +42,7 @@ run vs issue, workflow vs outcome, stop vs reap, drain vs burndown, and release
 branch vs published release. Add or update terminology there before spreading a
 new synonym through the repo.
 
-Ward uses cli-guard as its policy engine and keeps its agent, container,
+Ward uses umbra as its policy engine and keeps its agent, container,
 repository-development, and tracker control plane native. External operator
 products are outside Ward's runtime and repository contract.
 
@@ -57,7 +57,7 @@ Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/
 
 ## Repo boundaries
 
-- Upstream: `coilyco-flight-deck/cli-guard` is the policy/routing engine. Thin consumer, not a fork.
+- Upstream: `coilyco-flight-deck/umbra` is the policy/routing engine. Thin consumer, not a fork.
 - External operator products remain outside this repository.
 - Downstream: consumers upgrade to the `ward` binary and `.ward` config on their own schedule.
 
@@ -85,9 +85,9 @@ Every invocation validates argv against shell-metacharacter rejection, writes on
 
 ## Cross-repo contracts
 
-- Engine: `coilyco-flight-deck/cli-guard` (pinned via go.mod).
+- Engine: `coilyco-flight-deck/umbra` (pinned via go.mod).
 - Pre-commit suite: pinned via `rev:` in `.pre-commit-config.yaml`.
-- Downstream config schema: `.ward/ward.yaml` - cli-guard `repocfg` format, fields in [docs/ward-yaml.md](docs/ward-yaml.md).
+- Downstream config schema: `.ward/ward.yaml` - umbra `repocfg` format, fields in [docs/ward-yaml.md](docs/ward-yaml.md).
 
 ## Release
 

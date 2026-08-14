@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/broker"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/broker"
 	"github.com/coilyco-flight-deck/ward/internal/contracts"
 )
 

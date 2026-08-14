@@ -208,10 +208,10 @@ func TestDirectorLinkedIssueNumber(t *testing.T) {
 	}{
 		{body: "closes #12", want: 12, ok: true},
 		{body: "closes coilyco-flight-deck/ward#12", want: 12, ok: true},
-		{body: "closes coilyco-flight-deck/cli-guard#12\ncloses coilyco-flight-deck/ward#13", want: 13, ok: true},
+		{body: "closes coilyco-flight-deck/umbra#12\ncloses coilyco-flight-deck/ward#13", want: 13, ok: true},
 		{body: "Fixes #7\n", want: 7, ok: true},
 		{body: "resolves #3", want: 3, ok: true},
-		{body: "closes coilyco-flight-deck/cli-guard#12", want: 0, ok: false},
+		{body: "closes coilyco-flight-deck/umbra#12", want: 0, ok: false},
 		{body: "notes only", want: 0, ok: false},
 	} {
 		got, ok := directorLinkedIssueNumber("coilyco-flight-deck", "ward", tc.body)

@@ -8,11 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/sandbox"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/shell"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/audit"
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/shell"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/audit"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/config"
 	"github.com/urfave/cli/v3"
 )
 
@@ -60,7 +59,6 @@ func newRunner() *Runner {
 			Stdout:  os.Stdout,
 			Stderr:  os.Stderr,
 			Stdin:   os.Stdin,
-			Sandbox: sandboxSpec(),
 		},
 		Audit: aw,
 	}
@@ -79,23 +77,13 @@ func leanRunner() *Runner {
 			Stdout:  os.Stdout,
 			Stderr:  os.Stderr,
 			Stdin:   os.Stdin,
-			Sandbox: sandboxSpec(),
 		},
 		Audit: audit.NewWriter(path),
 	}
 }
 
-// sandboxSpec builds the jail spec for ward's audited verbs (inert off Linux /
-// inside a jail). Returns nil if the binary path is unresolvable.
-func sandboxSpec() *sandbox.Spec {
-	exe, err := os.Executable()
-	if err != nil {
-		return nil
-	}
-	return &sandbox.Spec{SelfExe: exe}
-}
 
-// WrapVerb wraps spec through cli-guard's verb pipeline, setting the
+// WrapVerb wraps spec through umbra's verb pipeline, setting the
 // invoke-cwd resolver. Ward injects no profile evaluator (nil is fine).
 func (r *Runner) WrapVerb(spec verb.Spec, writer *audit.Writer) cli.ActionFunc {
 	if spec.ResolveInvokeCWD == nil {

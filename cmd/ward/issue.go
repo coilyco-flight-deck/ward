@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/issueref"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/issueref"
 	"github.com/coilyco-flight-deck/ward/internal/contracts"
 )
 
@@ -43,7 +43,7 @@ var githubIssueRefRE = regexp.MustCompile(
 )
 
 // ParseIssueRef resolves every supported reference form. GitHub is matched first
-// (issueref.Parse would never see it), then cli-guard normalizes the rest identically.
+// (issueref.Parse would never see it), then umbra normalizes the rest identically.
 func ParseIssueRef(baseURL, s string) (IssueRef, error) {
 	s = strings.TrimSpace(s)
 	if m := githubIssueRefRE.FindStringSubmatch(s); m != nil {

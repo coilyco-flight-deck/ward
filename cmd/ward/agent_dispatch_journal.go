@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/config"
 )
 
 const (

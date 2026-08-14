@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/cli/verb"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/cli/verb"
 	"github.com/urfave/cli/v3"
 )
 

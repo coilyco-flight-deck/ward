@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"forgejo.coilysiren.me/coilyco-flight-deck/cli-guard/pkg/config"
+	"forgejo.coilysiren.me/coilyco-flight-deck/umbra/pkg/config"
 )
 
 // agent_log_drain.go is the host-side drain of agent-run observability (ward#363,
