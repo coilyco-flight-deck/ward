@@ -56,9 +56,9 @@ func newRunner() *Runner {
 	}
 	return &Runner{
 		Runner: &shell.Runner{
-			Stdout:  os.Stdout,
-			Stderr:  os.Stderr,
-			Stdin:   os.Stdin,
+			Stdout: os.Stdout,
+			Stderr: os.Stderr,
+			Stdin:  os.Stdin,
 		},
 		Audit: aw,
 	}
@@ -74,14 +74,13 @@ func leanRunner() *Runner {
 	}
 	return &Runner{
 		Runner: &shell.Runner{
-			Stdout:  os.Stdout,
-			Stderr:  os.Stderr,
-			Stdin:   os.Stdin,
+			Stdout: os.Stdout,
+			Stderr: os.Stderr,
+			Stdin:  os.Stdin,
 		},
 		Audit: audit.NewWriter(path),
 	}
 }
-
 
 // WrapVerb wraps spec through umbra's verb pipeline, setting the
 // invoke-cwd resolver. Ward injects no profile evaluator (nil is fine).
