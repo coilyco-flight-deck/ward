@@ -91,3 +91,50 @@ func TestModeCeilingDeclineIsTerminal(t *testing.T) {
 		t.Errorf("mode-ceiling kind = %q, want it to name the ceiling", coded.Kind())
 	}
 }
+
+// The autonomy labels moved to a scoped, renamed taxonomy on 2026-08-15 and
+// this gate compared literal old names. See umbra#292.
+func TestTheScopedAutonomyLabelsStillReachTheGate(t *testing.T) {
+	for _, tc := range []struct {
+		label  string
+		want   int
+		wantNm string
+	}{
+		{"autonomy/async-consult", 0, "consult"},
+		{"autonomy/live-collab", 1, "interactive"},
+		{"autonomy/headless", 2, "headless"},
+		{"AUTONOMY/Headless", 2, "headless"},
+		{" autonomy/live-collab ", 1, "interactive"},
+	} {
+		got, name := issueModeCeiling([]string{tc.label})
+		if got != tc.want || name != tc.wantNm {
+			t.Errorf("issueModeCeiling(%q) = (%d, %q), want (%d, %q)",
+				tc.label, got, name, tc.want, tc.wantNm)
+		}
+	}
+}
+
+// The live guard is this one, and after the rename it stopped matching, so an
+// issue needing a human present dispatched to an engineer unrefused.
+func TestTheLiveCollabGuardStillRefuses(t *testing.T) {
+	for _, label := range []string{"interactive", "autonomy/live-collab", "AUTONOMY/LIVE-COLLAB"} {
+		if !issueHasModeLabel([]string{label}, "interactive") {
+			t.Errorf("%q no longer refuses an engineer dispatch", label)
+		}
+	}
+	for _, label := range []string{"autonomy/headless", "autonomy/async-consult", "priority/P1"} {
+		if issueHasModeLabel([]string{label}, "interactive") {
+			t.Errorf("%q wrongly refuses an engineer dispatch", label)
+		}
+	}
+}
+
+// A label outside the autonomy group is not an autonomy label, so the group's
+// scope prefix must not swallow the priority or role axes.
+func TestOtherScopedAxesAreNotAutonomyLabels(t *testing.T) {
+	for _, label := range []string{"priority/P0", "role/engineer", "autonomy/epic"} {
+		if _, ok := modeCeilingLevel(label); ok {
+			t.Errorf("%q was read as an autonomy ceiling", label)
+		}
+	}
+}

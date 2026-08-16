@@ -1329,9 +1329,24 @@ func (r *Runner) fetchIssueComments(ctx context.Context, ref agentIssueRef) ([]i
 // index is the level, so the last entry (headless) is the most autonomous.
 var modeCeilingLevels = []string{"consult", "interactive", "headless"}
 
+// autonomyScopePrefix is the group the labels moved under on 2026-08-15. The
+// names inside it changed too, which autonomyAliases carries.
+const autonomyScopePrefix = "autonomy/"
+
+// autonomyAliases maps every spelling of an autonomy label, scoped or bare, to
+// the ceiling name this gate compares. A name absent here is not an autonomy
+// label and reaches the unlabeled default. See docs/ward-agent-dispatch.md.
+var autonomyAliases = map[string]string{
+	"consult":       "consult",
+	"async-consult": "consult",
+	"interactive":   "interactive",
+	"live-collab":   "interactive",
+	"headless":      "headless",
+}
+
 // modeCeilingLevel returns the rank of a mode label and whether it is a known one.
 func modeCeilingLevel(label string) (int, bool) {
-	want := strings.ToLower(strings.TrimSpace(label))
+	want := autonomyName(label)
 	for i, l := range modeCeilingLevels {
 		if l == want {
 			return i, true
@@ -1360,11 +1375,21 @@ func issueModeCeiling(labels []string) (int, string) {
 // issueHasModeLabel reports whether the issue carries the given label.
 func issueHasModeLabel(labels []string, want string) bool { //nolint:unparam
 	for _, raw := range labels {
-		if strings.EqualFold(strings.TrimSpace(raw), want) {
+		if autonomyName(raw) == strings.ToLower(strings.TrimSpace(want)) {
 			return true
 		}
 	}
 	return false
+}
+
+// autonomyName reduces a label to its autonomy name, tolerating the scoped
+// spelling. See docs/ward-agent-dispatch.md.
+func autonomyName(label string) string {
+	name := strings.ToLower(strings.TrimSpace(label))
+	if scoped, ok := strings.CutPrefix(name, autonomyScopePrefix); ok {
+		name = scoped
+	}
+	return autonomyAliases[name]
 }
 
 // reviewGateWanted decides whether the review gate wires into the seed.
