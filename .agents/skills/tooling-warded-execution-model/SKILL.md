@@ -22,7 +22,7 @@ states or historical issue pages.
 * Run observation and recovery - [`agent-ops.md`](../../../docs/agent-ops.md)
   and [`troubleshooting.md`](../../../docs/troubleshooting.md).
 * Host/container access - [`container-contract.md`](../../../docs/container-contract.md)
-  and [`container-substrate.md`](../../../docs/container-substrate.md).
+  and [`container.md`](../../../docs/container.md).
 * Config ownership - [`config-source.md`](../../../docs/config-source.md).
 
 If a human cannot configure, observe, depend on, maintain, or use a detail for

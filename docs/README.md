@@ -33,7 +33,7 @@ when a command or run does not behave as expected.
 * [agent-ops.md](agent-ops.md) - list, logs, stop, reap, and dispatch status.
 * [agent-dispatch-health.md](agent-dispatch-health.md) - health summaries and consumers.
 * [agent-dispatch-broker.md](agent-dispatch-broker.md) - broker authority and durable requests.
-* [agent-dispatch-recovery.md](agent-dispatch-recovery.md) - restart and retained-state recovery.
+* [agent-dispatch-health.md](agent-dispatch-health.md) - restart and retained-state recovery.
 * [agent-reservation.md](agent-reservation.md) - issue-thread reservations and cache cleanup.
 * [agent-workflow.md](agent-workflow.md) - landing workflows and review gate.
 * [agent-pr-workflow.md](agent-pr-workflow.md) - pull-request status, recovery, and mutation verbs.
@@ -48,7 +48,7 @@ when a command or run does not behave as expected.
 * [container-contract.md](container-contract.md) - mounts, environment, credentials, and skills.
 * [container-lifecycle.md](container-lifecycle.md) - launch, drain, rescue, reap, and cleanup.
 * [container-staging.md](container-staging.md) - host staging placement and security.
-* [container-substrate.md](container-substrate.md) - workspace, references, and multi-repo layout.
+* [container.md](container.md) - workspace, references, and multi-repo layout.
 
 ## See also
 

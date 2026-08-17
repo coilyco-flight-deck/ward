@@ -954,7 +954,7 @@ func (r *Runner) writeRunProvenance(ctx context.Context, work string, e bootstra
 // --- additional granted repos (ward#230): clone+operate beyond the target ----
 
 // cloneExtraRepos clones each granted extra repo as a full feature working copy
-// at /workspace/<owner>/<repo>; best-effort per repo. See docs/container-substrate.md.
+// at /workspace/<owner>/<repo>; best-effort per repo. See docs/container.md.
 func (r *Runner) cloneExtraRepos(ctx context.Context, e bootstrapEnv) {
 	if len(e.ExtraRepos) == 0 {
 		return

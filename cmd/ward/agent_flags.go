@@ -40,8 +40,9 @@ func renderAgentFlagsMarkdown(b *strings.Builder, cmd *cli.Command, path []strin
 		}
 		return
 	}
-	fmt.Fprintf(b, "## `%s`\n\n", strings.Join(path, " "))
-	fmt.Fprintf(b, "- %s\n", agentFlagTreeLine(cmd.Flags))
+	// One row per command: a heading plus a bullet put this generated page over
+	// the band cap. See agentic-os docs/documentation-bands.md.
+	fmt.Fprintf(b, "- **`%s`** - %s\n", strings.Join(path, " "), agentFlagTreeLine(cmd.Flags))
 	for _, child := range cmd.Commands {
 		nextPath := append(append([]string{}, path...), child.Name)
 		renderAgentFlagsMarkdown(b, child, nextPath)

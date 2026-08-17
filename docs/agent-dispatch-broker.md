@@ -74,6 +74,6 @@ explicit confirmed prune.
 
 ## See also
 
-* [agent-dispatch-recovery.md](agent-dispatch-recovery.md) - restart decisions.
+* [agent-dispatch-health.md](agent-dispatch-health.md) - restart decisions.
 * [agent-clusters.md](agent-clusters.md) - cluster lifecycle.
 * [agent-pr-workflow.md](agent-pr-workflow.md) - typed PR operations.

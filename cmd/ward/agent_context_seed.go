@@ -7,7 +7,7 @@ import (
 )
 
 // agent_context_seed.go carries the host-side gitcache seed for external (non-Forgejo)
-// catalog.dependsOn deps (ward#612). Full rationale: docs/container-substrate.md.
+// catalog.dependsOn deps (ward#612). Full rationale: docs/container.md.
 
 // seedExternalContextMirrors seeds the ward-gitcache volume with every external
 // catalog.dependsOn mirror host-side before the sealed container launches (ward#612).

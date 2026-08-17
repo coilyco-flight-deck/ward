@@ -150,7 +150,7 @@ func buildUpPlan(c *cli.Command, repo targetRepo, mode containerMode, role, cwd,
 		return upPlan{}, err
 	}
 	// extraRepoGrant reads the --repo grant on the agent surfaces and --with-repo on
-	// director (ward#280, ward#362; docs/container-substrate.md).
+	// director (ward#280, ward#362; docs/container.md).
 	extra, err := parseExtraRepos(extraRepoGrant(c), repo)
 	if err != nil {
 		return upPlan{}, err

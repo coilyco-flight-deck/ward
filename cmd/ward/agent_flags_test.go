@@ -34,7 +34,8 @@ func TestAgentFlagsCommandRegistered(t *testing.T) {
 }
 
 // TestAgentFlagsMarkdownShape sanity-checks the generated body: the doc_goal
-// front-matter, the generated-by header, and a few command sections.
+// front-matter, the generated-by header, and a few command rows. One row per
+// command rather than a heading each, which is what keeps the page in band.
 func TestAgentFlagsMarkdownShape(t *testing.T) {
 	md, err := agentFlagsMarkdown()
 	if err != nil {
@@ -44,9 +45,9 @@ func TestAgentFlagsMarkdownShape(t *testing.T) {
 		"---\ndoc_goal: ",
 		"# ward agent: the flag tree",
 		"ward agent flags --markdown",
-		"## `ward agent`",
-		"## `ward agent engineer`",
-		"## `ward agent pr runs`",
+		"- **`ward agent`** - ",
+		"- **`ward agent engineer`** - ",
+		"- **`ward agent pr runs`** - ",
 		"(hidden)",
 		"--workflow",
 		"--instructions-file",

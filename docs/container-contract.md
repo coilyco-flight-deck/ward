@@ -68,4 +68,4 @@ Per-run assets and the credential env file share the secured root in
 
 * [context-bundle.md](context-bundle.md) - optional context projection.
 * [agent-dispatch-broker.md](agent-dispatch-broker.md) - broker credential boundary.
-* [container-substrate.md](container-substrate.md) - filesystem layout.
+* [container.md](container.md) - filesystem layout.

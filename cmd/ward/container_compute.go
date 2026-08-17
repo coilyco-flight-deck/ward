@@ -430,7 +430,7 @@ type upPlan struct {
 	// stream-json); exports WARD_ASK=1 for one-shot attached runs.
 	Ask bool
 	// ExtraRepos are additional writable repos this run was granted to clone +
-	// operate against (--repo, ward#230); see docs/container-substrate.md.
+	// operate against (--repo, ward#230); see docs/container.md.
 	ExtraRepos []targetRepo
 	// Issue is the carried issue number (0 for a bare `container up`), exported as
 	// WARD_TARGET_ISSUE so the reaper can release a pre-launch hold (ward#264).
