@@ -58,7 +58,7 @@ GitHub release is a verified mirror.
 ## First commands
 
 ```bash
-ward exec test
+just test
 ward git status
 ward audit tail --follow
 ward setup
@@ -101,5 +101,6 @@ Canonical development and release automation run on
 * [documentation index](docs/README.md) - every durable product contract.
 * [capabilities](docs/FEATURES.md) - major shipped inventory.
 * [agent rules](AGENTS.md) - repository operating doctrine.
-* [repository config](.ward/ward.yaml) - this repo's governed commands.
+* [justfile](justfile) - this repo's own dev verbs.
+* [repository config](.ward/ward.yaml) - catalog metadata, and the schema an adopter declares verbs in.
 * [repository schema](docs/ward-yaml.md) - complete `.ward/ward.yaml` reference.

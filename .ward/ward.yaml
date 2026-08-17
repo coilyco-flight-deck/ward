@@ -1,68 +1,14 @@
-# Repository catalog metadata.
-# Ward dogfoods the security contract documented in docs/ward-yaml.md.
+# Catalog metadata for the cross-repo knowledge graph.
+#
+# Dev verbs used to live here as a `commands:` block. They are recipes in the
+# justfile now. This file survives only because check_catalog_block pins this
+# exact path and catalog-trifecta wants README, AGENTS, and FEATURES to link
+# it, both upstream in agentic-os.
+
 catalog:
   description: "ward - a contributor-facing umbra consumer with native agent control-plane commands."
   dependsOn:
     - forgejo.coilysiren.me/coilyco-flight-deck/umbra
-
-commands:
-  build:
-    run: make build
-    description: Build all packages.
-  test:
-    run: make test
-    description: Run the unit test suite.
-  test-windows-compile:
-    run: make test-windows-compile
-    description: Cross-compile every test package for Windows/amd64 without running it.
-  test-cmd:
-    run: go test ./cmd/ward
-    description: Run Ward's main command package tests.
-  test-agent-framework:
-    run: go test ./cmd/ward -run AgentFramework
-    description: Run the focused generic-agent and direct-message framework tests.
-  test-runtime-config:
-    run: go test ./cmd/ward -run RuntimeConfig
-    description: Run the focused typed runtime configuration and role-independence tests.
-  test-policy-boundary:
-    run: go test ./cmd/ward -run PolicyBoundary
-    description: Run the focused native-policy and external-boundary contract tests.
-  test-release-contract:
-    run: go test ./scripts -run TestReleasePipelineUsesDraftArtifacts
-    description: Run the focused release-pipeline contract test.
-  pre-commit:
-    run: pre-commit run --all-files
-    description: Run the repository pre-commit suite across every tracked file.
-  format:
-    run: go fmt ./...
-    description: Format every Go package.
-  install:
-    run: make install
-    description: Install the ward binary into GOBIN (the Go-CLI install verb).
-  vet:
-    run: make vet
-    description: go vet across the tree.
-  lint:
-    run: make lint
-    description: Lint with golangci-lint.
-  agent-flags:
-    run: make agent-flags
-    description: Regenerate the code-derived ward agent flag tree.
-  agent-roster:
-    run: make agent-roster
-    description: Regenerate the code-derived fixed Ward workflow roster.
-  tidy:
-    run: make tidy
-    description: go mod tidy.
-  cover:
-    run: make cover
-    description: Unit tests with a coverage profile.
-  lint-refs:
-    run: make lint-refs
-    description: "Lint issue refs in public docs (ward#446): every ref must resolve for a GitHub reader. `make lint-refs ARGS=--fix` rewrites."
-  lint-workflows:
-    run: make lint-workflows
-    description: "Lint the Forgejo<->GitHub Actions mirror (ward#214): the test pair stays identical except runs-on. `make lint-workflows ARGS=--fix` regenerates the Forgejo mirror."
 
 security:
   protected_binaries:

@@ -32,7 +32,7 @@ repos:
   - repo: local
     hooks:
       - id: golangci-lint
-        name: golangci-lint (matches ward exec lint)
+        name: golangci-lint (matches just lint)
         description: Run the repo's golangci-lint gate at commit time so local pre-commit catches the same Go complexity checks as CI.
         entry: golangci-lint run --timeout=15m ./...
         language: system

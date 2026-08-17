@@ -6,7 +6,7 @@ doc_goal: Define Ward's native Windows test prerequisites, isolation, platform e
 Ward's full unit-test lane runs on native Windows:
 
 ```powershell
-ward exec test
+just test
 ```
 
 There is no Windows-only baseline, `-short` mode, or build tag. A failure in
@@ -32,7 +32,7 @@ filesystem modes, and release shell scripts skip explicitly.
 From Linux, use:
 
 ```console
-ward exec test-windows-compile
+just test-windows-compile
 ```
 
 This compiles every test package for `windows/amd64` and catches build-tag,
@@ -42,6 +42,6 @@ run the Windows binaries and does not replace the native lane.
 ## umbra workspace
 
 [`make workspace`](workspace.md) can resolve Ward imports from a sibling
-umbra checkout, but `ward exec test` still tests Ward's package tree only.
+umbra checkout, but `just test` still tests Ward's package tree only.
 Run umbra's own repository test verb in that checkout; its test policy and
 platform exceptions belong there.

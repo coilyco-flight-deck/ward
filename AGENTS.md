@@ -63,20 +63,20 @@ Single Go module (path `github.com/coilyco-flight-deck/ward`). CLI at `cmd/ward/
 
 ## Commands
 
-These are the verbs for building ward itself (contributor agents). An adopter runs ward against a **different** repo - see [Setting up ward for a repo](#setting-up-ward-for-a-repo). ward dogfoods itself. Route through it, not bare go:
+These are the verbs for building ward itself (contributor agents). An adopter runs ward against a **different** repo - see [Setting up ward for a repo](#setting-up-ward-for-a-repo). They live in the [justfile](justfile), not this repo's `.ward/ward.yaml`, per coilysiren/inbox#366. Route through it, not bare go:
 
-- `ward exec build`
-- `ward exec test`
-- `ward exec test-windows-compile`
-- `ward exec vet`
-- `ward exec lint`
-- `ward exec tidy`
+- `just build`
+- `just test`
+- `just test-windows-compile`
+- `just vet`
+- `just lint`
+- `just tidy`
 
 Install via the flight-deck brew tap - see [README.md](README.md).
 
 ## Validation
 
-The `.ward/ward.yaml` <-> `Makefile` contract is checked by `ward doctor` (no
+The `justfile` <-> `Makefile` contract is checked by `ward doctor` (no
 `ward lint` verb). The pinned pre-commit suite runs every commit.
 
 ## Safety
@@ -107,7 +107,7 @@ the installed Ward binary.
 
 ## Agent rules
 
-**Git workflow** - `pull-request-and-merge`, declared as `agent.workflow` in [`.ward/ward.yaml`](.ward/ward.yaml). Agents push a branch and open a Forgejo pull request. Nothing lands straight on `main`, and the merge stays director-gated. Byte-identical across the five PR-lane repos (agentic-os, deploy, infrastructure, sirens-echo, ward) per agentic-os#994.
+**Git workflow** - `pull-request-and-merge`, declared as `ward.workflow` in this file's frontmatter. Agents push a branch and open a Forgejo pull request. Nothing lands straight on `main`, and the merge stays director-gated. Byte-identical across the five PR-lane repos (agentic-os, deploy, infrastructure, sirens-echo, ward) per agentic-os#994.
 
 - One issue per discrete additive change. `closes #N` encouraged, not enforced.
 - v0.x. Minor API breaks ship in `main` with a note in the commit body. Consumers pin a commit until v1.0.0. Lock the API once downstream consumers settle.
@@ -130,4 +130,5 @@ switching tasks, or ending a session. The remote is the only durable artifact.
 - [docs/terminology.md](docs/terminology.md) - canonical vocabulary.
 - [docs/FEATURES.md](docs/FEATURES.md) - what ships today.
 - [docs/architecture.md](docs/architecture.md) - product and authority boundaries.
-- [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
+- [justfile](justfile) - this repo's own dev verbs.
+- [.ward/ward.yaml](.ward/ward.yaml) - catalog metadata, and the schema an adopter declares verbs in.

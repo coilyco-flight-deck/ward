@@ -26,13 +26,13 @@ Maintainers and warded agents on the canonical repo skip the mirror and follow t
 3. **Run the dev verbs before pushing.** Install ward from the centralized flight-deck tap with `brew install coilyco-flight-deck/tap/ward` (tap it first, see [README](README.md#install)), then:
 
    ```
-   ward exec build
-   ward exec test
-   ward exec vet
-   ward exec lint
+   just build
+   just test
+   just vet
+   just lint
    ```
 
-   The `.ward/ward.yaml` ↔ Makefile contract is checked by `ward doctor` (its allowlist drift guard) and CI, not a `ward lint` verb - `lint` is only the `ward exec lint` dev verb.
+   The `justfile` ↔ Makefile contract is checked by CI, not a `ward lint` verb - `lint` is only the `just lint` dev verb.
 
 ## Extending ward to your stack
 
