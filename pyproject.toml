@@ -1,4 +1,7 @@
 [tool.agentic-os.documentation-layout]
+# Declared rather than defaulted: an undeclared repo and a deliberately
+# small one were the same file, and only one had the decision made.
+band = "large"
 readme_max_lines = 200
 readme_max_chars = 14000
 excludes = ["docs/agent-flags.md"]
