@@ -21,6 +21,8 @@ refactor through a tightly coupled subsystem.
 * `ward audit ...` reads the append-only JSONL trail.
 * `ward agent ...`, also installed as `warded`, launches and operates isolated
   agent runs.
+* `ward agents list` prints the fixed typed harness roster, which is the
+  supported answer to "which harnesses can I ask for".
 
 Roles select workflow behavior, harnesses select agent CLI mechanics, and
 workflows select landing evidence. None of those labels grants credentials,
