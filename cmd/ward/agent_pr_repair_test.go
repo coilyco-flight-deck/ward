@@ -88,7 +88,21 @@ func (f prRepairFakeForge) server(t *testing.T) *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
+// withWardExecVerbs pins the mirrored-verb set for one test, so moving a dev
+// verb out of this repo's own .ward/ward.yaml cannot reclassify a bucket. #1681.
+func withWardExecVerbs(t *testing.T, verbs ...string) {
+	t.Helper()
+	previous := hasWardExecVerb
+	mirrored := make(map[string]bool, len(verbs))
+	for _, verb := range verbs {
+		mirrored[verb] = true
+	}
+	hasWardExecVerb = func(name string) bool { return mirrored[strings.TrimSpace(name)] }
+	t.Cleanup(func() { hasWardExecVerb = previous })
+}
+
 func TestClassifyForgejoPRRepairBuckets(t *testing.T) {
+	withWardExecVerbs(t, "test")
 	base := prRepairFakeForge{
 		headSHA:   "headsha",
 		baseSHA:   "mainsha",

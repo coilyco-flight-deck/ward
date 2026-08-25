@@ -34,8 +34,7 @@ func TestAgentFlagsCommandRegistered(t *testing.T) {
 }
 
 // TestAgentFlagsMarkdownShape sanity-checks the generated body: the doc_goal
-// front-matter, the generated-by header, and a few command rows. One row per
-// command rather than a heading each, which is what keeps the page in band.
+// front-matter, the generated-by header, and a few command rows.
 func TestAgentFlagsMarkdownShape(t *testing.T) {
 	md, err := agentFlagsMarkdown()
 	if err != nil {

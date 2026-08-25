@@ -1334,8 +1334,7 @@ var modeCeilingLevels = []string{"consult", "interactive", "headless"}
 const autonomyScopePrefix = "autonomy/"
 
 // autonomyAliases maps every spelling of an autonomy label, scoped or bare, to
-// the ceiling name this gate compares. A name absent here is not an autonomy
-// label and reaches the unlabeled default. See docs/ward-agent-dispatch.md.
+// the ceiling this gate compares. An absent name reaches the unlabeled default.
 var autonomyAliases = map[string]string{
 	"consult":       "consult",
 	"async-consult": "consult",
@@ -1383,7 +1382,7 @@ func issueHasModeLabel(labels []string, want string) bool { //nolint:unparam
 }
 
 // autonomyName reduces a label to its autonomy name, tolerating the scoped
-// spelling. See docs/ward-agent-dispatch.md.
+// spelling that autonomyScopePrefix carries.
 func autonomyName(label string) string {
 	name := strings.ToLower(strings.TrimSpace(label))
 	if scoped, ok := strings.CutPrefix(name, autonomyScopePrefix); ok {

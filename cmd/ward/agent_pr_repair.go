@@ -56,7 +56,7 @@ func classifyForgejoPRRepair(ctx context.Context, cl prRepairForgejoClassifier, 
 		assessment.Note = "could not identify the failing workflow; keeping the current repair path"
 		return assessment, nil
 	}
-	if !repoHasWardExecVerb(workflowID) {
+	if !hasWardExecVerb(workflowID) {
 		assessment.Bucket = prRepairBucketCIParityGap
 		assessment.Note = fmt.Sprintf("failing workflow %q has no local `ward exec %s` mirror in .ward/ward.yaml", workflowID, workflowID)
 		return assessment, nil
@@ -151,6 +151,10 @@ func mergeQueueChurn(mergeability string) bool {
 	}
 	return false
 }
+
+// Indirected so a test states the verb set it means, rather than inheriting
+// whatever this repo's own .ward/ward.yaml happens to declare.
+var hasWardExecVerb = repoHasWardExecVerb
 
 func repoHasWardExecVerb(name string) bool {
 	name = strings.TrimSpace(name)
